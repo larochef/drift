@@ -8,8 +8,6 @@ import drift.shared.*
 
 import java.nio.file.*
 
-import com.typesafe.scalalogging.Logger
-
 /** Turning what a user ticked into LoRAs on disk
   * (`specs/09-lora-management.md`, `specs/33-lora-sources.md`): the files of a
   * Civitai model, of a HuggingFace or ModelScope repository, of a folder on
@@ -30,8 +28,6 @@ final private[lora] class LoraInstalls(
     catalog: List[Lora],
     lorasRoot: Path
 ) {
-
-  private val logger = Logger[LoraInstalls]
 
   /** Which entity a group of fetched files lands in (`LoraPlacement`). */
   private val placement = LoraPlacement(storage, downloads, lorasRoot)

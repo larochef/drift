@@ -71,7 +71,6 @@ object LlamaComparison {
       // log-probability differences on llama.cpp's top 10
       val gap = theirs.map((id, logprob) => math.abs(ours(id) - logprob)).max
       worstGap = math.max(worstGap, gap)
-      val signed = theirs.head._2 - ours(theirs.head._1)
       println(
         f"  step $step%2d: llama ${show(tokenizer, theirs.head._1)}%-14s ours ${show(tokenizer, ourTop.head)}%-14s " +
           f"top-10 overlap ${ourTop.toSet.intersect(theirs.map(_._1).toSet).size}%2d, worst log-prob gap $gap%.3f, " +

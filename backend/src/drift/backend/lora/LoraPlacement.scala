@@ -5,8 +5,6 @@ import drift.shared.*
 
 import java.nio.file.Path
 
-import com.typesafe.scalalogging.Logger
-
 /** Which entity the files of an install land in (`specs/33-lora-sources.md`):
   * one LoRA per file, or one holding them all, as the request's grouping asks;
   * the id that names it and its folder, free of the ones already taken; and
@@ -21,8 +19,6 @@ final private[lora] class LoraPlacement(
     downloads: LoraDownloads,
     lorasRoot: Path
 ) {
-
-  private val logger = Logger[LoraPlacement]
 
   /** Saves what an install fetched where its grouping says
     * (`specs/33-lora-sources.md`), and queues every file that is not on disk

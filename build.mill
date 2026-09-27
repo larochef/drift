@@ -1,3 +1,4 @@
+//| mill-jvm-version: temurin:25
 //| mvnDeps:
 //| - "com.goyeau::mill-scalafix::0.6.0"
 //| - "io.github.hoangmaihuy::mill-universal-packager::0.2.0"
@@ -12,18 +13,17 @@ import mill.api.BuildCtx
 import mill.scalalib.scalafmt.ScalafmtModule
 import os.SubPath
 
-val scalaV = "3.8.3"
-val tapirV = "1.13.13"
-val jsoniterV = "2.38.15" // last release built against Scala.js 1.21
+val scalaV = "3.9.0"
+val tapirV = "1.13.32"
+val jsoniterV = "2.41.2" // last release built against Scala.js 1.21
 
 trait BaseScala extends ScalaModule with ScalafmtModule with ScalafixModule {
-  def scalaVersion = scalaV
+  def scalaVersion: T[String] = scalaV
 
   override def scalafixConfig = Some(BuildCtx.workspaceRoot / ".scalafix.conf")
 
   override def scalacOptions: T[Seq[String]] = Task {
     Seq(
-      // "-explain",
       "-deprecation",
       "-feature",
       "-unchecked",
@@ -31,69 +31,66 @@ trait BaseScala extends ScalaModule with ScalafmtModule with ScalafixModule {
       "-rewrite",
       "-language:adhocExtensions",
       "-Wunused:imports,privates,locals,implicits",
-//      "-Werror",
+      "-Werror",
     )
   }
 }
 
 trait BaseScalaJS extends BaseScala with ScalaJSModule {
-  def scalaJSVersion = "1.21.0"
+  def scalaJSVersion = "1.22.0"
 }
 
 object shared extends Module {
   trait Shared extends BaseScala with PlatformScalaModule
   object jvm extends Shared {
-    def mvnDeps = Seq(
-      mvn"com.softwaremill.sttp.tapir::tapir-core:${tapirV}",
-      mvn"com.softwaremill.sttp.tapir::tapir-jsoniter-scala:${tapirV}",
-      mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core:${jsoniterV}",
+    def mvnDeps: T[Seq[Dep]] = Seq(
+      mvn"com.softwaremill.sttp.tapir::tapir-core:$tapirV",
+      mvn"com.softwaremill.sttp.tapir::tapir-jsoniter-scala:$tapirV",
+      mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core:$jsoniterV",
     )
     // Macros are only needed to expand `JsonCodecMaker.make*` at compile time.
-    override def compileMvnDeps = Seq(
-      mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:${jsoniterV}"
+    override def compileMvnDeps: T[Seq[Dep]] = Seq(
+      mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:$jsoniterV"
     )
   }
   object js extends Shared with BaseScalaJS {
-    def mvnDeps = Seq(
-      mvn"com.softwaremill.sttp.tapir::tapir-core::${tapirV}",
-      mvn"com.softwaremill.sttp.tapir::tapir-jsoniter-scala::${tapirV}",
-      mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core::${jsoniterV}",
+    def mvnDeps: T[Seq[Dep]] = Seq(
+      mvn"com.softwaremill.sttp.tapir::tapir-core::$tapirV",
+      mvn"com.softwaremill.sttp.tapir::tapir-jsoniter-scala::$tapirV",
+      mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core::$jsoniterV",
     )
-    override def compileMvnDeps = Seq(
-      mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros::${jsoniterV}"
+    override def compileMvnDeps: T[Seq[Dep]] = Seq(
+      mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros::$jsoniterV"
     )
   }
 }
 
 object backend extends BaseScala with JavaAppPackagingModule {
-  def scalaVersion = scalaV
-  def moduleDeps = Seq(shared.jvm)
-
-  /** Java 25, as the runner it starts needs (FFM): the runner runs on drift's
-    * own Java, so a distribution carries one JDK.
-    */
-  override def jvmId = "temurin:25"
+  def scalaVersion: T[String] = scalaV
+  def moduleDeps: Seq[JavaModule] = Seq(shared.jvm)
 
   /** drift's own runner (`specs/42`) as the resources `runner/drift-runner.jar`
     * and `runner/rocm-version`: drift installs it from its runtimes page and
     * refreshes it at startup (`RunnerFiles`, `specs/43`), so the universal
     * stage carries it and mill is not needed where drift runs.
     */
-  def runnerResource = Task {
+  private def runnerResource = Task {
     val folder = Task.dest / "runner"
     os.makeDir.all(folder)
     os.copy.over(build.runner.assembly().path, folder / "drift-runner.jar")
     // the ROCm its kernels were compiled with, what an install pairs TheRock
     // against (`specs/43`); none without a TheRock tree
-    build.runner.rocmRootOption().foreach(root =>
-      os.write.over(
-        folder / "rocm-version",
-        os.Path(root).last.replaceFirst("^gfx[0-9a-z]+-", "")
+    build.runner
+      .rocmRootOption()
+      .foreach(root =>
+        os.write.over(
+          folder / "rocm-version",
+          os.Path(root).last.replaceFirst("^gfx[0-9a-z]+-", ""),
+        )
       )
-    )
     PathRef(Task.dest)
   }
-  override def packageVersion = Task { "0.1.0" }
+  override def packageVersion: T[String] = Task { "0.1.0" }
 
   /** What is worth testing without a running app: the entity migrations
     * (`specs/38`), which are pure functions over stored JSON, what a validated
@@ -102,7 +99,7 @@ object backend extends BaseScala with JavaAppPackagingModule {
     * (`specs/16`), which decides every command line drift runs.
     */
   object test extends ScalaTests with TestModule.Utest with ScalafmtModule {
-    def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.8.5")
+    def mvnDeps: T[Seq[Dep]] = Seq(mvn"com.lihaoyi::utest:0.9.5")
   }
 
   private def buildFrontend(
@@ -132,7 +129,7 @@ object backend extends BaseScala with JavaAppPackagingModule {
     PathRef(destDir)
   }
 
-  def frontendDir = Task.Source(
+  private def frontendDir = Task.Source(
     Task.dest / ".." / "front-dist"
   )
 
@@ -149,40 +146,44 @@ object backend extends BaseScala with JavaAppPackagingModule {
     * stage) carries it. Built inside `universalMappings`, it reached the jar
     * one build late, the jar's resources being taken before (found 2026-09-25).
     */
-  def frontendBundle = Task {
+  private def frontendBundle = Task {
     Task.log.info(s"Building frontend (full) in ${Task.dest}")
     buildFrontend("full", frontend.fullLinkJS().dest.path, Task.dest / "dist")
   }
 
   /** The jar with the optimised frontend; `run` serves the fast one instead. */
-  override def jar = Task {
+  override def jar: T[PathRef] = Task {
     val jar = Task.dest / "out.jar"
     mill.util.Jvm.createJar(
       jar,
       (frontendBundle() +: localClasspath()).map(_.path).filter(os.exists),
-      manifest()
+      manifest(),
     )
     PathRef(jar)
   }
 
   /** `run` reads the fast frontend straight from its folder. */
-  override def runClasspath = Task { frontendDir() +: super.runClasspath() }
+  override def runClasspath: T[Seq[PathRef]] = Task {
+    frontendDir() +: super.runClasspath()
+  }
 
-  override def resources = Task { runnerResource() +: super.resources() }
+  override def resources: T[Seq[PathRef]] = Task {
+    runnerResource() +: super.resources()
+  }
 
   // Macros expand `JsonCodecMaker.make` for backend-private wire shapes (the
   // GitHub release listing) at compile time only.
-  override def compileMvnDeps = Seq(
-    mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:${jsoniterV}"
+  override def compileMvnDeps: T[Seq[Dep]] = Seq(
+    mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:$jsoniterV"
   )
 
-  def mvnDeps = Seq(
-    mvn"ch.qos.logback:logback-classic:1.5.16",
-    mvn"com.typesafe.scala-logging::scala-logging:3.9.5",
-    mvn"com.softwaremill.sttp.tapir::tapir-files:${tapirV}",
-    mvn"com.softwaremill.sttp.tapir::tapir-netty-server-sync:${tapirV}",
-    mvn"com.softwaremill.ox::core:1.0.4",
-    mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core:${jsoniterV}",
+  def mvnDeps: T[Seq[Dep]] = Seq(
+    mvn"ch.qos.logback:logback-classic:1.6.4",
+    mvn"com.typesafe.scala-logging::scala-logging:3.9.6",
+    mvn"com.softwaremill.sttp.tapir::tapir-files:$tapirV",
+    mvn"com.softwaremill.sttp.tapir::tapir-netty-server-sync:$tapirV",
+    mvn"com.softwaremill.ox::core:1.0.8",
+    mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core:$jsoniterV",
     // Entity migrations (specs/38) walk stored JSON whose shape no codec
     // describes any more, so they need an AST rather than a codec.
     mvn"com.lihaoyi::ujson:4.4.3",
@@ -197,11 +198,11 @@ object backend extends BaseScala with JavaAppPackagingModule {
 }
 
 object frontend extends BaseScalaJS {
-  def moduleDeps = Seq(shared.js)
-  def mvnDeps = Seq(
+  def moduleDeps: Seq[JavaModule] = Seq(shared.js)
+  def mvnDeps: T[Seq[Dep]] = Seq(
     mvn"com.raquo::laminar::17.2.1",
     mvn"dev.frontroute::frontroute::0.19.1",
-    mvn"com.softwaremill.sttp.tapir::tapir-sttp-client::${tapirV}",
+    mvn"com.softwaremill.sttp.tapir::tapir-sttp-client::$tapirV",
   )
 }
 
@@ -212,7 +213,7 @@ object frontend extends BaseScalaJS {
   */
 object runner extends BaseScala with RunnerJvm {
 
-  def mvnDeps = Seq(mvn"com.lihaoyi::ujson:4.4.3")
+  def mvnDeps: T[Seq[Dep]] = Seq(mvn"com.lihaoyi::ujson:4.4.3")
 
   /** The TheRock tree: `DRIFT_ROCM_ROOT`, else the newest stable gfx1151 build
     * drift installed under its runtimes (`specs/06`). A path, not a `PathRef`:
@@ -222,15 +223,17 @@ object runner extends BaseScala with RunnerJvm {
     def variable(name: String) =
       Task.env.get(name).map(_.trim).filter(_.nonEmpty).map(os.Path(_))
     val runtimes = variable("DRIFT_RUNTIMES_ROOT").getOrElse(
-      variable("XDG_CACHE_HOME").getOrElse(os.home / ".cache") / "drift" / "runtimes"
+      variable("XDG_CACHE_HOME").getOrElse(
+        os.home / ".cache"
+      ) / "drift" / "runtimes"
     )
     val installed =
       if (!os.exists(runtimes / "therock")) Seq.empty
       else
         os.list(runtimes / "therock")
           .filter(path => path.last.matches("""gfx1151-\d+(\.\d+)*"""))
-          .sortBy(_.last.stripPrefix("gfx1151-").split('.').map(_.toInt).toSeq)(using
-            Ordering.Implicits.seqOrdering[Seq, Int]
+          .sortBy(_.last.stripPrefix("gfx1151-").split('.').map(_.toInt).toSeq)(
+            using Ordering.Implicits.seqOrdering[Seq, Int]
           )
     variable("DRIFT_ROCM_ROOT").orElse(installed.lastOption).map(_.toString)
   }
@@ -248,13 +251,13 @@ object runner extends BaseScala with RunnerJvm {
   /** A plain jar: drift starts it with `-cp`, and reads it as a zip. */
   override def prependShellScript = ""
 
-  def kernelSources = Task.Source("kernels")
+  private def kernelSources = Task.Source("kernels")
 
   /** One code object per `.hip` file, served as the resource
     * `kernels/<name>.hsaco`. Without a TheRock tree there are none, and drift
     * does not install a runner built so.
     */
-  def kernels = Task {
+  private def kernels = Task {
     val out = Task.dest / "kernels"
     os.makeDir.all(out)
     val sources = os.list(kernelSources().path).filter(_.ext == "hip")
@@ -272,22 +275,31 @@ object runner extends BaseScala with RunnerJvm {
             source,
             "-o",
             out / s"${source.baseName}.hsaco",
-          ).call(env = Map("ROCM_PATH" -> root.toString, "HIP_PATH" -> root.toString))
+          ).call(env =
+            Map("ROCM_PATH" -> root.toString, "HIP_PATH" -> root.toString)
+          )
         }
     }
     PathRef(Task.dest)
   }
 
-  override def resources = Task { super.resources() :+ kernels() }
+  override def resources: T[Seq[PathRef]] = Task {
+    super.resources() :+ kernels()
+  }
 
   /** The CPU side: formats, the `Cpu` backend, tokenizers, invariants. Runs
-    * anywhere; the tokenizer tests download the models' `tokenizer.json`
-    * once, and compare with HuggingFace's own tokenizer through DJL, a test
-    * reference only.
+    * anywhere; the tokenizer tests download the models' `tokenizer.json` once,
+    * and compare with HuggingFace's own tokenizer through DJL, a test reference
+    * only.
     */
-  object test extends ScalaTests with TestModule.Utest with ScalafmtModule with RunnerJvm {
-    def mvnDeps = Seq(
-      mvn"com.lihaoyi::utest:0.8.5",
+  object test
+      extends ScalaTests
+      with TestModule.Utest
+      with ScalafmtModule
+      with RunnerJvm {
+
+    def mvnDeps: T[Seq[Dep]] = Seq(
+      mvn"com.lihaoyi::utest:0.9.5",
       mvn"ai.djl.huggingface:tokenizers:0.38.0",
     )
   }
@@ -295,17 +307,23 @@ object runner extends BaseScala with RunnerJvm {
   /** Needs the gfx1151: every kernel against the `Cpu` backend, and the
     * benchmarks as mains.
     */
-  object gpuTest extends ScalaTests with TestModule.Utest with ScalafmtModule with RunnerJvm {
-    override def moduleDeps = super.moduleDeps ++ Seq(build.runner.test)
-    def mvnDeps = Seq(mvn"com.lihaoyi::utest:0.8.5")
+  object gpuTest
+      extends ScalaTests
+      with TestModule.Utest
+      with ScalafmtModule
+      with RunnerJvm {
+    override def moduleDeps: Seq[JavaModule] =
+      super.moduleDeps ++ Seq(build.runner.test)
+    def mvnDeps: T[Seq[Dep]] = Seq(mvn"com.lihaoyi::utest:0.9.5")
   }
 }
 
 /** JDK 25 and native access, for the runner and its tests alike. */
 trait RunnerJvm extends JavaModule {
-  override def jvmId = "temurin:25"
-  override def forkArgs = Seq("--enable-native-access=ALL-UNNAMED")
-  override def forkEnv = Task {
+  override def forkArgs: T[Seq[String]] = Seq(
+    "--enable-native-access=ALL-UNNAMED"
+  )
+  override def forkEnv: T[Map[String, String]] = Task {
     super.forkEnv() ++ Map("DRIFT_ROCM_ROOT" -> build.runner.rocmRoot())
   }
 }

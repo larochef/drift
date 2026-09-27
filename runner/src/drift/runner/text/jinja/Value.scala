@@ -45,7 +45,8 @@ enum Value {
     case Integer(value)                => value != 0
     case Real(value)                   => value != 0
     case Text(value)                   => value.nonEmpty
-    case Sequence(values)              => values.nonEmpty
+    case Items(values)                 => values.nonEmpty
+    case Tuple(values)                 => values.nonEmpty
     case Dict(entries)                 => entries.nonEmpty
     case Namespace(_) | Function(_, _) => true
   }

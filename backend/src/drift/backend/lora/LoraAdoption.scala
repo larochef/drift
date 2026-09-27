@@ -8,7 +8,6 @@ import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
 
 import com.github.plokhotnyuk.jsoniter_scala.core.readFromString
-import com.typesafe.scalalogging.Logger
 
 /** Taking in a folder of the LoRA store that no entity claims
   * (`specs/33-lora-sources.md`): one left behind by a schema break, or copied
@@ -23,8 +22,6 @@ final private[lora] class LoraAdoption(
     downloads: LoraDownloads,
     lorasRoot: Path
 ) {
-
-  private val logger = Logger[LoraAdoption]
 
   /** Adopts an orphan folder of the LoRA store — one no entity references, left
     * behind by a schema break or copied in by hand — rebuilding the entity for

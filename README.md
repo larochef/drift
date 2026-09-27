@@ -13,7 +13,7 @@ file in [`specs/`](specs/README.md).
 
 ## Prerequisites
 
-- A JDK, 21 or later (Ox runs on virtual threads)
+- A JDK, 25 or later (Ox runs on virtual threads)
 - [Mill](https://mill-build.org) — the version is pinned in `.mill-version`; the
   `./mill` wrapper fetches it
 - Node.js and npm, for the frontend build

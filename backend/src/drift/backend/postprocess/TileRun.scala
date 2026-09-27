@@ -90,6 +90,19 @@ final private[postprocess] class TileRun(
         tile -> (left, top)
       }
     }.toMap
+  // What the tiles make so far, painted on a thread of its own for the gallery
+  // to show while the job runs (`LivePicture`).
+  val live = LivePicture(
+    job.id,
+    reference,
+    scale,
+    overlaps,
+    target,
+    finish,
+    count => jobs.update(job.id)(_.copy(paintedTiles = Some(count)))
+  )
+  // Whether a pause handed the picture over to be kept on disk.
+  var pictureKept = false
   def tileFile(index: Int, part: String) =
     if (keepTiles)
       jobs.files.tilesDirOf(job).resolve(f"tile-${index + 1}%02d-$part.png")
@@ -134,6 +147,7 @@ final private[postprocess] class TileRun(
       )
     )
     try {
+      jobs.showPicture(job.id, live)
       if (keepTiles) Files.createDirectories(jobs.files.tilesDirOf(job))
       jobs.startLog(
         job,
@@ -298,6 +312,7 @@ final private[postprocess] class TileRun(
                       Some(PostProcessProgress(index + 1, tiles.size))
                     )
                   )
+                  live.paint(tile, output)
                   Right(files + (tile -> output))
                 } else {
                   val window = windowOf(tile)
@@ -390,6 +405,7 @@ final private[postprocess] class TileRun(
                           secondsPerTile = Some(seconds)
                         )
                       )
+                      live.paint(tile, output)
                       files + (tile -> output)
                     }
                 }
@@ -420,6 +436,10 @@ final private[postprocess] class TileRun(
         // after the pause wins — it is the later word, and it keeps nothing.
         case Left(_) if jobs.isPaused(job) && !jobs.isCancelled(job) =>
           Files.deleteIfExists(outputFile)
+          pictureKept = true
+          live.storeAndClose(jobs.files.storePicture(job.id, _))(() =>
+            jobs.hidePicture(job.id, live)
+          )
           jobs.recordPaused(
             job,
             jobs.files.tilesDone(job.id, tiles.size),
@@ -439,8 +459,14 @@ final private[postprocess] class TileRun(
     } finally {
       jobs.unfollow(job)
       stopServer()
+      if (!pictureKept) {
+        live.close()
+        jobs.hidePicture(job.id, live)
+      }
       // A paused job keeps its tiles: they are what a resume carries on from
       // (`specs/40-pause-and-resume.md`). A cancel after the pause keeps none.
+      if (!jobs.isPaused(job) || jobs.isCancelled(job))
+        jobs.files.deletePicture(job.id)
       if (!keepTiles && (!jobs.isPaused(job) || jobs.isCancelled(job)))
         tiles.indices.foreach { index =>
           Files.deleteIfExists(tileFile(index, "input"))

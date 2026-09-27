@@ -129,6 +129,24 @@ class DetailPicture(
       )
       .distinct
 
+  /** The picture the job on this output has made so far, as it would end now:
+    * the address of a copy scaled for the screen and of the file at full size
+    * (`specs/15-post-hoc-resize.md`). Each finished tile is a new address, so a
+    * tile painted in is the only thing that fetches it again.
+    */
+  val jobPicture: Signal[Option[DetailPicture.JobPicture]] =
+    jobOnPicture
+      .map(_.flatMap { job =>
+        job.paintedTiles.filter(_ > 0).map { painted =>
+          val base = s"/api/post-process-jobs/${job.id}/picture?v=$painted"
+          DetailPicture.JobPicture(
+            s"$base&side=${DetailPicture.ScreenSide}",
+            base
+          )
+        }
+      })
+      .distinct
+
   /** The tiles drawn over the picture, each with what has become of it
     * (`specs/15-post-hoc-resize.md`): a job's own while one is on this image —
     * done, running, still to come — else the open task's, which follow the
@@ -148,14 +166,7 @@ class DetailPicture(
             val done = running.progress.fold(0)(_.completed)
             val active = running.state.isActive
             running.tiles.zipWithIndex.map { (tile, index) =>
-              if (index < done)
-                TilePaint(
-                  tile,
-                  TileState.Done,
-                  Some(
-                    s"/api/post-process-jobs/${running.id}/tiles/$index?side=512"
-                  )
-                )
+              if (index < done) TilePaint(tile, TileState.Done)
               else if (index == done && active)
                 TilePaint(tile, TileState.Running)
               else TilePaint(tile, TileState.Waiting)
@@ -172,4 +183,14 @@ class DetailPicture(
         }
       }
       .distinct
+}
+
+object DetailPicture {
+
+  /** The longest side the job's picture is fetched at for the screen — the
+    * outputs' own previews' size.
+    */
+  val ScreenSide: Int = 2048
+
+  case class JobPicture(screen: String, fullSize: String)
 }

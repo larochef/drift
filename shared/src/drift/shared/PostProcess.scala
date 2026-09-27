@@ -392,6 +392,13 @@ case class PostProcessJob(
       * to come. Empty for a job that is not tiled.
       */
     tiles: List[ImageRegion] = List.empty,
+    /** How many finished tiles the picture this job has made so far holds —
+      * `getPostProcessPicture`, the job's result as it would be if it ended now
+      * (`specs/15-post-hoc-resize.md`). It trails `progress` by the moment a
+      * tile takes to be painted in, and it is what a screen asks the picture
+      * again on. None for a job that is not tiled, or before its first tile.
+      */
+    paintedTiles: Option[Int] = None,
     /** Where the run inside the current tile has got to, read out of the log
       * exactly as a session's is (`specs/13-log-streaming.md`): the model
       * loading, then the sampling steps. The tile bar above it says how far the
@@ -495,21 +502,22 @@ val resumePostProcessJob: PublicEndpoint[String, Unit, PostProcessJob, Any] =
     .in("post-process-jobs" / path[String] / "resume")
     .out(jsonBody[PostProcessJob])
 
-/** One finished tile of a running or paused job, scaled for the screen: what
-  * the gallery paints over the picture as the job goes
-  * (`specs/15-post-hoc-resize.md`). 404 until that tile is done.
+/** The picture a running or paused tiled job has made so far — its result as it
+  * would be if the job ended now, the source under the tiles still to come — at
+  * most `side` px on its longest edge, or at full size without it
+  * (`specs/15-post-hoc-resize.md`). A screen adds `v`, the job's
+  * `paintedTiles`, so a new tile is a new address. 404 while there is none.
   */
-val getPostProcessTile: PublicEndpoint[
-  (String, Int, Option[Int]),
+val getPostProcessPicture: PublicEndpoint[
+  (String, Option[Int], Option[Int]),
   Unit,
   (Array[Byte], String),
   Any
 ] =
   postProcessBase.get
-    .in(
-      "post-process-jobs" / path[String]("job") / "tiles" / path[Int]("index")
-    )
+    .in("post-process-jobs" / path[String]("job") / "picture")
     .in(query[Option[Int]]("side"))
+    .in(query[Option[Int]]("v"))
     .errorOut(statusCode(StatusCode.NotFound))
     .out(byteArrayBody)
     .out(header[String]("Content-Type"))

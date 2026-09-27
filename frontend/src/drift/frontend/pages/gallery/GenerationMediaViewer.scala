@@ -45,6 +45,10 @@ class GenerationMediaViewer(
       * task's are all still to come (`specs/15-post-hoc-resize.md`).
       */
     tiles: Signal[List[TilePaint]],
+    /** What the job on the picture has made so far, scaled for the screen: laid
+      * over the picture, so the result appears as its tiles finish.
+      */
+    jobPicture: Signal[Option[String]],
     /** Whether the tiles a redraw would run are drawn over the picture — the
       * redraw panel's own checkbox.
       */
@@ -119,16 +123,28 @@ class GenerationMediaViewer(
                     s"left: ${percent(painted.area.x, image.width)}; " +
                       s"top: ${percent(painted.area.y, image.height)}; " +
                       s"width: ${percent(painted.area.width, image.width)}; " +
-                      s"height: ${percent(painted.area.height, image.height)};",
-                  // A tile that is done shows what the model made of it, so
-                  // the result appears piece by piece over the original.
-                  painted.preview
-                    .map(url => img(cls := "gallery-tile-image", src := url))
+                      s"height: ${percent(painted.area.height, image.height)};"
                 )
               )
           )
         }
     }
+
+  /** The job's picture over the source, one element for as long as there is
+    * one: a new tile changes its address, and the browser keeps showing the
+    * last one until the next has arrived.
+    */
+  private def jobPictureLayer: Modifier[HtmlElement] =
+    child <-- jobPicture.splitOption[Node](
+      (_, url) =>
+        img(
+          cls := "gallery-job-picture",
+          src <-- url,
+          alt := "",
+          onDragStart --> (_.preventDefault())
+        ),
+      emptyNode
+    )
 
   private def media(
       output: GenerationOutput,
@@ -179,12 +195,14 @@ class GenerationMediaViewer(
           .map(image => s"aspect-ratio: ${image.width} / ${image.height};")
           .getOrElse("")
       )
-      if (!selectable) div(cls := "gallery-selectable", ratio, picture)
+      if (!selectable)
+        div(cls := "gallery-selectable", ratio, picture, jobPictureLayer)
       else
         div(
           cls := "gallery-selectable is-selecting",
           ratio,
           picture,
+          jobPictureLayer,
           cls("is-on-grid") <-- pointer.overGrid,
           pointer.modifiers,
           child.maybe <-- tileGrid,

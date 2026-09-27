@@ -1,0 +1,148 @@
+{
+ "variables": {
+  "eos_token": "<|im_end|>",
+  "pad_token": "<|endoftext|>",
+  "audio_bos_token": "<|audio_start|>",
+  "audio_eos_token": "<|audio_end|>",
+  "audio_token": "<|audio_pad|>",
+  "image_token": "<|image_pad|>",
+  "video_token": "<|video_pad|>",
+  "vision_bos_token": "<|vision_start|>",
+  "vision_eos_token": "<|vision_end|>"
+ },
+ "date": "2026-09-24",
+ "renders": [
+  {
+   "conversation": "one user message",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<|im_start|>user\nHello!<|im_end|>\n<|im_start|>assistant\n<think>\n"
+  },
+  {
+   "conversation": "one user message",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<|im_start|>user\nHello!<|im_end|>\n"
+  },
+  {
+   "conversation": "one user message",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<|im_start|>user\nHello!<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+   "conversation": "system and turns",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<|im_start|>system\nYou are terse.<|im_end|>\n<|im_start|>user\nName a colour.<|im_end|>\n<|im_start|>assistant\nBlue.<|im_end|>\n<|im_start|>user\nAnother, in French: é, ü, 日本?<|im_end|>\n<|im_start|>assistant\n<think>\n"
+  },
+  {
+   "conversation": "system and turns",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<|im_start|>system\nYou are terse.<|im_end|>\n<|im_start|>user\nName a colour.<|im_end|>\n<|im_start|>assistant\nBlue.<|im_end|>\n<|im_start|>user\nAnother, in French: é, ü, 日本?<|im_end|>\n"
+  },
+  {
+   "conversation": "system and turns",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<|im_start|>system\nYou are terse.<|im_end|>\n<|im_start|>user\nName a colour.<|im_end|>\n<|im_start|>assistant\nBlue.<|im_end|>\n<|im_start|>user\nAnother, in French: é, ü, 日本?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+   "conversation": "reasoning in history",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<|im_start|>user\n2+2?<|im_end|>\n<|im_start|>assistant\n4<|im_end|>\n<|im_start|>user\n3+3?<|im_end|>\n<|im_start|>assistant\n<think>\nAdding three and three.\n</think>\n\n6<|im_end|>\n<|im_start|>assistant\n<think>\n"
+  },
+  {
+   "conversation": "reasoning in history",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<|im_start|>user\n2+2?<|im_end|>\n<|im_start|>assistant\n4<|im_end|>\n<|im_start|>user\n3+3?<|im_end|>\n<|im_start|>assistant\n<think>\nAdding three and three.\n</think>\n\n6<|im_end|>\n"
+  },
+  {
+   "conversation": "reasoning in history",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<|im_start|>user\n2+2?<|im_end|>\n<|im_start|>assistant\n4<|im_end|>\n<|im_start|>user\n3+3?<|im_end|>\n<|im_start|>assistant\n<think>\nAdding three and three.\n</think>\n\n6<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+   "conversation": "tools",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Weather for a city\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"c\", \"f\"]}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>\n\nUse tools when needed.<|im_end|>\n<|im_start|>user\nWeather in Lyon?<|im_end|>\n<|im_start|>assistant\n<tool_call>\n<function=get_weather>\n<parameter=city>\nLyon\n</parameter>\n<parameter=unit>\nc\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n{\"temperature\": 18}\n</tool_response><|im_end|>\n<|im_start|>assistant\n18 °C in Lyon.<|im_end|>\n<|im_start|>user\nThanks<|im_end|>\n<|im_start|>assistant\n<think>\n"
+  },
+  {
+   "conversation": "tools",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Weather for a city\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"c\", \"f\"]}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>\n\nUse tools when needed.<|im_end|>\n<|im_start|>user\nWeather in Lyon?<|im_end|>\n<|im_start|>assistant\n<tool_call>\n<function=get_weather>\n<parameter=city>\nLyon\n</parameter>\n<parameter=unit>\nc\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n{\"temperature\": 18}\n</tool_response><|im_end|>\n<|im_start|>assistant\n18 °C in Lyon.<|im_end|>\n<|im_start|>user\nThanks<|im_end|>\n"
+  },
+  {
+   "conversation": "tools",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Weather for a city\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"c\", \"f\"]}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>\n\nUse tools when needed.<|im_end|>\n<|im_start|>user\nWeather in Lyon?<|im_end|>\n<|im_start|>assistant\n<tool_call>\n<function=get_weather>\n<parameter=city>\nLyon\n</parameter>\n<parameter=unit>\nc\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n{\"temperature\": 18}\n</tool_response><|im_end|>\n<|im_start|>assistant\n18 °C in Lyon.<|im_end|>\n<|im_start|>user\nThanks<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+   "conversation": "content parts",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<|im_start|>user\nDescribe this:<|vision_start|><|image_pad|><|vision_end|>Briefly.<|im_end|>\n<|im_start|>assistant\n<think>\n"
+  },
+  {
+   "conversation": "content parts",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<|im_start|>user\nDescribe this:<|vision_start|><|image_pad|><|vision_end|>Briefly.<|im_end|>\n"
+  },
+  {
+   "conversation": "content parts",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<|im_start|>user\nDescribe this:<|vision_start|><|image_pad|><|vision_end|>Briefly.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+   "conversation": "whitespace and markup",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<|im_start|>user\nspaced  \n\nlines\t\n```\ncode {% raw %}\n```\n<think>not a tag</think><|im_end|>\n<|im_start|>assistant\n<think>\n"
+  },
+  {
+   "conversation": "whitespace and markup",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<|im_start|>user\nspaced  \n\nlines\t\n```\ncode {% raw %}\n```\n<think>not a tag</think><|im_end|>\n"
+  },
+  {
+   "conversation": "whitespace and markup",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<|im_start|>user\nspaced  \n\nlines\t\n```\ncode {% raw %}\n```\n<think>not a tag</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  }
+ ]
+}

@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "description": "specs/43: a configuration's runner, an architecture's runners and model kind, the drift runner no longer adopted",
+  "steps": [
+    { "collection": "run-configurations", "op": "coded", "name": "runner-from-architecture" },
+    { "collection": "architectures", "op": "add", "field": "runners", "value": ["SdCpp"], "where": { "tool": "SdCpp" } },
+    { "collection": "architectures", "op": "add", "field": "runners", "value": ["LlamaCpp"], "where": { "tool": "LlamaCpp" } },
+    { "collection": "architectures", "op": "reseed", "where": { "builtIn": true } },
+    { "collection": "runtimes", "op": "set", "field": "adopted", "map": { "true": false }, "where": { "releaseTag": "drift-runner" } }
+  ]
+}

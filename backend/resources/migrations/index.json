@@ -1,0 +1,8 @@
+[
+  "001-reference-image-use.json",
+  "002-runners.json",
+  "003-pid-runner-variants.json",
+  "004-qwen38-27b.json",
+  "005-flux2-dev-runner.json",
+  "006-qwen36-mtp-head.json"
+]

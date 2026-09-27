@@ -1,0 +1,162 @@
+{
+ "variables": {
+  "bos_token": "<bos>",
+  "eos_token": "<eos>",
+  "unk_token": "<unk>",
+  "pad_token": "<pad>",
+  "mask_token": "<mask>",
+  "audio_token": "<|audio|>",
+  "boa_token": "<|audio>",
+  "boi_token": "<|image>",
+  "eoa_token": "<audio|>",
+  "eoc_token": "<channel|>",
+  "eoi_token": "<image|>",
+  "eot_token": "<turn|>",
+  "escape_token": "<|\"|>",
+  "etc_token": "<tool_call|>",
+  "etd_token": "<tool|>",
+  "etr_token": "<tool_response|>",
+  "image_token": "<|image|>",
+  "soc_token": "<|channel>",
+  "sot_token": "<|turn>",
+  "stc_token": "<|tool_call>",
+  "std_token": "<|tool>",
+  "str_token": "<|tool_response>",
+  "think_token": "<|think|>"
+ },
+ "date": "2026-09-24",
+ "renders": [
+  {
+   "conversation": "one user message",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<bos><|turn>user\nHello!<turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
+  },
+  {
+   "conversation": "one user message",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<bos><|turn>user\nHello!<turn|>\n"
+  },
+  {
+   "conversation": "one user message",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<bos><|turn>user\nHello!<turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
+  },
+  {
+   "conversation": "system and turns",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<bos><|turn>system\nYou are terse.<turn|>\n<|turn>user\nName a colour.<turn|>\n<|turn>model\nBlue.<turn|>\n<|turn>user\nAnother, in French: é, ü, 日本?<turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
+  },
+  {
+   "conversation": "system and turns",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<bos><|turn>system\nYou are terse.<turn|>\n<|turn>user\nName a colour.<turn|>\n<|turn>model\nBlue.<turn|>\n<|turn>user\nAnother, in French: é, ü, 日本?<turn|>\n"
+  },
+  {
+   "conversation": "system and turns",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<bos><|turn>system\nYou are terse.<turn|>\n<|turn>user\nName a colour.<turn|>\n<|turn>model\nBlue.<turn|>\n<|turn>user\nAnother, in French: é, ü, 日本?<turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
+  },
+  {
+   "conversation": "reasoning in history",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<bos><|turn>user\n2+2?<turn|>\n<|turn>model\n4<turn|>\n<|turn>user\n3+3?<turn|>\n<|turn>model\n<|channel>thought\nAdding three and three.\n<channel|>6<turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
+  },
+  {
+   "conversation": "reasoning in history",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<bos><|turn>user\n2+2?<turn|>\n<|turn>model\n4<turn|>\n<|turn>user\n3+3?<turn|>\n<|turn>model\n<|channel>thought\nAdding three and three.\n<channel|>6<turn|>\n"
+  },
+  {
+   "conversation": "reasoning in history",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<bos><|turn>user\n2+2?<turn|>\n<|turn>model\n4<turn|>\n<|turn>user\n3+3?<turn|>\n<|turn>model\n<|channel>thought\nAdding three and three.\n<channel|>6<turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
+  },
+  {
+   "conversation": "tools",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<bos><|turn>system\nUse tools when needed.<|tool>declaration:get_weather{description:<|\"|>Weather for a city<|\"|>,parameters:{properties:{city:{description:<|\"|>City name<|\"|>,type:<|\"|>STRING<|\"|>},unit:{enum:[<|\"|>c<|\"|>,<|\"|>f<|\"|>],type:<|\"|>STRING<|\"|>}},required:[<|\"|>city<|\"|>],type:<|\"|>OBJECT<|\"|>}}<tool|><turn|>\n<|turn>user\nWeather in Lyon?<turn|>\n<|turn>model\n<|tool_call>call:get_weather{city:<|\"|>Lyon<|\"|>,unit:<|\"|>c<|\"|>}<tool_call|><|tool_response>response:get_weather{value:<|\"|>{\"temperature\": 18}<|\"|>}<tool_response|>18 °C in Lyon.<turn|>\n<|turn>user\nThanks<turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
+  },
+  {
+   "conversation": "tools",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<bos><|turn>system\nUse tools when needed.<|tool>declaration:get_weather{description:<|\"|>Weather for a city<|\"|>,parameters:{properties:{city:{description:<|\"|>City name<|\"|>,type:<|\"|>STRING<|\"|>},unit:{enum:[<|\"|>c<|\"|>,<|\"|>f<|\"|>],type:<|\"|>STRING<|\"|>}},required:[<|\"|>city<|\"|>],type:<|\"|>OBJECT<|\"|>}}<tool|><turn|>\n<|turn>user\nWeather in Lyon?<turn|>\n<|turn>model\n<|tool_call>call:get_weather{city:<|\"|>Lyon<|\"|>,unit:<|\"|>c<|\"|>}<tool_call|><|tool_response>response:get_weather{value:<|\"|>{\"temperature\": 18}<|\"|>}<tool_response|>18 °C in Lyon.<turn|>\n<|turn>user\nThanks<turn|>\n"
+  },
+  {
+   "conversation": "tools",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<bos><|turn>system\nUse tools when needed.<|tool>declaration:get_weather{description:<|\"|>Weather for a city<|\"|>,parameters:{properties:{city:{description:<|\"|>City name<|\"|>,type:<|\"|>STRING<|\"|>},unit:{enum:[<|\"|>c<|\"|>,<|\"|>f<|\"|>],type:<|\"|>STRING<|\"|>}},required:[<|\"|>city<|\"|>],type:<|\"|>OBJECT<|\"|>}}<tool|><turn|>\n<|turn>user\nWeather in Lyon?<turn|>\n<|turn>model\n<|tool_call>call:get_weather{city:<|\"|>Lyon<|\"|>,unit:<|\"|>c<|\"|>}<tool_call|><|tool_response>response:get_weather{value:<|\"|>{\"temperature\": 18}<|\"|>}<tool_response|>18 °C in Lyon.<turn|>\n<|turn>user\nThanks<turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
+  },
+  {
+   "conversation": "content parts",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<bos><|turn>user\nDescribe this:<|image|>Briefly.<turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
+  },
+  {
+   "conversation": "content parts",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<bos><|turn>user\nDescribe this:<|image|>Briefly.<turn|>\n"
+  },
+  {
+   "conversation": "content parts",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<bos><|turn>user\nDescribe this:<|image|>Briefly.<turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
+  },
+  {
+   "conversation": "whitespace and markup",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<bos><|turn>user\nspaced  \n\nlines\t\n```\ncode {% raw %}\n```\n<think>not a tag</think><turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
+  },
+  {
+   "conversation": "whitespace and markup",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<bos><|turn>user\nspaced  \n\nlines\t\n```\ncode {% raw %}\n```\n<think>not a tag</think><turn|>\n"
+  },
+  {
+   "conversation": "whitespace and markup",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<bos><|turn>user\nspaced  \n\nlines\t\n```\ncode {% raw %}\n```\n<think>not a tag</think><turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
+  }
+ ]
+}

@@ -1,0 +1,7 @@
+{
+  "version": 6,
+  "description": "specs/42: Qwen 3.6 35B-A3B takes its MTP head from another 35B file (a ROCmFP4 build carries none)",
+  "steps": [
+    { "collection": "architectures", "op": "reseed", "where": { "id": "qwen3.6-35b-a3b", "builtIn": true } }
+  ]
+}

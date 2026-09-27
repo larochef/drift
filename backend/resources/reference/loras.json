@@ -1,0 +1,76 @@
+[
+  {
+    "id": "sensenova-u1.5-8step-official",
+    "architectureId": "sensenova-u1.5",
+    "label": "SenseNova U1.5 8-step",
+    "defaultStrength": 1.0,
+    "tags": [
+      "official",
+      "distilled",
+      "turbo"
+    ],
+    "description": "SenseNova's own distillation LoRA: 8 Euler steps at CFG 1 (flow shift 3) instead of 50 steps at CFG 4. Set the steps and CFG to match when you apply it, a run configuration with it as a default LoRA keeps them together.",
+    "files": [
+      {
+        "fileName": "SenseNova-U1.5-8B-MoT-LoRA-8step.safetensors",
+        "source": {
+          "type": "huggingface",
+          "repo": "sensenova/SenseNova-U1.5-8B-MoT-LoRAs",
+          "filename": "SenseNova-U1.5-8B-MoT-LoRA-8step.safetensors"
+        },
+        "stage": "General",
+        "sizeBytes": 814867236,
+        "sha256": "3ef32180cdf1e30a870a83f4f136e897ea50b7ee467f863d75633464ebb25708"
+      }
+    ]
+  },
+  {
+    "id": "hunyuanvideo-1.5-lightx2v-4step",
+    "architectureId": "hunyuanvideo-1.5",
+    "label": "HunyuanVideo 1.5 480p text-to-video 4-step (lightx2v)",
+    "defaultStrength": 1.0,
+    "tags": [
+      "distilled",
+      "turbo",
+      "lightx2v"
+    ],
+    "description": "lightx2v's 4-step distillation of the 480p text-to-video checkpoint, as repackaged by Comfy-Org: 4 steps at CFG 1 with flow shift 9 (lightx2v's settings), 848×480. Set those when you apply it; a run configuration with it as a default LoRA keeps them together. Made for the 480p text-to-video weights, not the 720p ones.",
+    "files": [
+      {
+        "fileName": "hunyuanvideo1.5_t2v_480p_lightx2v_4step_lora_rank_32_bf16.safetensors",
+        "source": {
+          "type": "huggingface",
+          "repo": "Comfy-Org/HunyuanVideo_1.5_repackaged",
+          "filename": "split_files/loras/hunyuanvideo1.5_t2v_480p_lightx2v_4step_lora_rank_32_bf16.safetensors"
+        },
+        "stage": "General",
+        "sizeBytes": 341065682,
+        "sha256": "8fef6f9b9f2f6aa5259166e78b10a022485391dababc6a8c68585fddd31d5d62"
+      }
+    ]
+  },
+  {
+    "id": "boogu-image-turbo-4step",
+    "architectureId": "boogu-image",
+    "label": "Boogu Image Turbo 4-step (rank 128)",
+    "defaultStrength": 1.0,
+    "tags": [
+      "distilled",
+      "turbo"
+    ],
+    "description": "The Turbo distillation as a LoRA over the Base checkpoint: 4 steps at CFG 1 instead of 25 to 50 at CFG 4. Set the steps and CFG to match when you apply it — a run configuration with it as a default LoRA keeps them together. Boogu publishes Turbo as a whole checkpoint, not as a LoRA; this is Comfy-Org's rank-128 extraction of it, from the repository drift seeds the checkpoints from, and it spares a second 20 GB download when the Base model is already on disk. The hotfix build is the one offered; the repository also holds the first extraction.",
+    "files": [
+      {
+        "fileName": "boogu_image_turbo_hotfix_lora_rank_128_bf16.safetensors",
+        "source": {
+          "type": "huggingface",
+          "repo": "Comfy-Org/Boogu-Image",
+          "filename": "loras/boogu_image_turbo_hotfix_lora_rank_128_bf16.safetensors"
+        },
+        "stage": "General",
+        "sizeBytes": 1353036872,
+        "sha256": "8fcf2eae8a7ca27a53cea570e683a995f028c8489baa2c47a1c2326e6f711af5"
+      }
+    ]
+  }
+]

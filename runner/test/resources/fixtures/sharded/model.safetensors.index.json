@@ -1,0 +1,10 @@
+{
+  "metadata": {
+    "total_size": 40
+  },
+  "weight_map": {
+    "a.weight": "model-00001-of-00002.safetensors",
+    "b.weight": "model-00002-of-00002.safetensors",
+    "c.bias": "model-00002-of-00002.safetensors"
+  }
+}

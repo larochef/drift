@@ -1,0 +1,15 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "^6",
+    "vite-plugin-compression2": "2.4.0"
+  },
+  "dependencies": {
+    "bulma": "^1.0.4"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "description": "rename one field, add another",
+  "steps": [
+    { "collection": "widgets", "op": "rename", "field": "colour", "to": "color" },
+    { "collection": "widgets", "op": "add", "field": "size", "value": 3 }
+  ]
+}

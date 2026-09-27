@@ -1,0 +1,8 @@
+{
+  "version": 3,
+  "description": "specs/42: the drift runner runs PiD's FLUX.1 and Qwen Image variants, their built-in architectures list it",
+  "steps": [
+    { "collection": "architectures", "op": "reseed", "where": { "id": "pid-flux1", "builtIn": true } },
+    { "collection": "architectures", "op": "reseed", "where": { "id": "pid-qwen-image", "builtIn": true } }
+  ]
+}

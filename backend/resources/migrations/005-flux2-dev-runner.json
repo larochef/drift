@@ -1,0 +1,7 @@
+{
+  "version": 5,
+  "description": "specs/42: the drift runner runs FLUX.2 [dev], its built-in architecture lists it",
+  "steps": [
+    { "collection": "architectures", "op": "reseed", "where": { "id": "flux.2-dev", "builtIn": true } }
+  ]
+}

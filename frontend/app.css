@@ -1,0 +1,2006 @@
+:root {
+  --bulma-primary-h: 35;
+  --bulma-primary-s: 90%;
+  --bulma-primary-l: 48%;
+  --bulma-primary-invert-l: 90%;
+  --bulma-link-h: 220;
+  --bulma-link-s: 45%;
+  --bulma-link-l: 50%;
+  --bulma-link-invert-l: 90%;
+  --bulma-info-h: 35;
+  --bulma-info-s: 50%;
+  --bulma-info-l: 40%;
+  --bulma-info-invert-l: 90%;
+  --bulma-success-h: 85;
+  --bulma-success-s: 38%;
+  --bulma-success-l: 38%;
+  --bulma-success-invert-l: 90%;
+  --bulma-danger-h: 10;
+  --bulma-danger-s: 50%;
+  --bulma-danger-l: 40%;
+  --bulma-danger-invert-l: 90%;
+  --bulma-warning-h: 40;
+  --bulma-warning-s: 90%;
+  --bulma-warning-l: 48%;
+  --bulma-warning-invert-l: 90%;
+
+  --bulma-dark-h: 25;
+  --bulma-dark-s: 20%;
+  --bulma-dark-l: 11%;
+
+  --bulma-light-h: 35;
+  --bulma-light-s: 20%;
+  --bulma-light-l: 92%;
+}
+
+html, body {
+  background-color: hsl(25, 20%, 11%);
+}
+
+#app {
+  min-height: 100vh;
+}
+
+#app > .columns {
+  min-height: 100vh;
+}
+
+.bg-surface {
+  background-color: hsl(25, 20%, 11%);
+}
+
+.text-primary {
+  color: hsl(35, 20%, 92%);
+}
+
+.title.text-primary,
+.subtitle.text-primary {
+  color: hsl(35, 20%, 92%);
+}
+
+.subtitle.text-secondary {
+  color: hsl(30, 12%, 65%);
+}
+
+.table td.text-primary,
+.table th.text-primary {
+  color: hsl(35, 20%, 92%);
+}
+
+.table th.text-secondary {
+  color: hsl(30, 12%, 65%);
+}
+
+.bg-content {
+  background-color: hsl(30, 22%, 26%);
+}
+
+.bg-card {
+  background-color: hsl(25, 14%, 23%);
+}
+
+.bg-table-header {
+  background-color: hsl(25, 16%, 20%);
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.text-secondary {
+  color: hsl(30, 12%, 65%);
+}
+
+/* The sidebar pins itself to the viewport: on a page taller than the screen
+   the column keeps stretching, but this box — menu on top, downloads panel
+   pushed to its bottom — stays fully in view, so a running download is
+   always visible without scrolling. */
+.sidebar-layout {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* Scrolling stays where the pointer is (François, 2026-09-11): a panel that
+   reaches its end keeps the wheel instead of handing it on to what is behind
+   it. Overlays also lock their background outright (`ScrollLock`). */
+.modal-card-body,
+.sidebar-layout,
+.content pre.session-log-body {
+  overscroll-behavior: contain;
+}
+
+/* No min-height here: the menu filling the viewport on its own would push
+   the downloads panel below the sticky box's 100vh. */
+.sidebar-menu {
+  width: 160px;
+}
+
+/* The three site browsers (specs/24): a grid of tiles wants the window, not a
+   dialog's width. */
+/* The same width whatever is browsed (François, 2026-09-17): pinned, not a
+   range, so a short file listing does not draw a narrower modal than a grid of
+   tiles and the head keeps the room its source row needs. */
+.browser-modal .modal-card {
+  width: 80vw;
+  min-width: 80vw;
+  max-width: 80vw;
+}
+
+
+.sidebar-menu .menu-label {
+  color: hsl(30, 95%, 52%);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding-left: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.sidebar-menu .menu-list li a {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.85rem;
+  border-radius: 4px;
+}
+
+.sidebar-menu .menu-list li a {
+  color: hsl(30, 10%, 72%);
+  background-color: hsl(25, 20%, 11%);
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.sidebar-menu .menu-list li a:hover {
+  background-color: hsl(25, 15%, 28%);
+  color: white;
+}
+
+a {
+  color: hsl(220, 65%, 60%);
+}
+
+.card {
+  border: 1px solid hsl(25, 10%, 32%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.plus-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2em;
+  font-weight: 700;
+  line-height: 0;
+  height: 0;
+  min-height: 0;
+  width: 1em;
+  margin-right: 0.1em;
+  overflow: visible;
+}
+
+.add-row-button {
+  min-width: 9.5rem;
+}
+
+.card-header {
+  border-bottom: 1px solid hsl(25, 10%, 32%);
+}
+
+@media screen and (min-width: 1200px) {
+  .column.is-half-medium {
+    flex: none;
+    width: 50%;
+  }
+}
+
+.text-break {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.table-cell-break {
+  overflow-wrap: anywhere;
+}
+
+.table-code {
+  word-break: break-all;
+}
+
+.p-0 {
+  padding: 0 !important;
+}
+
+.p-2 {
+  padding: 0.75rem;
+}
+
+.card-header-action {
+  align-self: center;
+  margin-right: 0.5rem;
+}
+
+/* Tags and selects sit in card headers next to the action buttons; without
+   this they keep the header's stretch alignment and hug its top edge while
+   the buttons centre (`align-self` above), lining up with nothing. */
+.card-header > .tag,
+.card-header > select {
+  align-self: center;
+}
+
+/* A header chip — ready, incomplete, starting, failed, stopped — stands as
+   tall as the small buttons beside it (François, 2026-09-15): Bulma sizes a
+   tag at 2em and a small button at 2.5em of the same font size. */
+.card-header > .tag {
+  height: 2.5em;
+}
+
+/* The picker's inline chips — nsfw, needs restart, not installed — sit inside
+   a line of small text, so they stay no taller than it (François,
+   2026-09-15). Bulma v1 has no small tag: `is-small` alone changes nothing. */
+.lora-picker p .tag.is-small {
+  height: 1.5em;
+  padding-inline: 0.5em;
+  vertical-align: middle;
+}
+
+/* The list of LoRAs to add can be long: the line under the mouse lights up,
+   so its "+ Add" is plainly the one about to be clicked (François,
+   2026-09-15). The negative margin keeps the names aligned with the rest of
+   the box while the highlight reaches past them. */
+/* About eight lines tall, scrolling past them. The padding gives the rows'
+   highlight, which reaches past the names, room inside the scroll box. */
+.lora-picker-choices {
+  max-height: 16rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-inline: 0.375rem;
+  margin-inline: -0.375rem;
+}
+
+.lora-picker-choice {
+  /* Less the border's width on the left, so the names do not shift. */
+  padding: 0.125rem 0.375rem 0.125rem calc(0.375rem - 3px);
+  margin-inline: -0.375rem;
+  border-radius: 4px;
+  border-left: 3px solid transparent;
+}
+
+.lora-picker-choice:hover {
+  background-color: hsl(25, 15%, 28%);
+  border-left-color: hsl(204, 71%, 53%);
+}
+
+.lora-picker-choice:hover p {
+  color: white;
+}
+
+/* The ✕ beside a strength stands exactly as tall as the strength's input
+   (François, 2026-09-15). Bulma sizes a button by its content — `height: auto`
+   — and the glyph comes from a fallback font with a taller line, while a small
+   input is a fixed 2.5em of the same font size. */
+.lora-picker .button.lora-picker-remove {
+  height: 2.5em;
+  width: 2.5em;
+  padding: 0;
+  line-height: 1;
+}
+
+.table td,
+.table th {
+  border-color: hsl(25, 10%, 28%);
+}
+
+.table td.text-primary,
+.table th.text-primary {
+  color: hsl(35, 20%, 92%);
+}
+
+.table td.text-secondary,
+.table th.text-secondary {
+  color: hsl(30, 12%, 65%);
+}
+
+.button {
+  font-weight: 600;
+}
+
+.button:not(.is-primary):not(.is-link):not(.is-info):not(.is-success):not(.is-danger):not(.is-warning) {
+  background-color: hsl(25, 10%, 28%);
+  color: hsl(35, 20%, 92%);
+  border-color: hsl(25, 10%, 35%);
+}
+
+.button:not(.is-primary):not(.is-link):not(.is-info):not(.is-success):not(.is-danger):not(.is-warning):hover {
+  background-color: hsl(25, 10%, 34%);
+  border-color: hsl(25, 10%, 40%);
+  color: white;
+}
+
+.input, .textarea {
+  background-color: hsl(25, 14%, 18%);
+  color: hsl(35, 20%, 92%);
+  border-color: hsl(25, 10%, 30%);
+}
+
+.input:focus, .textarea:focus {
+  border-color: hsl(30, 95%, 52%);
+  box-shadow: 0 0 0 0.125em hsla(30, 95%, 52%, 0.25);
+}
+
+.input::placeholder, .textarea::placeholder {
+  color: hsl(30, 8%, 50%);
+}
+
+.file-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.file-entry:hover {
+  background-color: hsl(25, 15%, 28%);
+}
+
+.file-entry.is-selected {
+  background-color: hsl(25, 10%, 32%);
+  outline: 1px solid hsl(30, 95%, 52%);
+}
+
+.file-entry-icon {
+  flex-shrink: 0;
+  font-size: 1.1em;
+}
+
+.file-entry-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-entry-size {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 1rem;
+}
+
+/* Dark modal overrides */
+.modal-card {
+  background-color: hsl(25, 20%, 14%);
+  color: hsl(35, 20%, 92%);
+}
+
+.modal-card-head,
+.modal-card-foot {
+  background-color: hsl(25, 20%, 11%);
+  border-color: hsl(25, 20%, 18%);
+}
+
+/* Bulma v1 lays the footer out as a flex row with no space between its
+   buttons, so two of them touch. */
+.modal-card-foot {
+  gap: 0.5rem;
+}
+
+.modal-card-title {
+  color: hsl(35, 20%, 92%);
+}
+
+.modal-card-body {
+  background-color: hsl(25, 20%, 14%);
+}
+
+.modal-card-body .input {
+  background-color: hsl(25, 20%, 11%);
+  border-color: hsl(25, 20%, 20%);
+  color: hsl(35, 20%, 92%);
+}
+
+.modal-card-body .input::placeholder {
+  color: hsl(35, 10%, 60%);
+}
+
+.modal-card-body .input:focus {
+  border-color: var(--bulma-primary);
+  box-shadow: 0 0 0 0.125em hsla(35, 90%, 48%, 0.25);
+}
+
+.breadcrumb.has-slash-separator li + li::before {
+  content: "/";
+  color: hsl(35, 10%, 60%);
+}
+
+.modal-card-foot .select select {
+  background-color: hsl(25, 20%, 14%);
+  border-color: hsl(25, 20%, 20%);
+  color: hsl(35, 20%, 92%);
+}
+
+/* Dark form/content overrides: Bulma paints these near-black for light
+   backgrounds, same class of fix as the input/button/modal overrides above. */
+.label {
+  color: hsl(30, 12%, 65%);
+}
+
+strong {
+  color: inherit;
+}
+
+/* `.content h2` (0,1,1) outranks `.text-primary` (0,1,0), so the intent
+   classes need the `.content` prefix to win. */
+.content h1.text-primary,
+.content h2.text-primary,
+.content h3.text-primary {
+  color: hsl(35, 20%, 92%);
+}
+
+.content h1.text-secondary,
+.content h2.text-secondary,
+.content h3.text-secondary {
+  color: hsl(30, 12%, 65%);
+}
+
+.radio,
+.checkbox {
+  color: hsl(35, 20%, 92%);
+}
+
+.box.bg-card {
+  color: hsl(35, 20%, 92%);
+}
+
+/* Bulma's wrapper-div pattern (div.select > select), used by the generation
+   form — same dark treatment as the bare-class selects below. */
+.select select {
+  background-color: hsl(25, 14%, 18%);
+  color: hsl(35, 20%, 92%);
+  border-color: hsl(25, 10%, 30%);
+}
+
+.select select:focus {
+  border-color: hsl(30, 95%, 52%);
+  box-shadow: 0 0 0 0.125em hsla(30, 95%, 52%, 0.25);
+}
+
+/* A disabled input (the seed field under its Random toggle) otherwise falls
+   back to Bulma's light disabled palette. */
+.input[disabled] {
+  background-color: hsl(25, 10%, 22%);
+  color: hsl(30, 8%, 55%);
+  border-color: hsl(25, 10%, 28%);
+}
+
+/* Native file inputs: the "no file chosen" text is invisible without a color,
+   and the browser-drawn button looks foreign to the dark design. */
+input[type="file"] {
+  color: hsl(35, 15%, 75%);
+}
+
+input[type="file"]::file-selector-button {
+  background-color: hsl(25, 10%, 28%);
+  color: hsl(35, 20%, 92%);
+  border: 1px solid hsl(25, 10%, 40%);
+  border-radius: 4px;
+  padding: 0.25em 0.75em;
+  margin-right: 0.75em;
+  cursor: pointer;
+}
+
+/* Selects carry the class directly rather than Bulma's wrapper-div pattern,
+   so they render as bare native controls without this. */
+select.select {
+  background-color: hsl(25, 14%, 18%);
+  color: hsl(35, 20%, 92%);
+  border: 1px solid hsl(25, 10%, 30%);
+  border-radius: 4px;
+  padding: 0.4em 0.6em;
+}
+
+select.select:focus {
+  border-color: hsl(30, 95%, 52%);
+  outline: none;
+  box-shadow: 0 0 0 0.125em hsla(30, 95%, 52%, 0.25);
+}
+
+/* Neutral tags: Bulma computes the un-modified and is-light tags as
+   light-on-light with this palette (the :root overrides set --bulma-light-l
+   but not its invert), which made the size chips vanish. Pin them to theme
+   chips — but only them: a bare `.tag` selector here would out-cascade the
+   `background-color: var(…)` Bulma's own rule carries, and the colored
+   variants (is-info, is-danger, …) only redefine those variables, so every
+   tag flattened to the same neutral chip (the session status tags found
+   this). */
+.tag:not(.is-primary):not(.is-link):not(.is-info):not(.is-success):not(.is-warning):not(.is-danger):not(.is-dark),
+.tag.is-light {
+  background-color: hsl(25, 10%, 32%);
+  color: hsl(35, 20%, 92%);
+}
+
+/* Tabs: Bulma's link and border colors are for light backgrounds. Inactive
+   tabs get the secondary tone, the active one the app's orange accent. The
+   ul's full-width rule and each inactive link's underline are the same light
+   tone, so the line reads as one unbroken stroke. */
+.tabs ul {
+  border-bottom-color: hsl(35, 20%, 92%);
+}
+
+.tabs a {
+  color: hsl(30, 12%, 65%);
+  border-bottom-color: hsl(35, 20%, 92%);
+}
+
+.tabs a:hover {
+  color: hsl(35, 20%, 92%);
+  border-bottom-color: hsl(35, 20%, 92%);
+}
+
+.tabs li.is-active a {
+  color: hsl(30, 95%, 52%);
+  border-bottom-color: hsl(30, 95%, 52%);
+}
+
+/* Long labels (GGUF filenames, deep paths) must wrap instead of pushing a
+   row's controls out of its card: Bulma's level sides refuse to shrink. */
+.level-left {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.level-left > * {
+  min-width: 0;
+}
+
+/* The inference page's run configurations: cards side by side instead of one
+   full-width card per line, capped at three columns so they never get
+   cramped. `align-items: start` keeps a short card from being stretched to
+   its row's tallest neighbour. */
+.run-configuration-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media screen and (min-width: 1100px) {
+  .run-configuration-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media screen and (min-width: 1700px) {
+  .run-configuration-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* The card being edited: the edit form needs the full row's width. */
+.run-configuration-grid > .grid-span-all {
+  grid-column: 1 / -1;
+}
+
+/* A long label plus the status tags and edit/delete buttons can exceed a
+   grid cell's width; wrapping onto a second header line beats overflowing
+   the card. */
+.run-configuration-card .card-header {
+  flex-wrap: wrap;
+}
+
+/* The launch strip at the card's bottom: the runtime pick and the
+   Launch/Stop button, kept apart from the header's edit/delete. */
+.card-footer.run-configuration-launch {
+  border-top: 1px solid hsl(25, 10%, 32%);
+  padding: 0.75rem;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Civitai search results, civitai.com-style: a grid of preview tiles with the
+   model information overlaid on the image rather than beside it. */
+.civitai-results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 0.75rem;
+}
+
+.civitai-card {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: hsl(25, 14%, 18%);
+}
+
+.civitai-card-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.civitai-card-media-missing {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(30, 12%, 65%);
+}
+
+/* The browser's head says what it is and where it looks (specs/03): the source
+   row and the video switch on its right, the title giving way when the window
+   is too narrow for all of it. */
+.browser-head-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.browser-head-actions .buttons,
+.browser-head-actions .buttons .button {
+  margin-bottom: 0;
+}
+
+.browser-modal .modal-card-title {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The bar over a browser's file list (specs/33): what is ticked, where it will
+   land and the button that sends it. Sticky, since a long file list is scrolled
+   while ticking. */
+.install-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0.5rem 0 0.6rem;
+  margin-bottom: 0.5rem;
+  background-color: hsl(25, 20%, 14%);
+  border-bottom: 1px solid hsl(25, 20%, 20%);
+}
+
+/* Where a model or a LoRA comes from (specs/03): the site's initials in its
+   colour, beside the name in every list and on the browser's source row. */
+.provider-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.2rem;
+  padding: 0 0.3rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+  color: white;
+  background-color: hsl(25, 8%, 38%);
+}
+
+/* On the source row, where it is the thing being chosen. */
+.provider-icon.is-large {
+  min-width: 1.9rem;
+  height: 1.6rem;
+  border-radius: 5px;
+  font-size: 0.9rem;
+}
+
+.provider-icon.is-civitai {
+  background-color: #1971c2;
+}
+
+.provider-icon.is-huggingface {
+  background-color: #ffd21e;
+  color: hsl(25, 20%, 15%);
+}
+
+.provider-icon.is-modelscope {
+  background-color: #624aff;
+}
+
+/* Top left of a tile: what it is, and what drift already has of it (specs/33).
+   The top right belongs to the media's own badges. */
+.civitai-card-chips {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  max-width: calc(100% - 5rem);
+}
+
+.civitai-card-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 2.5rem 0.75rem 0.6rem;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+  color: white;
+}
+
+.civitai-card-title {
+  font-weight: 600;
+  line-height: 1.2;
+  margin-bottom: 0;
+}
+
+.civitai-card-creator {
+  font-size: 0.75rem;
+  color: hsl(35, 15%, 80%);
+  margin-bottom: 0;
+}
+
+.civitai-card-stats {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+/* The Images tab of an opened Civitai model (specs/24): the search grid's
+   tiles, smaller, since a post carries no overlay text. */
+.civitai-gallery-grid {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+
+/* A post opened from the gallery: the media as large as the window allows,
+   above everything including the browser modal, its caption below. */
+.media-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem;
+  background: rgba(0, 0, 0, 0.9);
+  cursor: zoom-out;
+}
+
+/* The viewer's frame: the media at the size it ends at from the first
+   frame, so the tile's cached copy (or the video's still) fills it at once
+   and the full-size file replaces it without a jump. */
+.media-lightbox-frame {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+}
+
+.media-lightbox-media {
+  height: calc(100vh - 7rem);
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  cursor: default;
+}
+
+/* A Civitai tile's media (specs/24): the image, or a video over its still. */
+.civitai-media {
+  position: absolute;
+  inset: 0;
+}
+
+/* Top right of a tile: image or video, and a video's pause/play. */
+.media-badges {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  gap: 0.25rem;
+}
+
+.media-badge {
+  border: none;
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: white;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.media-toggle {
+  cursor: pointer;
+}
+
+.media-toggle:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+/* Stands in while nothing is on screen yet. It spins with a transform, which
+   the compositor runs without repainting the page, and it leaves the DOM as
+   soon as the media shows. */
+.media-loader {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: -0.875rem 0 0 -0.875rem;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: hsl(30, 95%, 52%);
+  border-radius: 50%;
+  animation: media-spin 0.8s linear infinite;
+}
+
+.media-loader.is-inline {
+  position: static;
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  margin: 0 0.5rem 0 0;
+  border-width: 2px;
+}
+
+@keyframes media-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.media-lightbox-caption {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: hsl(35, 15%, 80%);
+}
+
+/* Model cards and Civitai descriptions (specs/24): strangers' HTML laid out
+   by Bulma's `.content`, in the app's dark tones — Bulma's heading, table and
+   code colours are for light backgrounds. `.content.rich-text` outranks
+   Bulma's `.content h1` and `.content table thead th`. Wide tables and code
+   scroll inside the text instead of widening the modal. */
+.content.rich-text {
+  color: hsl(35, 20%, 92%);
+  overflow-wrap: anywhere;
+}
+
+.content.rich-text h1,
+.content.rich-text h2,
+.content.rich-text h3,
+.content.rich-text h4,
+.content.rich-text h5,
+.content.rich-text h6,
+.content.rich-text table th,
+.content.rich-text table thead th {
+  color: inherit;
+}
+
+.content.rich-text img,
+.content.rich-text video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* A card's <Gallery />, rendered from its widget (specs/36): the figures side
+   by side, each prompt clamped under its image. */
+.content.rich-text figure,
+.content.rich-text figure:not(:first-child) {
+  display: inline-block;
+  vertical-align: top;
+  width: 14rem;
+  margin: 0 0.75rem 0.75rem 0;
+  text-align: left;
+}
+
+.content.rich-text figure img,
+.content.rich-text figure video {
+  width: 100%;
+  border-radius: 6px;
+}
+
+.content.rich-text figcaption {
+  font-size: 0.75rem;
+  color: hsl(30, 12%, 65%);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.content.rich-text table {
+  display: block;
+  overflow-x: auto;
+  background-color: transparent;
+  color: inherit;
+}
+
+.content.rich-text table td,
+.content.rich-text table th {
+  border-color: hsl(25, 10%, 32%);
+}
+
+.content.rich-text pre {
+  overflow-x: auto;
+  background-color: hsl(25, 20%, 11%);
+  color: inherit;
+}
+
+.content.rich-text code {
+  background-color: hsl(25, 20%, 11%);
+  color: hsl(30, 95%, 70%);
+}
+
+.content.rich-text pre code {
+  color: inherit;
+}
+
+.content.rich-text blockquote {
+  background-color: hsl(25, 14%, 18%);
+  border-inline-start-color: hsl(30, 95%, 52%);
+}
+
+/* The gallery (specs/12-gallery.md): one card per generation in a
+   responsive grid, thumbnails cropped square, the batch and video badges
+   pinned to the corners. */
+.gallery-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.gallery-toolbar .field {
+  margin-bottom: 0;
+}
+
+.gallery-day-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1.25rem 0 0.75rem;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.gallery-card {
+  overflow: hidden;
+}
+
+/* Bulma's `.card:not(:last-child)` bottom margin would leave only a row's
+   last card at full height in the stretched grid; the parent-qualified
+   selector is what out-specifies it. */
+.gallery-grid > .gallery-card {
+  margin-bottom: 0;
+}
+
+.gallery-card:hover {
+  border-color: hsl(30, 95%, 52%);
+}
+
+.gallery-thumb {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  background-color: hsl(25, 16%, 16%);
+}
+
+.gallery-thumb img,
+.gallery-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.gallery-thumb .tag {
+  position: absolute;
+}
+
+.gallery-batch-badge {
+  top: 0.4rem;
+  right: 0.4rem;
+}
+
+/* A batch's images are tiles of their own, side by side in the grid
+   (François, 2026-09-14); the accent along their top and the "2/4" badge say
+   they came from one run. */
+.gallery-card.is-batch {
+  border-top: 3px solid hsl(204, 71%, 53%);
+}
+
+.gallery-kind-badge {
+  bottom: 0.4rem;
+  left: 0.4rem;
+}
+
+.gallery-card-body {
+  padding: 0.5rem 0.6rem;
+}
+
+.gallery-prompt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 0.1rem;
+}
+
+/* The full-size view: as wide as the screen allows, the output capped to
+   the viewport so the parameters stay reachable beside it. */
+.gallery-detail .modal-card {
+  width: min(1400px, 95vw);
+  /* A *definite* height, not a maximum: every percentage height below this —
+     the image's included — resolves against it. With `max-height` the chain
+     stayed `auto`, the image sized itself from its width, and the body's
+     hidden overflow cut it off instead of shrinking it (François,
+     2026-09-19). */
+  height: 95vh;
+  max-height: 95vh;
+}
+
+/* The detail view is a height budget: header and footer take what they take,
+   and the image gets the rest. Nothing in it scrolls but the open section of
+   the right column (François, 2026-09-19). */
+.gallery-detail .modal-card-body {
+  overflow: hidden;
+}
+
+.gallery-detail .modal-card-body > .columns {
+  height: 100%;
+  /* Bulma's own negative margins are what pushed the card 13 px past the
+     window; the gutter comes back as padding on the columns. */
+  margin: 0;
+}
+
+.gallery-detail .modal-card-body > .columns > .column {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.gallery-detail .modal-card-body > .columns > .column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* What is being looked at sits in the header, beside the title. */
+.gallery-detail .modal-card-head {
+  gap: 0.75rem;
+}
+
+.gallery-detail .modal-card-head .gallery-compare,
+.gallery-detail .modal-card-head .buttons {
+  margin-bottom: 0;
+}
+
+.gallery-batch-count {
+  white-space: nowrap;
+}
+
+.gallery-panel-toggle {
+  white-space: nowrap;
+}
+
+/* The image and the batch beside it, filling what is left. */
+.gallery-media-column,
+.gallery-media-row {
+  display: flex;
+  min-height: 0;
+  /* A zero basis, not `auto`: with `flex: 1` the image sized itself from its
+     own aspect and pushed the card past the window. */
+  flex: 1 1 0;
+}
+
+.gallery-media-column {
+  flex-direction: column;
+}
+
+.gallery-media-row {
+  flex-direction: row;
+  gap: 0.5rem;
+  /* Both halves centred on the same line: a picture shorter than the card and
+     the strip beside it read as one block, rather than hanging from the top
+     over a band of nothing (François, 2026-09-20). */
+  align-items: center;
+}
+
+.gallery-media-row .gallery-detail-media {
+  flex: 1 1 0;
+  min-width: 0;
+  /* Definite, so the wrapper's `max-height: 100%` resolves against it. */
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* The batch, down the side: it costs no height, so it cannot fall off the
+   bottom of the window and take the knowledge that this was a batch with it. */
+.gallery-strip.is-vertical {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  /* Centred against the picture, not hung from the top: the strip is as tall
+     as the batch makes it, and sits beside the middle of the image
+     (François, 2026-09-20). */
+  justify-content: center;
+  align-items: flex-start;
+  width: auto;
+  max-width: 76px;
+  max-height: 100%;
+  overflow-y: auto;
+  margin-top: 0;
+  gap: 0.35rem;
+}
+
+/* Square thumbnails, cropped from the top: a 2048×1024 frame letterboxed into
+   a strip is a sliver of picture between two bands of nothing, and a crop of
+   the top is where the subject usually is (François, 2026-09-19).
+   Their side shrinks with the size of the batch — the height a strip has is
+   the card's, less its head and foot — so eight fit as readably as two. */
+.gallery-strip.is-vertical img,
+.gallery-strip.is-vertical video {
+  width: min(68px, calc((95vh - 240px) / var(--strip-count, 6) - 0.35rem));
+  aspect-ratio: 1 / 1;
+  height: auto;
+  object-fit: cover;
+  object-position: top center;
+  flex: 0 0 auto;
+}
+
+/* One section of the right column at a time, behind tabs. */
+.gallery-detail-side {
+  overflow: hidden;
+}
+
+.detail-tabs {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.detail-tabs .tabs {
+  flex: 0 0 auto;
+  margin-bottom: 0.5rem;
+}
+
+.detail-tabs .tabs a {
+  padding: 0.3rem 0.7rem;
+}
+
+.detail-section-body {
+  min-height: 0;
+  flex: 1 1 0;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+/* Prompts are prose: the label column of the table left them a sliver, and the
+   prompt is what the page is most often read for. Full width, cut short, and
+   the whole of it one click away (François, 2026-09-19). */
+.gallery-prose {
+  margin-bottom: 0.6rem;
+}
+
+.gallery-prose-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.gallery-prose-open {
+  padding: 0 0.4rem;
+  height: 1.4rem;
+}
+
+.gallery-prose-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  cursor: zoom-in;
+  border-left: 2px solid hsl(25, 10%, 32%);
+  padding-left: 0.5rem;
+}
+
+.gallery-prose-full {
+  white-space: pre-wrap;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+/* Its own size: the detail card's definite 95vh must not reach this one. */
+.gallery-prose-modal .modal-card {
+  width: min(900px, 90vw);
+  height: auto;
+  max-height: 80vh;
+}
+
+.gallery-detail-media img,
+.gallery-detail-media video {
+  /* The wrapper carries the picture's ratio and is capped by the box; the
+     picture simply fills it. */
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 4px;
+}
+
+/* The box dragged over a detail image to redraw one part of it
+   (specs/27-redraw.md). The wrapper hugs the picture — the overlay is placed
+   in percentages of it, so it holds wherever the browser scales the image to —
+   and the box is drawn light over dark so it reads on any picture. */
+.gallery-selectable {
+  position: relative;
+  display: block;
+  /* Sized by its ratio (set inline from the picture's own dimensions) and
+     capped by the space the layout leaves, so it never exceeds either. */
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+  line-height: 0;
+  user-select: none;
+}
+
+/* Only the result takes a box: the compare view shows the original, which a
+   redraw does not act on. */
+.gallery-selectable.is-selecting {
+  cursor: crosshair;
+}
+
+/* A line of the tile grid under the pointer: pressing it moves the whole grid
+   rather than drawing a box (specs/27-redraw.md). */
+.gallery-selectable.is-selecting.is-on-grid {
+  cursor: move;
+}
+
+/* The handles on the box's corners, and what it says it will cost. Sized in
+   screen pixels so they stay grabbable however far the picture is scaled. */
+.gallery-grip {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.65);
+  border-radius: 2px;
+}
+
+.gallery-grip.is-top-left { left: -6px; top: -6px; cursor: nwse-resize; }
+.gallery-grip.is-top-right { right: -6px; top: -6px; cursor: nesw-resize; }
+.gallery-grip.is-bottom-left { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.gallery-grip.is-bottom-right { right: -6px; bottom: -6px; cursor: nwse-resize; }
+
+.gallery-selection-label {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  margin-bottom: 4px;
+  padding: 1px 6px;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: hsl(35, 20%, 92%);
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 3px;
+}
+
+.gallery-selection {
+  position: absolute;
+  border: 1px dashed rgba(255, 255, 255, 0.95);
+  outline: 1px dashed rgba(0, 0, 0, 0.65);
+  background: rgba(255, 255, 255, 0.12);
+  /* The drag is handled on the picture underneath, which knows where the box
+     is: the overlay must not swallow the press. */
+  pointer-events: none;
+  cursor: move;
+}
+
+/* The tiles a redraw would run, drawn over the picture (specs/27-redraw.md):
+   one pass of the model each, and the brighter bands where two of them overlap
+   and are feathered together. Under the selection box, clipped to the picture
+   — the last row and column reach a few px past it, since the backend pads the
+   area up to the model's multiple — and never in the way of a drag. */
+.gallery-tiles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.gallery-tile {
+  position: absolute;
+  border: 1px dashed rgba(255, 255, 255, 0.55);
+  outline: 1px dashed rgba(0, 0, 0, 0.35);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* A running job paints its tiles in order, so the picture fills up as it
+   goes: what is done, what is under the model right now, what is still to
+   come. */
+.gallery-tile.is-done {
+  border-color: rgba(72, 199, 142, 0.85);
+  outline-color: rgba(0, 0, 0, 0.3);
+  background: transparent;
+}
+
+/* The tile as the model made it, laid exactly where it belongs. */
+.gallery-tile-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+.gallery-tile.is-running {
+  border: 2px solid rgba(255, 224, 138, 0.95);
+  outline: 1px solid rgba(0, 0, 0, 0.45);
+  background: rgba(255, 224, 138, 0.22);
+  animation: gallery-tile-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes gallery-tile-pulse {
+  0%,
+  100% {
+    background: rgba(255, 224, 138, 0.12);
+  }
+  50% {
+    background: rgba(255, 224, 138, 0.32);
+  }
+}
+
+.gallery-strip {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+  justify-content: center;
+}
+
+.gallery-strip img,
+.gallery-strip video {
+  height: 64px;
+  width: 64px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.gallery-strip .is-selected {
+  border-color: hsl(30, 95%, 52%);
+}
+
+/* Bulma's table paints its own ground (white in the light scheme, under the
+   theme's light text); the modal body's is the one to show through. */
+.gallery-parameters {
+  background-color: transparent;
+}
+
+.gallery-parameters td {
+  vertical-align: top;
+  font-size: 0.85rem;
+  border-color: hsl(25, 10%, 32%);
+}
+
+.gallery-parameters td:first-child {
+  white-space: nowrap;
+}
+
+.gallery-inputs img {
+  max-height: 96px;
+  max-width: 160px;
+  border-radius: 4px;
+}
+
+.gallery-detail-foot {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.gallery-detail-foot .button {
+  margin: 0;
+}
+
+/* The detail view's scale controls and lineage (spec 15). */
+.gallery-scale .field.has-addons:not(.post-field) {
+  flex-wrap: wrap;
+}
+
+/* The post-processing tab (specs 15, 26, 27): one task at a time behind a
+   picker, its fields in labelled groups, its button on the last line. The
+   controls stay small — bigger ones were no more readable — and the room the
+   panel has goes into the space between the rows instead (François,
+   2026-09-20). */
+.post-tasks {
+  margin-bottom: 1rem;
+}
+
+.post-tasks .button {
+  margin-bottom: 0;
+}
+
+.post-panel {
+  margin-bottom: 1.25rem;
+}
+
+.post-intro {
+  line-height: 1.6;
+  margin-bottom: 0.9rem;
+}
+
+/* A group is a row: its name in a column of its own, its fields beside it,
+   wrapping under one another rather than inside a field.
+
+   The space between the rows is each row's own margin, not a gap on a flex
+   parent: a panel's rows sit inside the panel's own element, one level below
+   `.post-panel`, so a gap there spaced nothing at all (François, 2026-09-21).
+   A margin holds wherever a row is put, which is what the three panels
+   needed. */
+.post-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+}
+
+.post-group-label {
+  flex: 0 0 4.6rem;
+  text-align: right;
+  padding-top: 0.4rem;
+  line-height: 1.4;
+}
+
+.post-group-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  /* A row that wraps is spaced like the rows themselves, so a wrapped field
+     does not read as part of the next group. */
+  gap: 0.8rem 0.75rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Bulma spaces stacked fields; here the group's gap does it. */
+.post-panel .field {
+  margin-bottom: 0;
+}
+
+/* A prompt takes the whole row: it is prose, and the room is the point. */
+.post-field.is-wide {
+  flex: 1 1 100%;
+}
+
+.post-field textarea.textarea {
+  line-height: 1.6;
+  resize: vertical;
+}
+
+/* A field's own name is a tag on it, not a heading: the group's name is the
+   one that carries weight. */
+.post-field .button.is-static {
+  font-weight: 400;
+}
+
+.post-check {
+  padding-top: 0.3rem;
+}
+
+/* Everything but the model folded behind its title (specs 15, 26, 27), in the
+   architecture page's own fold — `FoldedSection`. Its rows carry their own
+   spacing; the header's `mb-2` is what separates it from them. */
+.post-advanced .folded-body {
+  margin-top: 0.2rem;
+}
+
+.post-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-top: 1px solid var(--bulma-border);
+  padding-top: 0.9rem;
+  margin-top: 0.2rem;
+}
+
+.post-foot .button {
+  flex: 0 0 auto;
+}
+
+.post-foot-summary {
+  min-width: 0;
+  line-height: 1.6;
+}
+
+/* The left of the footer is everything read off the picture: what the job
+   would cost, and under it the switches for the grid drawn over it — which
+   change nothing about the job, and so are no part of the form
+   (François, 2026-09-21). */
+.post-foot-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.post-foot-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.post-foot-controls .post-check {
+  padding-top: 0;
+}
+
+.gallery-compare .button.is-selected {
+  z-index: 1;
+}
+
+/* A process tail inside a coloured notification (a failed job, a failed
+   generation) must read in the notification's own text colour, not Bulma's
+   pre grey, which vanishes on the pale red ground in the dark scheme. */
+.notification pre {
+  color: inherit;
+}
+
+/* The mark beside the sidebar's title — the same SVG as the favicon. */
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.sidebar-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+}
+
+/* Assistant page (specs/21-assistant-page.md): chat text keeps the model's
+   line breaks, wraps long prompts, and paints no box of its own inside the
+   turn's card. */
+/* Qualified `.content pre` on purpose: Bulma ships
+   `.content pre { white-space: pre; word-wrap: normal }`, which out-specifies a
+   bare `.assistant-text` — so a model's long paragraph never wrapped, the page
+   stretched to the width of its longest line, and the header's session controls
+   went off the side of the window with it (François, 2026-09-09). `anywhere`
+   also breaks the unbroken tokens a chat produces: URLs, base64, long ids. */
+.content pre.assistant-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  font-size: inherit;
+}
+.assistant-turn-user {
+  border-left: 3px solid var(--bulma-link, #485fc7);
+}
+.assistant-turn-assistant details > summary {
+  cursor: pointer;
+}
+
+/* A live panel's header — the configuration, its status, and the session
+   controls. Bulma's `.level` never wraps, so in a narrow column (the
+   workspace's assistant column, or any narrow window) `.level-right` used to
+   overflow and carry Stop session out of sight (François, 2026-09-09). It
+   wraps to its own row instead, and neither group may push wider than the
+   column it sits in. */
+.panel-header {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  /* Stays put while a long conversation or a long result list scrolls past:
+     stopping the session is reachable from anywhere in the page, not only from
+     the top of it. `.bg-content`'s colour, so nothing shows through. */
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background-color: hsl(30, 22%, 26%);
+  padding: 0.5rem 0;
+}
+
+/* Bulma gives `.title:not(:last-child)` a 1.5rem bottom margin, and the level
+   centres each item on its *margin* box - so the status tag beside the title
+   sat visibly low (François, 2026-09-09). The header supplies its own spacing;
+   the title needs none of its own. */
+.panel-header .title,
+.panel-header .subtitle {
+  margin-bottom: 0;
+}
+
+.panel-header > .level-left,
+.panel-header > .level-right {
+  flex-wrap: wrap;
+  /* Both axes: a column gap of zero left the status tag welded to the title
+     and the buttons welded to each other, since neither is a `.level-item`
+     carrying Bulma's own margin. */
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* The gap above is the spacing now; the buttons' own margins would double it. */
+.panel-header .button.mr-2 {
+  margin-right: 0 !important;
+}
+
+/* An architecture's tags, on its card and in its form. */
+.tags-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* A list's search and its kind chips on one row, the search taking the room
+   the chips do not need; they stack when there is not enough for both. */
+.list-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.list-filters > .field {
+  flex: 1 1 18rem;
+}
+
+.kind-filter {
+  margin-bottom: 0;
+  flex-wrap: nowrap;
+}
+
+.kind-filter .button {
+  margin-bottom: 0;
+}
+
+/* Two live panels on one page (an image model and an assistant): side by side
+   where there is room, stacked when there is not. */
+.live-panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 1500px) {
+  .live-panels:has(> .content ~ .content) {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* The projects list (specs/19-projects-and-prompt-versions.md): tiles led by
+   the newest image the project made. `auto-fill` at a 20rem minimum lands on
+   three across a normal window and folds to one on a narrow screen, rather
+   than pinning a column count that would squash somewhere. */
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.project-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Bulma's `.card:not(:last-child)` margin would leave only the last tile of a
+   row at full height in a stretched grid. */
+.projects-grid > .project-card {
+  margin-bottom: 0;
+}
+
+.project-cover {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background-color: hsl(25, 16%, 16%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Layered over the placeholder, so a 404 that hides the image or the video
+   reveals the "no image yet" text underneath instead of a broken glyph. */
+.project-cover img,
+.project-cover video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.project-cover-badge {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+}
+
+/* The kind, image or video, left of Open: the bare glyph, no box, drawn about
+   as tall as the small buttons beside it (2.5em of 0.75rem) — François,
+   2026-09-15. */
+.project-card-kind {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  height: 1.875rem;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: default;
+}
+
+.project-card-body {
+  padding: 0.6rem 0.75rem 0.25rem;
+  flex: 1 1 auto;
+}
+
+/* Two lines of brief, so a long one cannot make one tile taller than its
+   neighbours. */
+.project-brief {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.project-card-actions {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+
+/* Bulma's `.content p:not(:last-child)` puts a 1em margin under a modal's
+   title, because the close button follows it - which inflates the head of
+   every modal opened from a `.content` page. */
+.content .modal-card-head p {
+  margin-bottom: 0;
+}
+
+/* Adding a runtime: the two forms are long (release lists, asset pickers), so
+   the card takes the width it can and its body scrolls. */
+.add-runtime-modal .modal-card {
+  width: min(900px, 95vw);
+  max-height: 90vh;
+}
+
+/* The session's output (specs/13-log-streaming.md): a fixed-height tail that
+   scrolls on its own rather than growing the page, monospaced because sd-cpp
+   aligns its own columns. */
+.content pre.session-log-body {
+  max-height: 22rem;
+  overflow: auto;
+  /* Qualified for the same reason `.assistant-text` is: Bulma's
+     `.content pre { white-space: pre; word-wrap: normal }` out-specifies a bare
+     class, and sd-cpp prints paths long enough to stretch the whole page and
+     carry the header's buttons off the side of it. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: transparent;
+  /* Bulma's own pre colour is nearly the background on this dark design. */
+  color: inherit;
+  padding: 0;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.35;
+}
+
+/* Project workspace (specs/19-projects-and-prompt-versions.md): three
+   columns — versions, the generation panel, the assistant — stacking on
+   narrow screens. */
+.workspace-columns {
+  display: grid;
+  /* The versions column is one thumbnail wide plus the card's padding and
+     nothing more (François, 2026-09-08); the generation panel takes what is
+     left first. */
+  grid-template-columns: max-content minmax(24rem, 2.2fr) minmax(20rem, 1.6fr);
+  gap: 1rem;
+  align-items: start;
+}
+.workspace-versions {
+  width: max-content;
+  max-width: 12rem;
+}
+/* The columns open on one band — Versions, the image model, the assistant —
+   with one rule under it across the whole page (François, 2026-09-14). The
+   band's height is shared, so the titles and both Stop session buttons line
+   up; the rule replaces the generation panel's own, which stopped at its
+   column. Only while the columns sit side by side. */
+@media (min-width: 1201px) {
+  .workspace-columns {
+    /* Fits the assistant's header once loaded — its title, then the context
+       line with its vision tag — which is the tallest of the three. */
+    --workspace-band: 4.75rem;
+    background-image: linear-gradient(
+      var(--bulma-hr-background-color, hsl(0, 0%, 96%)),
+      var(--bulma-hr-background-color, hsl(0, 0%, 96%))
+    );
+    background-repeat: no-repeat;
+    background-size: 100% var(--bulma-hr-height, 2px);
+    background-position: 0 var(--workspace-band);
+  }
+  .workspace-columns .panel-header,
+  .workspace-versions-head {
+    min-height: var(--workspace-band);
+  }
+  .workspace-versions-head {
+    align-items: center !important;
+    margin-bottom: 1.5rem;
+  }
+  /* A column with no model live holds only a sentence; it fills the band as a
+     panel's header would, or what follows it — the results — sits above the
+     rule. */
+  .workspace-idle-head {
+    min-height: var(--workspace-band);
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+  }
+  .workspace-idle-head p {
+    margin-bottom: 0 !important;
+  }
+  .workspace-columns .panel-header + hr {
+    display: none;
+  }
+  /* A header taller than the band would paint over the rule (its background
+     is opaque, being sticky), so none may wrap: a long name is cut short
+     instead, and the buttons keep their width. */
+  .workspace-columns .panel-header,
+  .workspace-columns .panel-header > .level-left {
+    flex-wrap: nowrap;
+  }
+  .workspace-columns .panel-header > .level-left > * {
+    min-width: 0;
+  }
+  .workspace-columns .panel-header > .level-right {
+    flex-shrink: 0;
+  }
+  .workspace-columns .panel-header .title,
+  .workspace-columns .panel-header .title + p {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+.workspace-versions-head h2 {
+  margin-bottom: 0;
+}
+.workspace-version {
+  padding: 0.6rem 0.75rem;
+}
+@media (max-width: 1200px) {
+  .workspace-columns {
+    grid-template-columns: 1fr;
+  }
+  .workspace-versions {
+    width: auto;
+  }
+}
+.workspace-version.is-selected {
+  border-left: 3px solid var(--bulma-primary, #00d1b2);
+}
+/* One square thumbnail per row; the card is exactly that wide plus padding,
+   whatever the image's aspect. */
+.workspace-version-thumbs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+.workspace-version-thumb {
+  width: 8rem;
+  height: 8rem;
+  object-fit: cover;
+  border-radius: 3px;
+  display: block;
+}.workspace-version {
+  line-height: 1.3;
+}
+
+/* Selecting for a bulk delete: the tick sits where the batch badge would,
+   and a ticked card is outlined rather than tinted, so the image still reads
+   at a glance. */
+.gallery-selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.gallery-select-badge {
+  /* Bottom right: the other three corners are taken by the batch, kind and
+     project badges. */
+  position: absolute;
+  bottom: 0.4rem;
+  right: 0.4rem;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 3px;
+  padding: 0.1rem 0.25rem;
+  line-height: 1;
+}
+
+.gallery-select-badge input {
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.gallery-card.is-selected {
+  outline: 2px solid hsl(30, 95%, 52%);
+  outline-offset: -2px;
+}
+
+.gallery-project-badge {
+  position: absolute;
+  left: 0.4rem;
+  top: 0.4rem;
+  max-width: 80%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A batch is one generation with several outputs (specs/14): its images sit
+   side by side so the variations can be compared, rather than stacked in a
+   column to scroll through. */
+.batch-outputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.5rem;
+}
+
+/* A prompt diff (specs/20): what the assistant changed in the working prompt,
+   or what changed between two versions. Translucent tints rather than solid
+   colours, so the words keep the theme's own text colour and read on this
+   dark design as they would on a light one. A div, not a pre: Bulma's
+   `.content pre` forces `white-space: pre` and stretches the page. */
+.prompt-diff {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+.prompt-diff .diff-added {
+  background: rgba(72, 199, 116, 0.28);
+  border-radius: 2px;
+}
+.prompt-diff .diff-removed {
+  background: rgba(241, 70, 104, 0.28);
+  border-radius: 2px;
+  text-decoration: line-through;
+  opacity: 0.8;
+}
+
+/* A compaction's summary (specs/20): it stands for the archived messages
+   before it, so it reads as a different kind of block from a reply. */
+.assistant-turn-summary {
+  border-left: 3px solid rgba(62, 142, 208, 0.7);
+}
+
+/* A text project's workspace is the conversation alone
+   (specs/41-text-projects.md): one readable column, centred. */
+.workspace-columns.is-text {
+  grid-template-columns: minmax(0, 60rem);
+  justify-content: center;
+}

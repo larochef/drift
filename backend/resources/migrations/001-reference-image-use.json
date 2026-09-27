@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "description": "Architecture.referenceImages: the boolean became ReferenceImageUse",
+  "steps": [
+    {
+      "collection": "architectures",
+      "op": "set",
+      "field": "referenceImages",
+      "from": "referenceImages",
+      "map": {
+        "true": "Context",
+        "false": "Unused"
+      }
+    }
+  ]
+}

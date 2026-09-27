@@ -1,0 +1,7 @@
+{
+  "version": 4,
+  "description": "specs/42: Qwen 3.8 27B is a built-in chat architecture (llama.cpp or the drift runner, an optional MTP head of its own file)",
+  "steps": [
+    { "collection": "architectures", "op": "reseed", "where": { "id": "qwen3.8-27b", "builtIn": true } }
+  ]
+}

@@ -1,0 +1,142 @@
+{
+ "variables": {
+  "bos_token": "<|startoftext|>",
+  "eos_token": "<|return|>",
+  "pad_token": "<|endoftext|>"
+ },
+ "date": "2026-09-24",
+ "renders": [
+  {
+   "conversation": "one user message",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.<|end|><|start|>user<|message|>Hello!<|end|><|start|>assistant"
+  },
+  {
+   "conversation": "one user message",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.<|end|><|start|>user<|message|>Hello!<|end|>"
+  },
+  {
+   "conversation": "one user message",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.<|end|><|start|>user<|message|>Hello!<|end|><|start|>assistant"
+  },
+  {
+   "conversation": "system and turns",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.<|end|><|start|>developer<|message|># Instructions\n\nYou are terse.\n\n<|end|><|start|>user<|message|>Name a colour.<|end|><|start|>assistant<|channel|>final<|message|>Blue.<|end|><|start|>user<|message|>Another, in French: é, ü, 日本?<|end|><|start|>assistant"
+  },
+  {
+   "conversation": "system and turns",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.<|end|><|start|>developer<|message|># Instructions\n\nYou are terse.\n\n<|end|><|start|>user<|message|>Name a colour.<|end|><|start|>assistant<|channel|>final<|message|>Blue.<|end|><|start|>user<|message|>Another, in French: é, ü, 日本?<|end|>"
+  },
+  {
+   "conversation": "system and turns",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.<|end|><|start|>developer<|message|># Instructions\n\nYou are terse.\n\n<|end|><|start|>user<|message|>Name a colour.<|end|><|start|>assistant<|channel|>final<|message|>Blue.<|end|><|start|>user<|message|>Another, in French: é, ü, 日本?<|end|><|start|>assistant"
+  },
+  {
+   "conversation": "reasoning in history",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.<|end|><|start|>user<|message|>2+2?<|end|><|start|>assistant<|channel|>final<|message|>4<|end|><|start|>user<|message|>3+3?<|end|><|start|>assistant<|channel|>final<|message|>6<|end|><|start|>assistant"
+  },
+  {
+   "conversation": "reasoning in history",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.<|end|><|start|>user<|message|>2+2?<|end|><|start|>assistant<|channel|>final<|message|>4<|end|><|start|>user<|message|>3+3?<|end|><|start|>assistant<|channel|>final<|message|>6<|return|>"
+  },
+  {
+   "conversation": "reasoning in history",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.<|end|><|start|>user<|message|>2+2?<|end|><|start|>assistant<|channel|>final<|message|>4<|end|><|start|>user<|message|>3+3?<|end|><|start|>assistant<|channel|>final<|message|>6<|end|><|start|>assistant"
+  },
+  {
+   "conversation": "tools",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.\nCalls to these tools must go to the commentary channel: 'functions'.<|end|><|start|>developer<|message|># Instructions\n\nUse tools when needed.\n\n# Tools\n\n## functions\n\nnamespace functions {\n\n// Weather for a city\ntype get_weather = (_: {\n// City name\ncity: string,\nunit?: \"c\" | \"f\",\n}) => any;\n\n} // namespace functions<|end|><|start|>user<|message|>Weather in Lyon?<|end|><|start|>assistant to=functions.get_weather<|channel|>commentary json<|message|>{\"city\": \"Lyon\", \"unit\": \"c\"}<|call|><|start|>functions.get_weather to=assistant<|channel|>commentary<|message|>\"{\\\"temperature\\\": 18}\"<|end|><|start|>assistant<|channel|>final<|message|>18 °C in Lyon.<|end|><|start|>user<|message|>Thanks<|end|><|start|>assistant"
+  },
+  {
+   "conversation": "tools",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.\nCalls to these tools must go to the commentary channel: 'functions'.<|end|><|start|>developer<|message|># Instructions\n\nUse tools when needed.\n\n# Tools\n\n## functions\n\nnamespace functions {\n\n// Weather for a city\ntype get_weather = (_: {\n// City name\ncity: string,\nunit?: \"c\" | \"f\",\n}) => any;\n\n} // namespace functions<|end|><|start|>user<|message|>Weather in Lyon?<|end|><|start|>assistant to=functions.get_weather<|channel|>commentary json<|message|>{\"city\": \"Lyon\", \"unit\": \"c\"}<|call|><|start|>functions.get_weather to=assistant<|channel|>commentary<|message|>\"{\\\"temperature\\\": 18}\"<|end|><|start|>assistant<|channel|>final<|message|>18 °C in Lyon.<|end|><|start|>user<|message|>Thanks<|end|>"
+  },
+  {
+   "conversation": "tools",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.\nCalls to these tools must go to the commentary channel: 'functions'.<|end|><|start|>developer<|message|># Instructions\n\nUse tools when needed.\n\n# Tools\n\n## functions\n\nnamespace functions {\n\n// Weather for a city\ntype get_weather = (_: {\n// City name\ncity: string,\nunit?: \"c\" | \"f\",\n}) => any;\n\n} // namespace functions<|end|><|start|>user<|message|>Weather in Lyon?<|end|><|start|>assistant to=functions.get_weather<|channel|>commentary json<|message|>{\"city\": \"Lyon\", \"unit\": \"c\"}<|call|><|start|>functions.get_weather to=assistant<|channel|>commentary<|message|>\"{\\\"temperature\\\": 18}\"<|end|><|start|>assistant<|channel|>final<|message|>18 °C in Lyon.<|end|><|start|>user<|message|>Thanks<|end|><|start|>assistant"
+  },
+  {
+   "conversation": "content parts",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "error": "can only concatenate str (not \"list\") to str"
+  },
+  {
+   "conversation": "content parts",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "error": "can only concatenate str (not \"list\") to str"
+  },
+  {
+   "conversation": "content parts",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "error": "can only concatenate str (not \"list\") to str"
+  },
+  {
+   "conversation": "whitespace and markup",
+   "flags": {
+    "add_generation_prompt": true
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.<|end|><|start|>user<|message|>  spaced  \n\nlines\t\n```\ncode {% raw %}\n```\n<think>not a tag</think><|end|><|start|>assistant"
+  },
+  {
+   "conversation": "whitespace and markup",
+   "flags": {
+    "add_generation_prompt": false
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.<|end|><|start|>user<|message|>  spaced  \n\nlines\t\n```\ncode {% raw %}\n```\n<think>not a tag</think><|end|>"
+  },
+  {
+   "conversation": "whitespace and markup",
+   "flags": {
+    "add_generation_prompt": true,
+    "enable_thinking": false
+   },
+   "text": "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-09-24\n\nReasoning: medium\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.<|end|><|start|>user<|message|>  spaced  \n\nlines\t\n```\ncode {% raw %}\n```\n<think>not a tag</think><|end|><|start|>assistant"
+  }
+ ]
+}

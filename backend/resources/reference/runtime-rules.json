@@ -1,0 +1,30 @@
+[
+  {
+    "tool": "SdCpp",
+    "backend": "Vulkan",
+    "engine": "SdCpp",
+    "defaults": {},
+    "unsupported": [
+      {
+        "flag": "--diffusion-fa",
+        "reason": "the Vulkan build of sd-cpp does not support flash attention in the diffusion model"
+      },
+      {
+        "flag": "--attn-scale",
+        "reason": "the K/V scale override acts inside flash attention, which the Vulkan build does not run"
+      }
+    ]
+  },
+  {
+    "tool": "SdCpp",
+    "backend": "Rocm",
+    "engine": "DriftRunner",
+    "defaults": {},
+    "unsupported": [
+      {
+        "flag": "--attn-scale",
+        "reason": "the K/V scale override is a workaround inside sd-cpp's flash attention; the drift runner's attention takes none"
+      }
+    ]
+  }
+]

@@ -1,0 +1,1557 @@
+[
+  {
+    "id": "boogu-image",
+    "label": "Boogu Image",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "referenceImages": "Edit",
+    "civitaiBaseModels": [
+      "Boogu"
+    ],
+    "huggingFaceBaseModels": [
+      "Boogu/Boogu-Image-0.1-Turbo",
+      "Boogu/Boogu-Image-0.1-Base",
+      "Boogu/Boogu-Image-0.1-Edit"
+    ],
+    "modelScopeBaseModels": [
+      "Boogu/Boogu-Image-0.1-Turbo",
+      "Boogu/Boogu-Image-0.1-Turbo@master",
+      "Boogu/Boogu-Image-0.1-Base",
+      "Boogu/Boogu-Image-0.1-Base@master"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "boogu-image-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "flux1-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen3-vl-8b-instruct",
+        "flag": "--llm",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "1.0",
+      "--steps": "4",
+      "-H": "1024",
+      "-W": "1024",
+      "--cache-mode": "spectrum",
+      "--mmap": ""
+    },
+    "tags": [
+      "image"
+    ],
+    "promptingNotes": "Reads natural language through a Qwen3-VL text encoder: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes. The seeded defaults are the Turbo checkpoint's — 3 to 4 steps at CFG 1. The Base checkpoint wants 25 to 50 steps at CFG 2 to 5 (4 is the vendor's example), and renders at 1K, 1.5K and 2K.",
+    "sizeMultiple": 16,
+    "modelKind": null,
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "boogu-image-edit",
+    "label": "Boogu Image Edit",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "referenceImages": "Edit",
+    "civitaiBaseModels": [
+      "Boogu"
+    ],
+    "huggingFaceBaseModels": [
+      "Boogu/Boogu-Image-0.1-Edit",
+      "Boogu/Boogu-Image-0.1-Edit-Turbo"
+    ],
+    "modelScopeBaseModels": [
+      "Boogu/Boogu-Image-0.1-Edit",
+      "Boogu/Boogu-Image-0.1-Edit@master"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "boogu-image-edit-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "flux1-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen3-vl-8b-instruct",
+        "flag": "--llm",
+        "required": true
+      },
+      {
+        "name": "llm vision",
+        "familyId": "qwen3-vl-8b-instruct-mmproj",
+        "flag": "--llm_vision",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "1.0",
+      "--steps": "4",
+      "-H": "1024",
+      "-W": "1024",
+      "--cache-mode": "spectrum",
+      "--mmap": ""
+    },
+    "tags": [
+      "image",
+      "edit"
+    ],
+    "promptingNotes": "An instruction editor: attach one reference image — it takes one for now — and say in plain words what to change (\"change 'flux.cpp' to 'boogu.cpp'\"), naming what must stay as it is. It inserts, replaces and removes objects, changes attributes, materials and backgrounds, and keeps the source subject and composition coherent. The reference is read by Qwen3-VL-8B, which is why this architecture also loads its vision projector. The seeded defaults are Edit Turbo's — 4 steps at CFG 1, so the negative prompt has no effect. The full Edit checkpoint wants 25 to 50 steps at CFG 2 to 5 (5 is the vendor's example). It renders up to 2K, and is most stable at 1K.",
+    "sizeMultiple": 16,
+    "modelKind": null,
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "ernie-image",
+    "label": "ERNIE Image",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "civitaiBaseModels": [
+      "Ernie"
+    ],
+    "huggingFaceBaseModels": [
+      "baidu/ERNIE-Image-Turbo",
+      "baidu/ERNIE-Image"
+    ],
+    "modelScopeBaseModels": [
+      "PaddlePaddle/ERNIE-Image",
+      "PaddlePaddle/ERNIE-Image@master"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "ernie-image-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "flux2-klein-9b-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "ministral-3-3b",
+        "flag": "--llm",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--cfg-scale": "1.0",
+      "--steps": "8",
+      "-H": "1024",
+      "-W": "1024",
+      "--cache-mode": "spectrum",
+      "--diffusion-fa": "",
+      "--attn-scale": "0.0078125",
+      "--mmap": ""
+    },
+    "tags": [
+      "image"
+    ],
+    "promptingNotes": "Reads natural language through a Ministral 3B text encoder: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes. The seeded defaults are the Turbo checkpoint's — 8 steps at CFG 1. The full checkpoint wants 50 steps at CFG 4 to 5, and both were trained on 1024x1024, 848x1264, 1264x848, 768x1376, 896x1200, 1376x768 and 1200x896.",
+    "sizeMultiple": 16,
+    "modelKind": null,
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "flux.2-dev",
+    "label": "Flux.2 DEV",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "referenceImages": "Context",
+    "civitaiBaseModels": [
+      "Flux.2 D"
+    ],
+    "huggingFaceBaseModels": [
+      "black-forest-labs/FLUX.2-dev"
+    ],
+    "modelScopeBaseModels": [
+      "black-forest-labs/FLUX.2-dev"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "flux.2-dev-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "flux2-klein-9b-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "mistral-small-3.2-24B-instruct-2506",
+        "flag": "--llm",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "1.0",
+      "--steps": "28",
+      "--guidance": "4.0",
+      "-H": "1024",
+      "-W": "1024",
+      "--cache-mode": "spectrum",
+      "--mmap": ""
+    },
+    "tags": [
+      "image",
+      "edit"
+    ],
+    "promptingNotes": "Reads natural language through an LLM text encoder: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes.",
+    "sizeMultiple": 16,
+    "modelKind": "flux2-dev",
+    "runners": [
+      "SdCpp",
+      "DriftRunner"
+    ]
+  },
+  {
+    "id": "flux.2-klein-4B",
+    "label": "Flux.2 Klein 4B",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "referenceImages": "Context",
+    "civitaiBaseModels": [
+      "Flux.2 Klein 4B",
+      "Flux.2 Klein 4B-base"
+    ],
+    "huggingFaceBaseModels": [
+      "black-forest-labs/FLUX.2-klein-4B",
+      "black-forest-labs/FLUX.2-klein-base-4B"
+    ],
+    "modelScopeBaseModels": [
+      "black-forest-labs/FLUX.2-klein-4B",
+      "black-forest-labs/FLUX.2-klein-base-4B"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "flux.2-klein-4B-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "flux2-klein-9b-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen3-4B",
+        "flag": "--llm",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "1.0",
+      "--steps": "4",
+      "--guidance": "1.0",
+      "-H": "1024",
+      "-W": "1024",
+      "--cache-mode": "spectrum",
+      "--mmap": ""
+    },
+    "tags": [
+      "image",
+      "edit"
+    ],
+    "promptingNotes": "Reads natural language through an LLM text encoder: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes.",
+    "sizeMultiple": 16,
+    "modelKind": "flux2-klein",
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "flux.2-klein-9B",
+    "label": "Flux.2 Klein 9B",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "referenceImages": "Context",
+    "civitaiBaseModels": [
+      "Flux.2 Klein 9B",
+      "Flux.2 Klein 9B-base"
+    ],
+    "huggingFaceBaseModels": [
+      "black-forest-labs/FLUX.2-klein-9B",
+      "black-forest-labs/FLUX.2-klein-base-9B"
+    ],
+    "modelScopeBaseModels": [
+      "black-forest-labs/FLUX.2-klein-9B",
+      "black-forest-labs/FLUX.2-klein-base-9B",
+      "black-forest-labs/FLUX.2-klein-base-9B@master"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "flux.2-klein-9B-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "flux2-klein-9b-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen3-8B",
+        "flag": "--llm",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "1.0",
+      "--steps": "4",
+      "--guidance": "3.0",
+      "-H": "1024",
+      "-W": "1024",
+      "--cache-mode": "spectrum",
+      "--mmap": ""
+    },
+    "tags": [
+      "image",
+      "edit"
+    ],
+    "promptingNotes": "Reads natural language through an LLM text encoder: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes.",
+    "sizeMultiple": 16,
+    "modelKind": "flux2-klein",
+    "runners": [
+      "SdCpp",
+      "DriftRunner"
+    ]
+  },
+  {
+    "id": "hidream-o1",
+    "label": "HiDream O1 Image",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "civitaiBaseModels": [
+      "HiDream-O1"
+    ],
+    "huggingFaceBaseModels": [
+      "HiDream-ai/HiDream-O1-Image-Dev",
+      "HiDream-ai/HiDream-O1-Image"
+    ],
+    "modelScopeBaseModels": [
+      "HiDream-ai/HiDream-O1-Image-Dev",
+      "HiDream-ai/HiDream-O1-Image-Dev@master",
+      "HiDream-ai/HiDream-O1-Image",
+      "HiDream-ai/HiDream-O1-Image@master"
+    ],
+    "checkpoints": [
+      {
+        "name": "model",
+        "familyId": "hidream-o1-diffusion",
+        "flag": "--model",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "1.0",
+      "--steps": "28",
+      "--flow-shift": "1.0",
+      "-H": "1024",
+      "-W": "1024",
+      "--cache-mode": "spectrum",
+      "--mmap": ""
+    },
+    "tags": [
+      "image"
+    ],
+    "promptingNotes": "Reads natural language: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes. The seeded defaults are the Dev checkpoint's — 28 steps, no CFG, flow shift 1. The full checkpoint wants 50 steps at CFG 5 with flow shift 3. Both render up to 2048x2048; sizes snap to the resolutions it was trained on. One file holds the whole model: it takes no separate VAE or text encoder.",
+    "sizeMultiple": 16,
+    "modelKind": null,
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "ideogram-4",
+    "label": "Ideogram 4",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "civitaiBaseModels": [
+      "Ideogram 4.0"
+    ],
+    "huggingFaceBaseModels": [
+      "ideogram-ai/ideogram-4-fp8"
+    ],
+    "modelScopeBaseModels": [
+      "ideogram-ai/ideogram-4-fp8"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "ideogram-4-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "unconditional diffusion",
+        "familyId": "ideogram-4-unconditional-diffusion",
+        "flag": "--uncond-diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "flux2-klein-9b-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen3-vl-8b-instruct",
+        "flag": "--llm",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "7.0",
+      "--steps": "20",
+      "-H": "1024",
+      "-W": "1024",
+      "--mmap": ""
+    },
+    "tags": [
+      "image"
+    ],
+    "promptingNotes": "Trained only on structured JSON captions: the prompt is one JSON object, not prose, and key ORDER matters. \"high_level_description\" (one or two sentences: shot, subject, setting); \"style_description\" with, in this order, \"aesthetics\", \"lighting\", then exactly one of \"photo\" (camera and lens, medium \"photograph\") or \"medium\" + \"art_style\" (illustration, painting, 3d_render…), optional \"color_palette\" last (uppercase #RRGGBB, up to 16); \"compositional_deconstruction\" (required) with \"background\" then \"elements\": {\"type\":\"obj\",\"bbox\":[y_min,x_min,y_max,x_max] on 0–1000 (optional),\"desc\":…} or {\"type\":\"text\",\"bbox\":…,\"text\":\"literal text\",\"desc\":…}. Describe everything visible, exhaustively. Real classifier-free guidance through the second, unconditional model: CFG 7 and 20 steps by default (48 for quality); the negative prompt is ignored. Any multiple-of-16 size from 256 to 2048 per side.",
+    "assistantTemplateId": "ideogram-4-caption-writer",
+    "sizeMultiple": 16,
+    "modelKind": null,
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "krea2",
+    "label": "Krea 2",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "referenceImages": "Edit",
+    "civitaiBaseModels": [
+      "Krea 2"
+    ],
+    "huggingFaceBaseModels": [
+      "krea/Krea-2-Turbo",
+      "krea/Krea-2-Raw"
+    ],
+    "modelScopeBaseModels": [
+      "krea/Krea-2-Turbo",
+      "krea/Krea-2-Raw"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "krea2-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "wan-2.1-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen3-vl-4b-instruct",
+        "flag": "--llm",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "1.0",
+      "--steps": "4",
+      "-H": "1024",
+      "-W": "1024",
+      "--cache-mode": "spectrum",
+      "--mmap": ""
+    },
+    "tags": [
+      "image"
+    ],
+    "promptingNotes": "Reads natural language through an LLM text encoder: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes.",
+    "sizeMultiple": 16,
+    "modelKind": "krea2",
+    "runners": [
+      "SdCpp",
+      "DriftRunner"
+    ]
+  },
+  {
+    "id": "mage-flow-edit-turbo",
+    "label": "Mage-Flow Edit Turbo",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "referenceImages": "Edit",
+    "civitaiBaseModels": [
+      "MageFlow"
+    ],
+    "huggingFaceBaseModels": [
+      "microsoft/Mage-Flow-Edit",
+      "mage-flow-community/Mage-Flow-Edit"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "mage-flow-edit-turbo-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "mage-flow-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen3-vl-4b-instruct",
+        "flag": "--llm",
+        "required": true
+      },
+      {
+        "name": "llm vision",
+        "familyId": "qwen3-vl-4b-instruct-mmproj",
+        "flag": "--llm_vision",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "1.0",
+      "--steps": "4",
+      "-H": "1024",
+      "-W": "1024",
+      "--mmap": ""
+    },
+    "tags": [
+      "image",
+      "edit"
+    ],
+    "promptingNotes": "An instruction editor: attach one or more reference images and say in plain words what to change (\"change 'flux.cpp' to 'mage.cpp'\"), naming what must stay as it is. Each reference is read by Qwen3-VL-4B (longest edge capped at 384 px) and fed to the transformer at the output size, so keep the output's aspect ratio that of the reference. Turbo runs 4 steps at CFG 1, so the negative prompt has no effect. Width and height must be multiples of 16, 512 to 2048 per side.",
+    "sizeMultiple": 16,
+    "modelKind": null,
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "mage-flow-turbo",
+    "label": "Mage-Flow Turbo",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "referenceImages": "Edit",
+    "civitaiBaseModels": [
+      "MageFlow"
+    ],
+    "huggingFaceBaseModels": [
+      "microsoft/Mage-Flow",
+      "mage-flow-community/Mage-Flow"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "mage-flow-turbo-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "mage-flow-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen3-vl-4b-instruct",
+        "flag": "--llm",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "1.0",
+      "--steps": "4",
+      "-H": "1024",
+      "-W": "1024",
+      "--mmap": ""
+    },
+    "tags": [
+      "image"
+    ],
+    "promptingNotes": "Reads natural language through Qwen3-VL-4B: write full sentences, subject first, then setting, lighting, composition and style, and put any text to render in the image in quotes. Turbo runs 4 steps at CFG 1, so the negative prompt has no effect. Width and height must be multiples of 16; trained at native resolutions from 512 to 2048 per side.",
+    "sizeMultiple": 16,
+    "modelKind": null,
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "qwen-image",
+    "label": "Qwen Image",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "referenceImages": "Edit",
+    "civitaiBaseModels": [
+      "Qwen"
+    ],
+    "huggingFaceBaseModels": [
+      "Qwen/Qwen-Image-2512",
+      "Qwen/Qwen-Image"
+    ],
+    "modelScopeBaseModels": [
+      "Qwen/Qwen-Image-2512",
+      "Qwen/Qwen-Image-2512@master",
+      "Qwen/Qwen-Image",
+      "MusePublic/Qwen-image@v1"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "qwen-image-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "qwen-image-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen2.5-vl-7b-instruct",
+        "flag": "--llm",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "1.0",
+      "--steps": "20",
+      "--guidance": "4.0",
+      "-H": "1024",
+      "-W": "1024",
+      "--cache-mode": "spectrum",
+      "--mmap": ""
+    },
+    "tags": [
+      "image"
+    ],
+    "promptingNotes": "Reads natural language through an LLM text encoder: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes. It is especially strong at rendering text, Chinese included.",
+    "sizeMultiple": 16,
+    "modelKind": "qwen-image",
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "qwen-image-2.1",
+    "label": "Qwen Image 2.1",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "referenceImages": "Edit",
+    "civitaiBaseModels": [
+      "Qwen 2.1"
+    ],
+    "huggingFaceBaseModels": [
+      "Qwen/Qwen-Image-2.1"
+    ],
+    "modelScopeBaseModels": [
+      "Qwen/Qwen-Image-2.1",
+      "Qwen/Qwen-Image-2.1@master"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "qwen-image-2.1-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "qwen-image-2.1-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen3-vl-8b-instruct",
+        "flag": "--llm",
+        "required": true
+      },
+      {
+        "name": "llm vision",
+        "familyId": "qwen3-vl-8b-instruct-mmproj",
+        "flag": "--llm_vision",
+        "required": false
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "6.0",
+      "--sampling-method": "euler",
+      "--steps": "25",
+      "-H": "1024",
+      "-W": "1024",
+      "--cache-mode": "spectrum",
+      "--mmap": ""
+    },
+    "tags": [
+      "image",
+      "edit"
+    ],
+    "promptingNotes": "Reads natural language through Qwen3-VL-8B: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes — it is especially strong at text, Chinese included. Unlike Qwen Image, it steers on real classifier-free guidance rather than an embedded guidance value: CFG 6 with euler is the vendor's example, and the negative prompt does have an effect. The same checkpoint edits: attach one or more reference images and say in plain words what to change (\"change 'qwen2.1.cpp' to 'sd.cpp'\"), naming what must stay as it is. Editing reads the references through the text encoder, so it needs the Qwen3-VL-8B vision projector in the optional slot; generating from a prompt alone does not.",
+    "sizeMultiple": 32,
+    "modelKind": "qwen-image-2.1",
+    "runners": [
+      "SdCpp",
+      "DriftRunner"
+    ]
+  },
+  {
+    "id": "sensenova-u1.5",
+    "label": "SenseNova U1.5",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "initImage": false,
+    "civitaiBaseModels": [],
+    "huggingFaceBaseModels": [
+      "sensenova/SenseNova-U1.5-8B-MoT"
+    ],
+    "checkpoints": [
+      {
+        "name": "model",
+        "familyId": "sensenova-u1.5-8b-mot",
+        "flag": "--model",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "4.0",
+      "--steps": "50",
+      "--flow-shift": "3.0",
+      "--sampling-method": "euler",
+      "-H": "2048",
+      "-W": "2048",
+      "--mmap": ""
+    },
+    "tags": [
+      "image"
+    ],
+    "promptingNotes": "A unified model that denoises in pixel space and reads the prompt with its own language model (the SenseNova prompt template is applied automatically): describe the scene in full sentences, subject first. Official settings: 50 Euler steps, CFG 4, flow shift 3, empty negative prompt. Width and height must be multiples of 32; the 1:1 training size is 2048×2048, smaller sizes fall outside its training buckets. Text-to-image only: editing and thinking-mode prompt expansion are not implemented in sd-cpp.",
+    "sizeMultiple": 32,
+    "modelKind": null,
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "z-image-turbo",
+    "label": "Z-Image Turbo",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "referenceImages": "Edit",
+    "civitaiBaseModels": [
+      "ZImageTurbo",
+      "ZImageBase"
+    ],
+    "huggingFaceBaseModels": [
+      "Tongyi-MAI/Z-Image-Turbo",
+      "Tongyi-MAI/Z-Image"
+    ],
+    "modelScopeBaseModels": [
+      "Tongyi-MAI/Z-Image-Turbo",
+      "Tongyi-MAI/Z-Image-Turbo@master",
+      "Tongyi-MAI/Z-Image",
+      "Tongyi-MAI/Z-Image@master"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "z-image-turbo-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "z-image-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen3-4B",
+        "flag": "--llm",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "1.0",
+      "--steps": "8",
+      "-H": "1024",
+      "-W": "1024",
+      "--cache-mode": "spectrum",
+      "--mmap": ""
+    },
+    "tags": [
+      "image"
+    ],
+    "promptingNotes": "Reads natural language through an LLM text encoder: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes. It renders text well, in English and Chinese.",
+    "sizeMultiple": 16,
+    "modelKind": "z-image",
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "hunyuanvideo-1.5",
+    "label": "HunyuanVideo 1.5",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "civitaiBaseModels": [
+      "Hunyuan Video"
+    ],
+    "huggingFaceBaseModels": [
+      "tencent/HunyuanVideo-1.5"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "hunyuanvideo-1.5-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "hunyuanvideo-1.5-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen2.5-vl-7b-instruct",
+        "flag": "--llm",
+        "required": true
+      },
+      {
+        "name": "glyph text encoder",
+        "familyId": "byt5-small-glyphxl",
+        "flag": "--t5xxl",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "6.0",
+      "--sampling-method": "euler",
+      "-W": "1280",
+      "-H": "720",
+      "--video-frames": "33",
+      "--vae-tiling": "",
+      "--mmap": ""
+    },
+    "tags": [
+      "video"
+    ],
+    "promptingNotes": "A video model reading natural language through Qwen2.5-VL 7B, in English or Chinese: describe the subject and what it does, the scene, then the camera and how it moves. Text to show in the video goes in quotes; a ByT5 glyph encoder renders it. Match the size to the checkpoint: 1280×720 for the 720p ones, 848×480 for the 480p ones. Frame counts of the form 4n+1 (33 by default).",
+    "sizeMultiple": 16,
+    "modelKind": null,
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "ltx-2.3",
+    "label": "LTX 2.3",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "civitaiBaseModels": [
+      "LTXV 2.3"
+    ],
+    "huggingFaceBaseModels": [
+      "Lightricks/LTX-2.3"
+    ],
+    "modelScopeBaseModels": [
+      "Lightricks/LTX-2.3"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "ltx-2.3-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "ltx-2.3-22b-video-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "audio-vae",
+        "familyId": "ltx-2.3-22b-audio-vae",
+        "flag": "--audio-vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "gemma-3-12b",
+        "flag": "--llm",
+        "required": true
+      },
+      {
+        "name": "embeddings-connectors",
+        "familyId": "ltx-2.3-22b-embeddings-connectors",
+        "flag": "--embeddings-connectors",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "1.0",
+      "--steps": "8",
+      "--guidance": "3.5",
+      "--fps": "16",
+      "--sampling-method": "euler",
+      "--flow-shift": "3.0",
+      "--video-frames": "64",
+      "-H": "512",
+      "-W": "512",
+      "--cache-mode": "spectrum",
+      "--mmap": ""
+    },
+    "tags": [
+      "video",
+      "audio"
+    ],
+    "promptingNotes": "A video model reading natural language: describe the scene and subject, then what moves and how over the clip, then the camera (static, pan, dolly, orbit). One continuous shot, concrete actions rather than moods.",
+    "sizeMultiple": 32,
+    "modelKind": null,
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "ltx-2.5",
+    "label": "LTX 2.5",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "civitaiBaseModels": [
+      "LTXV 2.5"
+    ],
+    "huggingFaceBaseModels": [
+      "Lightricks/LTX-2.5"
+    ],
+    "modelScopeBaseModels": [
+      "Lightricks/LTX-2.5"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "ltx-2.5-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "ltx-2.5-video-vae-conv",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "audio-vae",
+        "familyId": "ltx-2.5-audio-vae",
+        "flag": "--audio-vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "gemma-4-12b-ltx-2.5",
+        "flag": "--llm",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "1.0",
+      "--steps": "8",
+      "--guidance": "3.5",
+      "--fps": "16",
+      "--sampling-method": "euler",
+      "--flow-shift": "3.0",
+      "--video-frames": "64",
+      "-H": "512",
+      "-W": "512",
+      "--cache-mode": "spectrum",
+      "--mmap": ""
+    },
+    "tags": [
+      "video",
+      "audio"
+    ],
+    "promptingNotes": "A video model reading natural language: describe the scene and subject, then what moves and how over the clip, then the camera (static, pan, dolly, orbit). One continuous shot, concrete actions rather than moods.",
+    "sizeMultiple": 32,
+    "modelKind": null,
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "minimax-h3",
+    "label": "MiniMax-H3",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "civitaiBaseModels": [
+      "MiniMax H3"
+    ],
+    "huggingFaceBaseModels": [
+      "MiniMaxAI/MiniMax-H3"
+    ],
+    "modelScopeBaseModels": [
+      "MiniMaxAI/MiniMax-H3"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "minimax-h3-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "minimax-h3-video-vae",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "audio-vae",
+        "familyId": "minimax-h3-audio-vae",
+        "flag": "--audio-vae",
+        "required": false
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen3-vl-32b",
+        "flag": "--llm",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--cfg-scale": "1.0",
+      "--sampling-method": "euler",
+      "--flow-shift": "12.0",
+      "--fps": "24",
+      "--video-frames": "56",
+      "-W": "864",
+      "-H": "480",
+      "--cache-mode": "spectrum"
+    },
+    "tags": [
+      "video",
+      "audio"
+    ],
+    "promptingNotes": "A video model reading natural language: describe the scene and subject, then what moves and how over the clip, then the camera (static, pan, dolly, orbit). One continuous shot, concrete actions rather than moods. It also generates the soundtrack: describe the sounds, music and any speech.",
+    "sizeMultiple": 32,
+    "modelKind": null,
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "wan-2.2-14B",
+    "label": "Wan 2.2 14B",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "civitaiBaseModels": [
+      "Wan Video 2.2 I2V-A14B",
+      "Wan Video 2.2 T2V-A14B"
+    ],
+    "huggingFaceBaseModels": [
+      "Wan-AI/Wan2.2-T2V-A14B",
+      "Wan-AI/Wan2.2-I2V-A14B"
+    ],
+    "checkpoints": [
+      {
+        "name": "low-noise",
+        "familyId": "wan-2.2-14B-low-noise",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "high-noise",
+        "familyId": "wan-2.2-14B-high-noise",
+        "flag": "--high-noise-diffusion-model",
+        "required": true
+      },
+      {
+        "name": "text-encoder",
+        "familyId": "t5xxl",
+        "flag": "--t5xxl",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "wan-2.1-vae",
+        "flag": "--vae",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--high-noise-cfg-scale": "3.5",
+      "--high-noise-sampling-method": "euler",
+      "--high-noise-steps": "20",
+      "--sampling-method": "euler",
+      "--flow-shift": "3.0",
+      "--video-frames": "64",
+      "--cache-mode": "spectrum",
+      "--cfg-scale": "1.0"
+    },
+    "tags": [
+      "video"
+    ],
+    "promptingNotes": "A video model reading natural language: describe the scene and subject, then what moves and how over the clip, then the camera (static, pan, dolly, orbit). One continuous shot, concrete actions rather than moods.",
+    "sizeMultiple": 16,
+    "modelKind": null,
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "wan-2.2-5B",
+    "label": "Wan 2.2 5B",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "civitaiBaseModels": [
+      "Wan Video 2.2 TI2V-5B"
+    ],
+    "huggingFaceBaseModels": [
+      "Wan-AI/Wan2.2-TI2V-5B"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion model",
+        "familyId": "wan-2.2-5B",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "text-encoder",
+        "familyId": "t5xxl",
+        "flag": "--t5xxl",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "wan-2.2-vae",
+        "flag": "--vae",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--diffusion-fa": "",
+      "--guidance": "3.5",
+      "--sampling-method": "euler",
+      "--flow-shift": "3.0",
+      "--video-frames": "64",
+      "--cache-mode": "spectrum",
+      "--cfg-scale": "1.0"
+    },
+    "tags": [
+      "video"
+    ],
+    "promptingNotes": "A video model reading natural language: describe the scene and subject, then what moves and how over the clip, then the camera (static, pan, dolly, orbit). One continuous shot, concrete actions rather than moods.",
+    "sizeMultiple": 32,
+    "modelKind": null,
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "pid-flux1",
+    "label": "PiD 1024→4096 (Flux.1 VAE)",
+    "tool": "SdCpp",
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "pid-flux1-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "gemma-2-2b",
+        "flag": "--llm",
+        "required": true
+      },
+      {
+        "name": "tokenizer",
+        "familyId": "gemma-2-2b-tokenizer",
+        "flag": "--tokenizer",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "z-image-vae",
+        "flag": "--vae",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--cfg-scale": "1.0",
+      "--steps": "4",
+      "--rng": "cpu",
+      "-H": "4096",
+      "-W": "4096",
+      "--vae-format": "flux"
+    },
+    "civitaiBaseModels": [],
+    "builtIn": true,
+    "referenceImages": "Edit",
+    "initImage": false,
+    "pixelDiffusionDecoder": true,
+    "tags": [
+      "upscale"
+    ],
+    "promptingNotes": "An upscaler: the prompt only needs to name what the image already shows; the detail comes from the image, not from the words.",
+    "sizeMultiple": 16,
+    "modelKind": "pid-flux1",
+    "runners": [
+      "SdCpp",
+      "DriftRunner"
+    ]
+  },
+  {
+    "id": "pid-flux2",
+    "label": "PiD 1024→4096 (Flux.2 VAE)",
+    "tool": "SdCpp",
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "pid-flux2-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "gemma-2-2b",
+        "flag": "--llm",
+        "required": true
+      },
+      {
+        "name": "tokenizer",
+        "familyId": "gemma-2-2b-tokenizer",
+        "flag": "--tokenizer",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "flux2-klein-9b-vae",
+        "flag": "--vae",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--cfg-scale": "1.0",
+      "--steps": "4",
+      "--rng": "cpu",
+      "-H": "4096",
+      "-W": "4096",
+      "--vae-format": "flux2"
+    },
+    "civitaiBaseModels": [],
+    "builtIn": true,
+    "referenceImages": "Edit",
+    "initImage": false,
+    "pixelDiffusionDecoder": true,
+    "tags": [
+      "upscale"
+    ],
+    "promptingNotes": "An upscaler: the prompt only needs to name what the image already shows; the detail comes from the image, not from the words.",
+    "sizeMultiple": 16,
+    "modelKind": "pid-flux2",
+    "runners": [
+      "SdCpp",
+      "DriftRunner"
+    ]
+  },
+  {
+    "id": "pid-qwen-image",
+    "label": "PiD 1024→4096 (Qwen-Image VAE)",
+    "tool": "SdCpp",
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "pid-qwen-image-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "gemma-2-2b",
+        "flag": "--llm",
+        "required": true
+      },
+      {
+        "name": "tokenizer",
+        "familyId": "gemma-2-2b-tokenizer",
+        "flag": "--tokenizer",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "qwen-image-vae",
+        "flag": "--vae",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--cfg-scale": "1.0",
+      "--steps": "4",
+      "--rng": "cpu",
+      "-H": "4096",
+      "-W": "4096",
+      "--vae-format": "wan"
+    },
+    "civitaiBaseModels": [],
+    "builtIn": true,
+    "referenceImages": "Edit",
+    "initImage": false,
+    "pixelDiffusionDecoder": true,
+    "tags": [
+      "upscale"
+    ],
+    "promptingNotes": "An upscaler: the prompt only needs to name what the image already shows; the detail comes from the image, not from the words.",
+    "sizeMultiple": 16,
+    "modelKind": "pid-qwen-image",
+    "runners": [
+      "SdCpp",
+      "DriftRunner"
+    ]
+  },
+  {
+    "id": "pid-flux2-2048",
+    "label": "PiD 512→2048 (Flux.2 VAE)",
+    "tool": "SdCpp",
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "pid-flux2-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "gemma-2-2b",
+        "flag": "--llm",
+        "required": true
+      },
+      {
+        "name": "tokenizer",
+        "familyId": "gemma-2-2b-tokenizer",
+        "flag": "--tokenizer",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "flux2-klein-9b-vae",
+        "flag": "--vae",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--cfg-scale": "1.0",
+      "--steps": "4",
+      "--rng": "cpu",
+      "-H": "2048",
+      "-W": "2048",
+      "--vae-format": "flux2"
+    },
+    "civitaiBaseModels": [],
+    "builtIn": true,
+    "referenceImages": "Edit",
+    "initImage": false,
+    "pixelDiffusionDecoder": true,
+    "tags": [
+      "upscale"
+    ],
+    "promptingNotes": "An upscaler: the prompt only needs to name what the image already shows; the detail comes from the image, not from the words.",
+    "sizeMultiple": 16,
+    "modelKind": "pid-flux2",
+    "runners": [
+      "SdCpp"
+    ]
+  },
+  {
+    "id": "gemma-4-26b-a4b",
+    "label": "Gemma 4 26B-A4B (chat)",
+    "tool": "LlamaCpp",
+    "builtIn": true,
+    "huggingFaceBaseModels": [
+      "google/gemma-4-26B-A4B-it"
+    ],
+    "checkpoints": [
+      {
+        "name": "model",
+        "familyId": "gemma-4-26b-a4b",
+        "flag": "-m",
+        "required": true
+      },
+      {
+        "name": "mmproj",
+        "familyId": "gemma-4-26b-a4b-mmproj",
+        "flag": "--mmproj",
+        "required": false
+      },
+      {
+        "name": "mtp",
+        "familyId": "gemma-4-26b-a4b-mtp",
+        "flag": "--spec-draft-model",
+        "required": false
+      }
+    ],
+    "defaultParameters": {
+      "-c": "131072",
+      "-ngl": "99"
+    },
+    "tags": [
+      "llm"
+    ],
+    "sizeMultiple": 16,
+    "modelKind": "gemma4",
+    "runners": [
+      "LlamaCpp"
+    ]
+  },
+  {
+    "id": "qwen3.6-35b-a3b",
+    "label": "Qwen3.6 35B-A3B (chat)",
+    "tool": "LlamaCpp",
+    "builtIn": true,
+    "huggingFaceBaseModels": [
+      "Qwen/Qwen3.6-35B-A3B"
+    ],
+    "checkpoints": [
+      {
+        "name": "model",
+        "familyId": "qwen3.6-35b-a3b",
+        "flag": "-m",
+        "required": true
+      },
+      {
+        "name": "mmproj",
+        "familyId": "qwen3.6-35b-a3b-mmproj",
+        "flag": "--mmproj",
+        "required": false
+      },
+      {
+        "name": "mtp",
+        "familyId": "qwen3.6-35b-a3b",
+        "flag": "--spec-draft-model",
+        "required": false
+      }
+    ],
+    "defaultParameters": {
+      "-c": "131072",
+      "-ngl": "99",
+      "--spec-type": "draft-mtp",
+      "--spec-draft-n-max": "2"
+    },
+    "tags": [
+      "llm"
+    ],
+    "sizeMultiple": 16,
+    "modelKind": "qwen35moe",
+    "runners": [
+      "LlamaCpp",
+      "DriftRunner"
+    ]
+  },
+  {
+    "id": "qwen3.8-27b",
+    "label": "Qwen3.8 27B (chat)",
+    "tool": "LlamaCpp",
+    "builtIn": true,
+    "huggingFaceBaseModels": [
+      "Qwen/Qwen3.8-27B"
+    ],
+    "checkpoints": [
+      {
+        "name": "model",
+        "familyId": "qwen3.8-27b",
+        "flag": "-m",
+        "required": true
+      },
+      {
+        "name": "mmproj",
+        "familyId": "qwen3.8-27b-mmproj",
+        "flag": "--mmproj",
+        "required": false
+      },
+      {
+        "name": "mtp",
+        "familyId": "qwen3.8-27b-mtp",
+        "flag": "--spec-draft-model",
+        "required": false
+      }
+    ],
+    "defaultParameters": {
+      "-c": "131072",
+      "-ngl": "99",
+      "--spec-type": "draft-mtp",
+      "--spec-draft-n-max": "3"
+    },
+    "tags": [
+      "llm"
+    ],
+    "sizeMultiple": 16,
+    "modelKind": "qwen35",
+    "runners": [
+      "LlamaCpp",
+      "DriftRunner"
+    ]
+  }
+]

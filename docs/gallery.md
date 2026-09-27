@@ -1,0 +1,303 @@
+# Gallery
+
+The **Gallery** page is everything drift ever made, rebuilt from the files on
+disk, so it needs no running session and survives restarts.
+
+## Browsing
+
+- A grid grouped by day, newest first. One tile per image; a batch's images
+  sit side by side with a "▦ 2/4" badge.
+- Filters: project, **Show NSFW projects** (off by default), run configuration,
+  images or videos, and a search over prompts. Filters apply to the days
+  already loaded; older days load with **Show n generations** or **Show all
+  remaining days**.
+- A generation completing anywhere appears here by itself.
+- **☑ Select** switches the grid to selection mode: tick tiles, or a whole day
+  from its heading, and delete them behind one confirmation. Deleting removes
+  the files and everything recorded about them.
+
+## The detail view
+
+Click a tile to open it:
+
+- The image or video player, with the thumbnails of the batch under it.
+- Every recorded parameter, including the input images.
+- **Made from** / **Made from this** links for derived entries, and an
+  **Original** / **Result** toggle at matched zoom on an upscaled or redrawn
+  image.
+- **🤖 Ask the assistant**, **🗑 Delete**, and the reuse buttons.
+
+## Reusing parameters
+
+- **↺ Reuse these parameters** into a live session of the same run
+  configuration reproduces the request exactly, seed included.
+- On another configuration it carries the *task*: prompt, negative prompt,
+  input images, seed, size and the sampling fields the form shows, over the
+  target's own defaults. Recorded LoRAs are left out, since a LoRA suits a
+  model, not a task.
+- With no session running, **▶ Launch … and reuse these parameters** launches
+  a configuration with the task.
+
+## Post-processing
+
+The **Redraw & upscale** tab holds four tasks — **Redraw**, **Edit**, **PiD
+upscale**, **Upscaler** — one on screen at a time, picked with the buttons at
+the top of the tab. Each makes a better or bigger copy **beside** the original: results
+are new gallery entries linked to their source; nothing runs inside your
+session, though a live one is offered a **■ Stop it** button to free memory
+first.
+
+Every task reads the same way, and reads short: a line saying what it does,
+the **model** to do it with, an **▸ Advanced** section — folded, the way an
+architecture's LoRAs are — holding every other parameter, and last of all what
+the job will be and the button that starts it.
+Nothing of a task sits after its own button, and Advanced stays open once you
+open it, keeping what you typed while you move between tasks and images. A
+redraw puts the two switches for the grid drawn over the picture beside that
+last line rather than in the form: they change nothing about the job.
+
+- **⬆ Upscale** with an ESRGAN model from your upscaler store (see
+  [model-cache.md](model-cache.md)): pick the model; *Advanced* holds how many
+  passes it runs. RealESRGAN x4plus works; x2plus does not load in sd-cpp.
+- **✨ PiD upscale**: a diffusion decoder re-renders the image at ×4, sharper
+  than ESRGAN on generated images. Pick a run configuration on a *PiD*
+  architecture (Flux.2, Flux.1 or Qwen-Image VAE variants; use the
+  `pid_1.5_…_4step_bf16` decoder files, and the Gemma 2 `tokenizer.json` in
+  the *tokenizer* slot). *Advanced* holds the target size, steps, seed and the
+  prompt — the source's by default; leave the size empty for ×4 of the source
+  with its ratio kept, capped at 16384 px on the longest side. The line before
+  the button says what that comes to — `→ ×4 of the source · 4096 × 4096` — so
+  the size is never a surprise. **A target no larger than the source is
+  refused** and the button greys out: PiD decodes a *quarter* of the target, so
+  such a job would shrink the picture to that quarter and hand the same size
+  back. That also means a source above a quarter of the cap is downscaled
+  before the decode — a 8192² source asked for ×4 gets 16384², decoded from a
+  4096² copy of itself, so it is a re-render at twice the size rather than a
+  true ×4. Large targets are decoded in overlapping tiles and blended; the job
+  reports "tile n of m". The model loads once per job — not
+  at all if a session of that configuration is already running.
+  - **On sd-cpp** it needs master-892 or newer (update the runtime if the job
+    is refused), and tiles are at most 1536² (nine for a 4096² target).
+  - **On drift's runner** (the *drift runner, images* runtime as the default)
+    a 4096² target is a single pass: the whole image decoded at once, with no
+    seams. It takes about 5 minutes for 1024 → 4096. Larger targets are cut
+    into 4096² tiles. The tile grid shown before the job follows the default
+    runtime.
+- **✨ Redraw**: a low-strength img2img pass, tile by tile, that repaints
+  texture (skin, hair, fabric) while the composition stays. Pick an image
+  configuration whose model takes reference images (Flux.2), a strength
+  (0.4 by default), and optionally *instructions* describing what should be
+  seen ("clear even skin", "crisp fabric weave"). Each tile sees the whole
+  image as a reference, so anatomy holds.
+
+  The model is all the form shows; everything else is under *Advanced*,
+  grouped by what it decides:
+  *prompt* (a restoration template from Settings → Prompts, with your
+  instructions in a text box under it) and *negative*, a text box too — a
+  restoration prompt is prose, and a one-line field showed a sliver of it;
+  *pass* (strength, steps, seed, soften); *reference* (whether the whole image
+  goes along, and at what size, and the *context* around each tile); *area* (tile size 1280, window and margin —
+  below); *options* (keeping the tiles on disk for inspection).
+- **Which restoration prompt.** Some models add whatever detail the prompt
+  names, and more: Krea 2 given "pores, fine hair" sprinkled freckles, moles
+  and stray hairs over smooth skin; Flux.2 Klein and ERNIE barely react. The
+  default, *drift restoration*, asks for skin and fabric texture but no longer
+  for fine hair. *drift women's portrait* keeps the texture and says the skin
+  is freshly waxed, bare and smooth, with a clean highlight where the light
+  grazes it; with an eager model such as Krea 2, set *soften* to 1 px as well —
+  the model reads the upscaler's bumpy edges as backlit hairs, and softening
+  takes them away before it sees them (on a quiet model it only flattens the
+  texture). *drift skin de-artifacting* describes skin as tissue (pores, vellus
+  hair, moles): keep it for the stubborn waxy leftovers below.
+- What drift says to the model changes with the mode: with a reference it
+  places the tile in it and says the reference is context only; without one it
+  says the image is a close crop and to repaint only what is already there.
+  Your *instructions* are added after that, and work best as descriptions of
+  what should be seen ("natural skin texture, visible pores") rather than
+  orders ("redraw the chest") — an order invites the model to draw that thing
+  afresh instead of repainting what the crop holds.
+- **Upscaling artifacts** (waxy skin, doubled pores, smudging) are the hardest
+  thing to remove, because they are fine detail and a low-strength redraw is
+  built to keep fine detail — at strength 0.4 the model sharpens them instead.
+  What works, measured: **strength 0.55–0.8 with 16–20 steps**, and
+  **soften 1–2 px** in *Advanced*, which blurs each tile before the model
+  sees
+  it so it cannot sharpen the leftovers back. Soften on its own, or at low
+  strength, simply gives the blur back. Pick the
+  *drift skin de-artifacting* restoration prompt with it, and keep the area
+  small — at that strength the composition holds because the region is small
+  and feathered, not because the model is being careful.
+- **The tile grid** is drawn over the picture while the **Redraw** or **Edit**
+  task is open: every tile the job would run, one pass of the model each, with the
+  brighter bands where neighbours overlap and are blended back together. It
+  follows the fields as you type them — a larger tile means fewer boxes — and
+  once you drag a box it switches to the tiles of the *window* that box is
+  repainted through, which is what would actually run. **show the grid** turns
+  it off; it sits at the foot of the panel under the cost line, beside the
+  reset, since neither of them changes anything about the job.
+- **Move the grid** to choose where the cuts fall: the pointer over one of its
+  lines turns into a move cursor, and dragging takes the whole grid with it. A
+  face across a seam is repainted in two passes and blended, which is how eyes
+  come back not quite looking together — slide the grid until the face sits
+  inside one tile and it is painted once, whole.
+
+  The shift snaps to the multiple your model aligns to, and moving the grid
+  usually costs one tile more than leaving it alone: the even spread is the
+  fewest tiles there can be. The two tiles at each end come out shorter, and
+  drift keeps them at least two overlaps long — an end tile shorter than that
+  is given up and its neighbour reaches the edge instead — so no tile is ever
+  a sliver the model cannot paint.
+
+  **↺ reset the grid**, beside that switch, puts it back where it falls on its
+  own — which is also the fewest tiles. It sits there greyed out until you move
+  the grid, and then names the shift it would undo, so the button doubles as
+  the sign that the grid can be moved at all. Opening another image starts from an
+  unshifted grid; stepping through a batch keeps the shift, the images being
+  the same size.
+- **The tile size** is rounded up to what the model accepts — most take any
+  multiple of 16, Qwen Image 2.1 wants 32 — so the tile count before the button
+  may sit on a slightly larger tile than the one you typed.
+- **The reference** is the whole picture sent beside each tile so the model
+  keeps composition and identity. Only Flux.2 gets it by default: it is the
+  one family that treats a reference as context. Krea2, Qwen Image and Qwen
+  Image 2.1, Z-Image, Boogu and Mage-Flow *edit* what they are given a
+  reference of — handed the whole picture, Krea2 painted mosaic corruption over
+  every tile — so they redraw from the tile alone, as do ERNIE, Ideogram 4 and
+  HiDream, which have no reference support at all. The job's first line says
+  which of the two reasons applies, so "no reference image" never reads as a
+  fault. **SenseNova U1.5 cannot redraw**: it returns
+  noise for any input image, so the panel refuses it. It is a real trade — measured on Krea2, a
+  reference holds the composition noticeably better, repaints less texture,
+  and takes about three times as long per tile — so the *reference* group in
+  *Advanced* lets you force it on or off per job.
+- **Context** is for the models that cannot take a reference, Krea 2 first:
+  a close-up tile seen alone can be taken for something else — on a zoomed
+  belly Krea 2 reshaped the waist and drew a fold that was not there. With
+  *context* above 0 the model is handed each tile inside that many px of its
+  surroundings, as already redrawn, and a mask has it repaint the tile alone;
+  the tiles run in order, each one painted in before the next is cut, so every
+  tile sees its neighbours' result. The model paints the whole window, so it
+  costs time: a 1280 tile with 128 of context is painted as 1536, about 1.8×
+  the time per tile. Enough context is what matters — measured on the same
+  belly, 256 around a 1024 tile held the shapes, while 128 around a 1024 tile
+  (a 1280 window) still turned the belly into a pair of knees. The cost line
+  says when context is on, and *keep the tiles* keeps each window beside the
+  tile cut from it.
+- The full-size view fits the window: the image takes the height that is
+  left, the images of a batch run down its left side (with `2 of 8` in the
+  title bar, so a batch is never a surprise), and the right-hand side shows
+  one tab at a time — **Parameters**, **Redraw & upscale**, **History**, and
+  **Inputs** where the generation had input images. Whatever you have typed
+  into a panel stays where it is when you switch tab or task, and drift
+  remembers which tab — and which task — you were on for the next image.
+- **◨ Hide details** in the title bar folds the panel away and gives the whole
+  card to the image — worth it for wide images, where the width is what limits
+  them. The box for a partial redraw can only be drawn while the
+  **Redraw** task of the **Redraw & upscale** tab is showing, so it never
+  appears while you are reading parameters or setting up an upscale, neither
+  of which has any use for it; what you selected is still there when you come
+  back.
+- The **prompt** sits above the parameters at full width, shortened to four
+  lines; click it (or the ⤢) to read the whole of it over the page.
+- The image you see is a copy scaled to the screen, not the file: drift's
+  upscales reach 16384² and hundreds of MB, which a browser takes the better part of a
+  second to decode and much longer on a busy machine. **⤢ Full size** under
+  the image opens the original in a new tab, which is where full resolution
+  is looked at. Everything else — redraw, upscale, the selection — works on
+  the file itself, whatever the screen shows.
+- **The address bar follows the image**: opening one gives it a URL, in the
+  gallery and in a project alike, so a refresh — after a repaint lands, say —
+  comes back to the same image rather than the grid.
+- **Redrawing one part**: drag a box over the image and the button becomes
+  **✨ Redraw selection** — only what you framed is repainted, the rest of the
+  file is untouched. A click on the picture clears the box, and so does
+  switching output or looking at the original.
+
+  The box can be adjusted: drag a corner to resize it, drag its middle to move
+  it, click the picture to clear it. It says as it moves what it will cost —
+  `320×240 · 1 tile · repaints 1024×1024` — and its sides stick to the sizes
+  where the tile count changes, so it takes a deliberate pull to buy another
+  pass of the model.
+
+  The model is never shown just your box: drift widens it to at least the
+  *window* size (1024 px a side, in *Advanced* → *area*) plus a *margin*
+  (64 px), because a
+  model handed a 300×200 crop paints mush. The extra area is context only —
+  the result is blended back over the margin, so nothing outside your box
+  changes and the repaint has no visible edge. The last line before the button
+  says what it will do and cost, for instance
+  `selection 312×248 → window 1024×1024 · 1 tile · 24 steps each, about 10
+  sampled`, and it reads the same way with no selection, for the whole image.
+
+  Same instructions, same restoration prompt, same everything else as a full
+  redraw. Good for a face, a hand, a bit of background that came out soft.
+- **✨ Edit** changes the picture instead of repairing it: write what should be
+  different under *change* — "make the bikini top red", "she wears a thin gold
+  necklace" — and the model makes that change while the rest stays what it
+  was. It needs a configuration on an architecture tagged **edit**, a model
+  that edits an image by instruction: Flux.2 Klein works; Krea 2 does not (it
+  draws a different picture), so it is not offered.
+
+  Each tile is handed to the model as *the image to edit*, with the *drift
+  seamless edit* prompt (Advanced → *prompt*) and your instruction; there is no
+  strength — at any strength a redraw either ignores the instruction or
+  relights what it should keep. The model re-renders the whole tile, the
+  untouched skin and background included, and there drift takes the original
+  back: wherever the edit did not really change anything, the result is the
+  source's own pixels, so its grain, tone and texture cannot drift; where it
+  did, the change is brought to the source's colours and feathered in. Tiles
+  run in order, each cut from the picture as edited so far, so a change that
+  crosses a seam is continued rather than invented twice.
+
+  A box works as for a redraw — the same window, margin and grid — and the
+  button becomes **✨ Edit selection**. The job log says how much of each tile
+  changed; more than half is flagged, since a model that repaints rather than
+  edits lands there (a large edit can too). *keep the tiles* keeps each tile's
+  input, the model's raw edit, the change mask (white where the edit was taken)
+  and the composite.
+
+**While a job runs you watch the result appear**: each tile the model finishes
+is drawn over the original where it belongs, the tile being worked on pulses,
+and the rest is the plain grid. The picture rebuilds itself piece by piece, so
+you can judge a long job without waiting for it — and stop it early if the
+first tiles are not what you wanted. A paused job keeps showing how far it got. While a job is on
+that image, it is its grid you see, not the panel's — **show the grid** turns
+it off.
+
+**The card says what is left** once the first tile is done — "tile 7 of 21,
+about 12 min left" — from what the tiles of this run have actually cost, so it
+gets truer as the job goes.
+
+**One job at a time per image.** Starting a second one on the same picture is
+refused, naming the job in the way: stop it, or cancel a paused one, first.
+
+**Pause a long job** with the **Pause** button on a running tiled job: it stops
+after the tile it is on — never losing that tile — keeps everything it has
+already made, and stops its server, so the GPU and its memory are free. The
+card says "Pausing — it stops when this tile is done" as soon as you click, and
+the button becomes **Force pause**: if you would rather not wait for a tile
+that takes minutes, that one drops the tile in flight (after asking), and the
+tile runs again when you resume. The
+card then shows how far it got, with **Resume** and **Cancel**. Resume starts a
+server again and carries on at the first tile it does not have, with the same
+seed and the same tiles as before. A paused job survives closing drift: it is
+listed again on the next start, so you can recompile, run something else on the
+GPU, or come back tomorrow. Cancel drops its tiles. Resume says no if the job
+could no longer be the same one — the picture is gone, or the settings now lay
+out different tiles — and nothing is thrown away when it does.
+
+Jobs are listed under the panels with their progress — how many tiles are done,
+and under it what the model is doing right now: loading its weights, then the
+sampling steps of the tile in flight, exactly as the inference page shows them,
+with the last log line whenever no bar is running — and, on failure, the tail
+of their log. A running job has a **Stop** — it kills the sd-cli behind an
+upscale, or asks the server to drop the tile a PiD, redraw or edit is
+generating;
+what the job had written is removed, and a stopped job keeps nothing. A
+finished job's **Open result** opens the new entry, and its **×** closes the
+card once you are done with it — the result stays in the gallery, and the next
+redraw or upscale of the same image starts from a clean panel rather than
+beside the last one's notice. Logs live in
+`~/.cache/drift/logs/postprocess-<job>.log`.
+
+Typical chain: generate at base size, PiD upscale ×4, then redraw the result.

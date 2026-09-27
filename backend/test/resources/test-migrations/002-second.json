@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "description": "turn the boolean into words, for the ones the user made",
+  "steps": [
+    {
+      "collection": "widgets",
+      "op": "set",
+      "field": "mode",
+      "from": "mode",
+      "map": { "true": "Loud", "false": "Quiet" },
+      "where": { "builtIn": false }
+    }
+  ]
+}

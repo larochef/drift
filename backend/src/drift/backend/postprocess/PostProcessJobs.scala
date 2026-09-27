@@ -107,6 +107,28 @@ final private[postprocess] class PostProcessJobs(
 
   def unfollow(job: PostProcessJob): Unit = followed.remove(job.id)
 
+  /** The picture each running tiled job is making (`LivePicture`), from the
+    * start of its run until the run ends — a paused job's is on disk.
+    */
+  private val pictures = ConcurrentHashMap[String, LivePicture]()
+
+  def showPicture(id: String, picture: LivePicture): Unit =
+    pictures.put(id, picture)
+
+  /** Forgets `picture` as this job's — only if it still is: a resumed run may
+    * have put its own there already.
+    */
+  def hidePicture(id: String, picture: LivePicture): Unit =
+    pictures.remove(id, picture)
+
+  /** The picture a running or paused tiled job has made so far, as PNG bytes:
+    * at most `side` px on its longest edge, or at full size.
+    */
+  def picture(id: String, side: Option[Int]): Option[Array[Byte]] =
+    Option(pictures.get(id))
+      .flatMap(_.snapshot(side))
+      .orElse(files.storedPicture(id, side))
+
   /** The persisted output and the gallery entry it belongs to — refused for
     * anything that is not an image output of a recorded generation.
     */
@@ -185,8 +207,11 @@ final private[postprocess] class PostProcessJobs(
     job
   }
 
+  /** Atomic: a job is updated from its own thread, its log reader and its
+    * picture's painter, and none of them may undo another's change.
+    */
   def update(id: String)(f: PostProcessJob => PostProcessJob): Unit =
-    Option(jobs.get(id)).foreach(job => jobs.put(id, f(job)))
+    jobs.computeIfPresent(id, (_, job) => f(job))
 
   /** The paused jobs on disk, as the jobs they are — what drift starts with
     * after a restart (`specs/40-pause-and-resume.md`).
@@ -207,7 +232,12 @@ final private[postprocess] class PostProcessJobs(
               files.tilesDone(paused.id, paused.tiles),
               paused.tiles
             )
-          )
+          ),
+          // The picture it had made, kept when it paused.
+          paintedTiles = Option
+            .when(Files.isRegularFile(files.pictureFileOf(paused.id)))(
+              files.tilesDone(paused.id, paused.tiles)
+            )
         )
       )
     }
@@ -381,6 +411,7 @@ final private[postprocess] class PostProcessJobs(
           files.tileOutputsOf(job.id, index).foreach(Files.deleteIfExists)
         )
       )
+      files.deletePicture(job.id)
       forgetPaused(job.id)
       recordCancelled(job)
       true

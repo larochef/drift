@@ -31,7 +31,7 @@ def postProcessEndpoints(
     manager.resumeJob(id)
   ),
   listPostProcessJobs.serverLogicSuccess[Identity](_ => manager.listJobs),
-  getPostProcessTile.serverLogic[Identity] { (id, index, side) =>
-    manager.tilePreview(id, index, side).toRight(())
+  getPostProcessPicture.serverLogic[Identity] { (id, side, _) =>
+    manager.picture(id, side).map(_ -> "image/png").toRight(())
   }
 )

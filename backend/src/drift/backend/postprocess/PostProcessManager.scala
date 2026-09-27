@@ -78,13 +78,9 @@ final class PostProcessManager(
     */
   def pauseJob(id: String, force: Boolean): Boolean = jobs.pause(id, force)
 
-  /** One finished tile of a job, for the grid drawn over its picture. */
-  def tilePreview(
-      id: String,
-      index: Int,
-      side: Option[Int]
-  ): Option[(Array[Byte], String)] =
-    jobs.files.tilePreview(id, index, side.filter(_ > 0).getOrElse(512))
+  /** The picture a tiled job has made so far, drawn over its source. */
+  def picture(id: String, side: Option[Int]): Option[Array[Byte]] =
+    jobs.picture(id, side.filter(_ > 0).map(_.min(8192)))
 
   /** Carries a paused job on where it stopped, from what was stored when it
     * paused — the request as it ran, its drawn seed included.

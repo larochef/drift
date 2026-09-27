@@ -44,15 +44,11 @@ enum TileState derives CanEqual {
   }
 }
 
-/** One tile drawn over the picture: where it is, how far the job has got with
-  * it, and — once it is done — where its result can be fetched, so the picture
-  * fills in with what the model actually made (`specs/15-post-hoc-resize.md`).
+/** One tile drawn over the picture: where it is, and how far the job has got
+  * with it (`specs/15-post-hoc-resize.md`). What the done ones hold is the
+  * job's picture, laid under the grid whole (`DetailPicture.jobPicture`).
   */
-case class TilePaint(
-    area: ImageRegion,
-    state: TileState,
-    preview: Option[String] = None
-)
+case class TilePaint(area: ImageRegion, state: TileState)
 
 case class RedrawGeometry(
     tileSize: Int = 1280,

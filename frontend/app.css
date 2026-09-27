@@ -1312,6 +1312,20 @@ select.select:focus {
   cursor: move;
 }
 
+/* What a running job has made so far, over the picture it works on: the
+   result as it would be if the job ended now, so the finished tiles show what
+   the model made of them (specs/15-post-hoc-resize.md). Under the tile grid
+   and the selection box, and never in the way of a drag. */
+.gallery-job-picture {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+}
+
 /* The tiles a redraw would run, drawn over the picture (specs/27-redraw.md):
    one pass of the model each, and the brighter bands where two of them overlap
    and are feathered together. Under the selection box, clipped to the picture
@@ -1340,13 +1354,6 @@ select.select:focus {
   background: transparent;
 }
 
-/* The tile as the model made it, laid exactly where it belongs. */
-.gallery-tile-image {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: fill;
-}
 
 .gallery-tile.is-running {
   border: 2px solid rgba(255, 224, 138, 0.95);

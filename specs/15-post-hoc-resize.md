@@ -41,13 +41,21 @@ is 26; the redraw pass that usually follows is 27.
 - **A running job's tiles are drawn over its picture**, each in the state it is
   in: done, running, still to come (`PostProcessJob.tiles` in the source's own
   pixels, in the order they run, with `progress.completed` saying where the
-  model is). **A tile that is done shows what the model made of it** —
-  `GET /api/post-process-jobs/{id}/tiles/{index}?side=512`
-  (`PostProcessJobs.tilePreview`, the file scaled for the screen, 404 until
-  that tile exists) — so the result appears piece by piece over the original
-  as the job goes. What lies on disk is the *finished* tile: a job that
-  finishes its tiles (an edit's composite, 39) writes that, which is also what
-  a resume repaints. A job's grid replaces the
+  model is). **What the done tiles made is shown as one picture** — the job's
+  result as it would be if it ended now: the source under the tiles still to
+  come, the finished tiles blended in with the job's own ramps, a partial
+  redraw's paste applied (`LivePicture`). It is painted on a thread of its own
+  as each tile lands, so neither the blend nor an encode ever holds up the
+  next tile, and laid over the picture whole —
+  `GET /api/post-process-jobs/{id}/picture?side=2048&v=<paintedTiles>`, the
+  job's `paintedTiles` making each painted tile a new address. The header's
+  **⤢ Full size so far** opens the same picture without `side`, at full
+  resolution. A paused job writes its picture beside its log
+  (`postprocess-<id>-picture.png`, scaled copies cached beside it), so it is
+  still shown after a restart; a resume, a cancel or the end of the job drops
+  it. What lies on disk per tile is the *finished* tile: a job that finishes
+  its tiles (an edit's composite, 39) writes that, which is also what a resume
+  repaints. A job's grid replaces the
   panel's while it is on that image, and a paused job keeps showing what it
   did. `TileState` and the `is-done` / `is-running` / `is-waiting` classes.
 - **What is left, in words**: after each tile a job records what a tile has

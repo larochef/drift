@@ -259,6 +259,25 @@ class GenerationDetail(
       })
       .distinct
 
+  /** The picture a job on this output has made so far, at full resolution in a
+    * tab of its own — what the finished tiles look like before the job ends.
+    */
+  private def jobPictureLink: Signal[Option[HtmlElement]] =
+    picture.jobPicture
+      .map(_.map(_.fullSize))
+      .distinct
+      .map(_.map { url =>
+        a(
+          cls := "button is-small gallery-full-size",
+          href := url,
+          rel := "external",
+          target := "_blank",
+          title := "the picture as the job has made it so far, at full " +
+            "resolution, in a new tab",
+          "⤢ Full size so far"
+        )
+      })
+
   private val parameters = GenerationParameters(generation, configurationLabel)
 
   /** The configuration picked to try the task on; empty, or one no longer
@@ -327,6 +346,7 @@ class GenerationDetail(
         ),
         compareToggle,
         child.maybe <-- fullSizeLink,
+        child.maybe <-- jobPictureLink,
         button(
           cls := "button is-small gallery-panel-toggle",
           child.text <-- panelHidden.signal.map(hidden =>
@@ -357,6 +377,7 @@ class GenerationDetail(
               picture.viewed,
               picture.redrawGeometry.signal,
               picture.drawnTiles,
+              picture.jobPicture.map(_.map(_.screen)).distinct,
               picture.showTileGrid.signal,
               picture.gridOffset
             ).element

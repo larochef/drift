@@ -145,7 +145,8 @@ class AppShell(
               runtimeService,
               logService,
               prerequisites,
-              section
+              section,
+              browsers
             ).element
           }
         },

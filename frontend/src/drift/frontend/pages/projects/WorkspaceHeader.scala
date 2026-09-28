@@ -23,7 +23,16 @@ class WorkspaceHeader(
     projectService: ProjectService,
     sessionService: SessionService,
     sessions: WorkspaceSessions,
-    prerequisites: LaunchPrerequisites
+    prerequisites: LaunchPrerequisites,
+    /** The modal creating a configuration of a tool, for a project of a kind
+      * (none: any), and what to do with the one created — a picker's **+ New**.
+      */
+    newConfiguration: (
+        RuntimeTool,
+        Option[ProjectKind],
+        RunConfiguration => Unit,
+        () => Unit
+    ) => HtmlElement
 ) extends Component {
 
   // Editing state apart from the text: the signal that builds an editor
@@ -109,7 +118,7 @@ class WorkspaceHeader(
     */
   private def modelPicker(
       tool: RuntimeTool,
-      title: Signal[String],
+      heading: Signal[String],
       /** The project's kind, which narrows the list to the models making it. */
       kind: Signal[Option[ProjectKind]]
   ): HtmlElement = {
@@ -118,12 +127,40 @@ class WorkspaceHeader(
     // 2026-09-28). Picking again, or the empty entry, replaces it.
     val picked = Var(Option.empty[String])
 
+    /** A configuration created from **+ New**, picked once the cache has a word
+      * on each of its models — a model registered with it has none yet, and no
+      * word reads as nothing missing.
+      */
+    val created = Var(Option.empty[String])
+    val creating = Var(false)
+
     def launch(id: String, live: Option[(String, String)]): Unit = {
       live.foreach((sessionId, _) =>
         sessionService.push(SessionService.Command.Stop(sessionId))
       )
       sessionService.push(SessionService.Command.Launch(id, None))
     }
+
+    /** What picking `id` in the select does: launch it, or — lacking weights or
+      * a runtime — keep it picked while they come.
+      */
+    def choose(
+        id: String,
+        live: Option[(String, String)],
+        missing: Map[String, LaunchPrerequisites.Missing]
+    ): Unit =
+      if (live.exists(_._2 == id)) picked.set(None)
+      else
+        missing.get(id) match {
+          // Kept until it can launch; the runtime is chosen in the notice
+          // beside the picker.
+          case Some(lacks) =>
+            picked.set(Some(id))
+            lacks.weights.foreach(w => prerequisites.download(w.idle))
+          case None =>
+            picked.set(None)
+            launch(id, live)
+        }
 
     div(
       cls := "field is-grouped is-align-items-center mb-0",
@@ -141,7 +178,26 @@ class WorkspaceHeader(
             if (!live.exists(_._2 == id)) launch(id, live)
           }
         },
-      span(cls := "text-secondary is-size-7 mr-2", child.text <-- title),
+      created.signal
+        .combineWith(
+          prerequisites.unsettled,
+          prerequisites.byConfiguration,
+          sessions.liveKey(tool)
+        )
+        --> Observer[
+          (
+              Option[String],
+              Set[String],
+              Map[String, LaunchPrerequisites.Missing],
+              Option[(String, String)]
+          )
+        ] { (fresh, unsettled, missing, live) =>
+          fresh.filterNot(unsettled.contains).foreach { id =>
+            created.set(None)
+            choose(id, live, missing)
+          }
+        },
+      span(cls := "text-secondary is-size-7 mr-2", child.text <-- heading),
       child <-- sessions
         .liveKey(tool)
         .combineWith(
@@ -163,18 +219,7 @@ class WorkspaceHeader(
               cls := "select is-small",
               onChange.mapToValue --> Observer[String] { id =>
                 if (id.isEmpty) picked.set(None)
-                else if (!liveConfiguration.contains(id))
-                  missing.get(id) match {
-                    // Kept until it can launch; the runtime is chosen in the
-                    // notice beside the picker.
-                    case Some(lacks) =>
-                      picked.set(Some(id))
-                      lacks.weights.foreach(w => prerequisites.download(w.idle))
-                    case None =>
-                      picked.set(None)
-                      launch(id, live)
-                  }
-                else picked.set(None)
+                else choose(id, live, missing)
               },
               option(
                 value := "",
@@ -235,6 +280,31 @@ class WorkspaceHeader(
               )
             )
         ),
+      div(
+        cls := "control",
+        button(
+          cls := "button is-small is-info",
+          span(cls := "plus-icon", "+"),
+          " New",
+          title <-- heading.map(name =>
+            s"Create a configuration for the ${name.toLowerCase} and pick it"
+          ),
+          onClick --> (_ => creating.set(true))
+        )
+      ),
+      child <-- creating.signal.combineWith(kind).map {
+        case (false, _)   => emptyNode
+        case (true, kind) =>
+          newConfiguration(
+            tool,
+            kind,
+            configuration => {
+              prerequisites.refreshCache()
+              created.set(Some(configuration.id))
+            },
+            () => creating.set(false)
+          )
+      },
       child <-- sessions.liveStatus(tool).map {
         case Some(status) =>
           span(

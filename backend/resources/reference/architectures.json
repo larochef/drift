@@ -1128,7 +1128,7 @@
       },
       {
         "name": "text-encoder",
-        "familyId": "t5xxl",
+        "familyId": "umt5-xxl",
         "flag": "--t5xxl",
         "required": true
       },
@@ -1180,7 +1180,7 @@
       },
       {
         "name": "text-encoder",
-        "familyId": "t5xxl",
+        "familyId": "umt5-xxl",
         "flag": "--t5xxl",
         "required": true
       },

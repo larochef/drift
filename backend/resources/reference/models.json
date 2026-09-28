@@ -222,7 +222,7 @@
   },
   {
     "id": "umt5-xxl-encoder-q8-0",
-    "familyId": "t5xxl",
+    "familyId": "umt5-xxl",
     "label": "umt5-xxl-encoder-Q8_0",
     "source": {
       "type": "huggingface",

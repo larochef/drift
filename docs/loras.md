@@ -99,7 +99,7 @@ Each installed LoRA shows:
 The generation form has a LoRA picker:
 
 - Search by name, trigger word, tag or description. The **NSFW** checkbox
-  (on by default) includes LoRAs filed under nsfw.
+  (off by default) includes LoRAs filed under nsfw.
 - Adding a LoRA shows a strength input seeded from its default and its
   trigger words as one-click inserts into the prompt. Nothing is inserted for
   you; the prompt is yours.

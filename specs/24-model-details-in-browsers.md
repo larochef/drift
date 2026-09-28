@@ -50,7 +50,7 @@ images posted with it, next to its file list.
   (newest by default): the author's own showcase first, then posts from
   Civitai's image search ten at a time, re-sortable, **Load More** for the
   next ten. A tile opens a viewer (full size, videos with controls) linking to
-  the post on civitai.com. **Include NSFW** (on by default) and **Play
+  the post on civitai.com. **Include NSFW** (off by default) and **Play
   videos** switches sit in the toolbar; off, tiles load stills only.
 - Failures say why beside a **Retry** that re-sends exactly what failed; the
   cursor advances only on success. The opened repository has one of its own,

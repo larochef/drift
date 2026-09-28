@@ -308,7 +308,7 @@ def civitaiEndpoints(
         limit.getOrElse(20),
         cursor,
         sort,
-        nsfw.getOrElse(true)
+        nsfw.getOrElse(false)
       )
   },
   getCivitaiModelDetail.serverLogicSuccess[Identity] { modelId =>
@@ -321,7 +321,7 @@ def civitaiEndpoints(
         modelVersionId,
         sort,
         cursor,
-        nsfw.getOrElse(true)
+        nsfw.getOrElse(false)
       )
   }
 )

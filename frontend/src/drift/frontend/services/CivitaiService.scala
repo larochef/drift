@@ -15,7 +15,7 @@ object CivitaiService {
         sort: Option[String] = None,
         modelType: Option[String] = None,
         baseModels: List[String] = List.empty,
-        includeNsfw: Boolean = true
+        includeNsfw: Boolean = false
     )
 
     /** Fetch the next page of the current search and append it. */
@@ -87,7 +87,7 @@ class CivitaiService
   private val sort = Var(Option.empty[String])
   private val modelType = Var(Option.empty[String])
   private val baseModels = Var(List.empty[String])
-  private val includeNsfw = Var(true)
+  private val includeNsfw = Var(false)
   private val nextCursor = Var(Option.empty[String])
 
   /** The opened model's gallery (`specs/24`) and the query it answers — kept

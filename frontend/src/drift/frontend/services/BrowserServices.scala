@@ -13,5 +13,9 @@ case class BrowserServices(
     huggingFace: HuggingFaceService,
     modelScope: ModelScopeService,
     civitai: CivitaiService,
-    files: FileService
+    files: FileService,
+    /** The Civitai browser asks for a token before anything else when none is
+      * set: no Civitai download works without one.
+      */
+    authTokens: AuthTokenService
 )

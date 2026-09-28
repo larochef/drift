@@ -46,6 +46,22 @@ file you have already registered is marked **✓ registered** there, with the
 name it carries in drift, so you do not add it twice. The site's mark then
 shows beside the model wherever it is listed.
 
+The search depends on the slot. The architecture's own model (the diffusion
+model, Wan 2.2's high- and low-noise models, a chat model) is looked for as
+the architecture, Civitai first. Every other slot (the LLM, a text encoder,
+a VAE, a vision projector) holds a model many architectures share, so it is
+looked for by its family on HuggingFace and ModelScope: **Search for** chips
+under the search field offer the family (`qwen3-vl-8b-instruct` finds Qwen's
+releases and their GGUF quantisations) and the architecture (`Qwen Image 2.1`
+finds the repositories that repackage its text encoder and VAE). A VAE starts
+on the architecture, the rest on the family. Civitai is not offered there: it
+has no type for these files.
+
+Picking a file closes the browser and opens a window for the rest: the model's
+ID and label (suggested from the file), its source with **Change model** to
+pick again, and the parameters it asks for. **Add** registers it. Editing a
+model opens the same window with **Save**.
+
 Pick a file and the panel appears with what you picked already filled in:
 
 - the **source** is shown as it stands — the site, the repository or model, the
@@ -108,6 +124,11 @@ runs on, among its architecture's runners. Every launch uses it: the launch
 control, projects, text projects, the assistant, PiD, redraw and edit. The card
 says which one, and a runner that isn't installed is marked so. Chat models get
 configurations the same way. **New run configuration** creates one; the card's **Edit** changes it.
+
+A slot whose model isn't registered yet doesn't need a trip to the
+architectures page: **+ Add model** beside the slot opens the browser on that
+architecture, and the model you pick is registered and assigned to the slot.
+**+ Add LoRA** above the default LoRAs does the same for LoRAs.
 
 drift adds six starter configurations on first start: Flux.2 Klein 9B,
 Krea 2 Turbo and Qwen Image 2.1 for images, MiniMax H3 for video, PiD 1.5

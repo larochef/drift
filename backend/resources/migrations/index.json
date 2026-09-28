@@ -4,5 +4,6 @@
   "003-pid-runner-variants.json",
   "004-qwen38-27b.json",
   "005-flux2-dev-runner.json",
-  "006-qwen36-mtp-head.json"
+  "006-qwen36-mtp-head.json",
+  "007-umt5-xxl-family.json"
 ]

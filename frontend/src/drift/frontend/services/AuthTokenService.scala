@@ -29,12 +29,32 @@ class AuthTokenService extends ServiceErrors {
     ApiClient.stream(drift.shared.getAuthTokenSelection)
   private val setSelectionFn =
     ApiClient.stream(drift.shared.setAuthTokenSelection)
+  private val environmentFn =
+    ApiClient.stream(drift.shared.getEnvironmentAuthProviders)
 
   private val _tokens = Var(List.empty[AuthToken])
   private val _selection = Var(AuthTokenSelection())
 
   val tokens: Signal[List[AuthToken]] = _tokens.signal
   val selection: Signal[AuthTokenSelection] = _selection.signal
+
+  /** `None` until the first `Load` answers. */
+  private val _environment = Var(Option.empty[List[AuthProvider]])
+
+  /** Whether downloads from `provider` carry a token — an active saved one or
+    * its environment variable. `None` until the first `Load` answers, so a
+    * browser does not flash a token form it then takes back.
+    */
+  def hasToken(provider: AuthProvider): Signal[Option[Boolean]] =
+    _selection.signal
+      .combineWith(_environment.signal)
+      .map((selection, environment) =>
+        environment.map(fromEnvironment =>
+          activeId(selection, provider).isDefined ||
+            fromEnvironment.contains(provider)
+        )
+      )
+      .distinct
 
   private val cmdBus = new EventBus[Command]
 
@@ -54,13 +74,18 @@ class AuthTokenService extends ServiceErrors {
     cmdBus.events
       .collect { case Command.Load => () }
       .flatMapSwitch(_ =>
-        listFn(()).combineWith(getSelectionFn(())).recoverToTry
+        listFn(())
+          .combineWith(getSelectionFn(()), environmentFn(()))
+          .recoverToTry
       )
-      --> Observer[Try[(List[AuthToken], AuthTokenSelection)]] {
-        case Success((tokens, selection)) =>
+      --> Observer[
+        Try[(List[AuthToken], AuthTokenSelection, List[AuthProvider])]
+      ] {
+        case Success((tokens, selection, environment)) =>
           clearError()
           _tokens.set(tokens.sortBy(t => (t.provider.toString, t.label)))
           _selection.set(selection)
+          _environment.set(Some(environment))
         case Failure(err) => reportFailure("Loading tokens", err)
       },
     cmdBus.events

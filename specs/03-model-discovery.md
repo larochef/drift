@@ -15,6 +15,20 @@ picked there *is* the model's source, never typed.
   machine, each button carrying the site's mark; each site keeps its own
   search, filters and results. The search starts on the architecture's name
   where the site has no base-model filter for it.
+- The slot decides the search (`SourceBrowser`, `slot`). `CheckpointRef.ownModel`
+  — read off the flag: `--diffusion-model`, `--high-noise-diffusion-model`,
+  `--uncond-diffusion-model`, `--model`, `-m` — keeps the architecture-driven
+  search above. Any other slot is a component shared across architectures:
+  HuggingFace first, no Civitai, no base-model filter, and two **Search for**
+  chips (`ResultBrowser.suggestions`): the family id less an `-mmproj`/`-mtp`/
+  `-tokenizer` suffix, and the architecture's name. A family naming a VAE
+  starts on the architecture (VAE family ids match no repository), the rest on
+  the family. Wan 2.2's text encoder family is `umt5-xxl` (migration 7), which
+  is what that search needs.
+- A pick closes the browser onto a modal of its own — id, label, source with
+  **Change model**, parameters, **Add** / **Cancel** — never a panel inline in
+  the page, where what is left to do was easy to miss (François, 2026-09-28).
+  Editing a model opens the same modal with **Save**.
 - What comes back is a `ModelSource` with the fields that site needs, so the
   form shows the source read-only — site, repository or model, file, and the
   weight format read off the name — with **Change model** to pick another. The
@@ -27,7 +41,7 @@ picked there *is* the model's source, never typed.
   updated, recently created) and **Load More** paging, then the chosen repository
   with **Files** and **Model card** tabs.
 - **Civitai** — search filtered by the architecture's Civitai base models and a
-  sort, cursor-paged with **Load More**, an **Include NSFW** checkbox (default on),
+  sort, cursor-paged with **Load More**, an **Include NSFW** checkbox (default off),
   cards with image and video previews; the chosen model shows **Files**, **About**
   and **Images** tabs, files grouped by version. The same browser installs LoRAs
   and upscalers in other modes ([`09`](09-lora-management.md), [`10`](10-generation-time-upscaling.md)).
@@ -71,6 +85,11 @@ picked there *is* the model's source, never typed.
   backend `routes/{HuggingFaceRoutes,CivitaiRoutes,ModelScopeRoutes,FileRoutes}.scala`.
 - Civitai calls carry the active Civitai token (`AuthTokens`), which is what makes
   account-gated models visible.
+- With no Civitai token (none active, `CIVITAI_API_TOKEN` unset — the backend
+  reports which variables are set at `GET /api/auth-token-environment`), the
+  Civitai browser shows `AuthTokenForm` for a Civitai token in place of its
+  search; saving makes it active and the browser swaps in. The same form is the
+  body of Settings' add-token modal.
 
 ## Notes
 

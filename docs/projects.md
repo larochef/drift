@@ -31,6 +31,12 @@ Open a project to get its workspace, in three columns.
   current one if needed. The **Assistant** picker does the same for chat
   models (see [assistant.md](assistant.md)). A model that is live but of the
   other kind is still listed, marked as such.
+  **+ New** beside each picker creates a run configuration without leaving the
+  project: the same form as the run configurations page, offering only the
+  architectures that make what the project makes (a chat model for the
+  assistant). Once created it is picked, as if chosen in the list: it
+  launches, or its weights start downloading and it launches when they are
+  on disk.
 - **Versions**, on the left, newest first. Each card is the version number
   plus thumbnails of what it made; hover for its note, origin, model and
   prompts. Click a version to load its recipe into the form. **compare**

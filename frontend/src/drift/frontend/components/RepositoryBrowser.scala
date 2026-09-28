@@ -55,7 +55,9 @@ abstract class RepositoryBrowser(
       */
     onInstall: Option[(String, List[String], LoraGrouping) => Unit],
     /** The row of sources `SourceBrowser` puts in the modal's head. */
-    sourceSwitch: Mod[HtmlElement]
+    sourceSwitch: Mod[HtmlElement],
+    /** One-click searches under the field (`ResultBrowser`). */
+    suggestions: List[String]
 ) extends Component {
 
   // ------------------------------------------------- what each site must say
@@ -179,6 +181,7 @@ abstract class RepositoryBrowser(
     sourceSwitch = sourceSwitch,
     query = searchQuery,
     onSearch = () => search(),
+    suggestions = suggestions,
     filters = filters,
     emptyText = emptyText,
     searched = searched,

@@ -17,8 +17,8 @@ class LoraPicker(
     architectureId: Signal[Option[String]],
     selectedIds: Var[List[String]],
     strengths: Var[Map[String, String]],
-    // Default checked, per François: the checkbox exists to hide, not to gate.
-    includeNsfw: Var[Boolean] = Var(true),
+    // Unchecked by default, per François.
+    includeNsfw: Var[Boolean] = Var(false),
     /** The LoRA paths the live server listed at its launch; a selected LoRA
       * whose files it does not list needs a restart. None where no server is
       * involved.

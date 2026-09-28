@@ -170,6 +170,26 @@ class LaunchPrerequisites(
       }
       .distinct
 
+  /** The configurations assigning a model the cache has no word on yet — one
+    * just registered: what they lack is unknown, not nothing, so nothing may
+    * launch them on the strength of `byConfiguration` alone.
+    */
+  val unsettled: Signal[Set[String]] =
+    runConfigurationService.runConfigurations
+      .combineWith(cacheService.statuses)
+      .map((configurations, cache) =>
+        configurations
+          .filter(_.assignments.values.exists(id => !cache.contains(id)))
+          .map(_.id)
+          .toSet
+      )
+      .distinct
+
+  /** Asks the cache for every model's state again: a model registered since the
+    * last answer has none.
+    */
+  def refreshCache(): Unit = cacheService.push(CacheService.Command.Load)
+
   private val weights: Signal[Map[String, PendingWeights]] =
     lacking
       .combineWith(downloadService.jobs)

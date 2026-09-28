@@ -24,6 +24,13 @@ them.
     two pickers — the image (or video) model and the assistant — listing that
     tool's configurations with the live one marked; picking another stops the
     live session and launches the pick.
+  - **+ New** beside each picker opens `NewRunConfigurationModal` (the run
+    configurations page's own), its architectures narrowed to the picker's
+    tool and the project's kind. The created configuration is picked as a
+    select change would — launch, or download and wait — once
+    `LaunchPrerequisites.unsettled` no longer lists it: a model registered
+    with it has no cache state yet, which would otherwise read as nothing
+    missing.
   - Versions column on the left, newest first: number plus thumbnails of what
     the version made; origin, note, configuration and prompts in the tooltip.
     Clicking a version seeds the generation panel from its recipe. A

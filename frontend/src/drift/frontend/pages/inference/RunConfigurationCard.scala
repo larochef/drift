@@ -91,7 +91,8 @@ class RunConfigurationCard(
         LaunchOrDownload(
           missing,
           prerequisites,
-          span(
+          div(
+            cls := "run-configuration-launch-controls",
             runtimeSelect,
             button(
               cls := "button is-primary is-small",

@@ -332,6 +332,17 @@ private[storage] object Migrations {
         record.obj("runner") = tool
         record
       }
+    },
+    // `specs/03`: a checkpoint slot's family is what the browser searches,
+    // and Wan 2.2's text encoder is umt5-xxl — `t5xxl` found Google's T5s
+    "umt5-xxl-family" -> { (record, _) =>
+      val slots = record.obj.get("checkpoints").map(_.arr).getOrElse(Nil)
+      val renamed =
+        slots.filter(_.obj.get("familyId").contains(ujson.Str("t5xxl")))
+      Option.when(renamed.nonEmpty) {
+        renamed.foreach(_.obj("familyId") = ujson.Str("umt5-xxl"))
+        record
+      }
     }
   )
 

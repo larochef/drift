@@ -1,14 +1,15 @@
 package drift.frontend.pages.inference
 
 import drift.frontend.components.*
-import drift.frontend.services.{BrowserServices, LoraService}
+import drift.frontend.services.{BrowserServices, LoraService, ModelService}
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
 
 class RunConfigurationForm(
     architectures: Signal[List[Architecture]],
-    allModels: Signal[List[Model]],
+    /** The registered models, and where a slot's missing one is created. */
+    modelService: ModelService,
     /** The installed LoRAs — the default LoRAs' choice — and the way to add
       * more to the architecture.
       */
@@ -21,6 +22,7 @@ class RunConfigurationForm(
     /** The installed runtimes, to say which runners are there (`specs/43`). */
     runtimes: Signal[List[Runtime]] = Val(Nil)
 ) extends Component {
+  private val allModels = modelService.allModels
   private val idVar = Var("")
 
   /** The engine it runs on; the architecture's first runner until chosen. */
@@ -200,10 +202,10 @@ class RunConfigurationForm(
         .runnerField(selectedArchitecture, runtimes, runnerVar),
       child <-- archIdVar.signal.combineWith(architectures).map {
         (archId, archs) =>
-          val arch = archs.find(_.id == archId)
           CheckpointAssignments(
-            arch.map(_.checkpoints).getOrElse(Nil),
-            allModels,
+            archs.find(_.id == archId),
+            modelService,
+            browsers,
             assignments
           ).element
       },

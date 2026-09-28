@@ -18,6 +18,8 @@ object AuthProvider {
   // tapir's derivation in agreement (see RuntimeBackend).
   given Schema[AuthProvider] =
     Schema.derivedEnumeration[AuthProvider].defaultStringBased
+  given JsonValueCodec[List[AuthProvider]] =
+    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
 }
 
 /** One saved API token. Several can coexist per provider (different accounts, a
@@ -89,6 +91,16 @@ val deleteAuthToken: PublicEndpoint[String, Unit, Boolean, Any] =
 
 val getAuthTokenSelection: PublicEndpoint[Unit, Unit, AuthTokenSelection, Any] =
   authBase.get.in("auth-token-selection").out(jsonBody[AuthTokenSelection])
+
+/** The providers whose environment variable carries a token — the fallback a
+  * browser counts as a token, since the frontend cannot read the backend's
+  * environment. Never the values themselves.
+  */
+val getEnvironmentAuthProviders
+    : PublicEndpoint[Unit, Unit, List[AuthProvider], Any] =
+  authBase.get
+    .in("auth-token-environment")
+    .out(jsonBody[List[AuthProvider]])
 
 /** Takes effect immediately: the download paths resolve the active token per
   * request rather than at startup, so no restart is needed.

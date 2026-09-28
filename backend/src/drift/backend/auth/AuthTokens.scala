@@ -1,7 +1,7 @@
 package drift.backend.auth
 
 import drift.backend.storage.StorageService
-import drift.shared.{AuthToken, AuthTokenSelection}
+import drift.shared.{AuthProvider, AuthToken, AuthTokenSelection}
 
 /** Resolves the token the download paths should send, live per request — a
   * token saved in Settings works without a server restart, which is the whole
@@ -36,6 +36,18 @@ final class AuthTokens(storage: StorageService) {
     selection.modelScopeTokenId
       .flatMap(tokenValue)
       .orElse(sys.env.get("MODELSCOPE_API_TOKEN"))
+
+  /** The providers whose environment variable carries a non-blank token. */
+  def fromEnvironment: List[AuthProvider] =
+    List(
+      AuthProvider.Civitai -> "CIVITAI_API_TOKEN",
+      AuthProvider.HuggingFace -> "HF_TOKEN",
+      AuthProvider.ModelScope -> "MODELSCOPE_API_TOKEN"
+    ).collect {
+      case (provider, variable)
+          if sys.env.get(variable).exists(_.trim.nonEmpty) =>
+        provider
+    }
 
   private def tokenValue(id: String): Option[String] =
     storage

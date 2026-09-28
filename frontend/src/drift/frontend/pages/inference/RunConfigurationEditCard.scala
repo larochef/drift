@@ -1,7 +1,7 @@
 package drift.frontend.pages.inference
 
 import drift.frontend.components.*
-import drift.frontend.services.{BrowserServices, LoraService}
+import drift.frontend.services.{BrowserServices, LoraService, ModelService}
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -13,7 +13,8 @@ class RunConfigurationEditCard(
       * LoRAs, which only sd-cpp does.
       */
     architecture: Option[Architecture],
-    allModels: Signal[List[Model]],
+    /** The registered models, and where a slot's missing one is created. */
+    modelService: ModelService,
     /** The installed LoRAs — the default LoRAs' choice — and the way to add
       * more to the architecture.
       */
@@ -23,6 +24,7 @@ class RunConfigurationEditCard(
     /** The installed runtimes, to say which runners are there (`specs/43`). */
     runtimes: Signal[List[Runtime]] = Val(Nil)
 ) extends Component {
+  private val allModels = modelService.allModels
   private val labelVar = Var(rm.label)
   private val runnerVar = Var(rm.runner)
   private val assistantTemplateVar = Var(rm.assistantTemplateId)
@@ -81,15 +83,12 @@ class RunConfigurationEditCard(
         p(cls := "text-secondary", rm.architectureId)
       ),
       RunConfigurationForm.runnerField(Val(architecture), runtimes, runnerVar),
-      div(
-        cls := "field",
-        label(cls := "label text-primary", "Checkpoint assignments"),
-        CheckpointAssignments(
-          architecture.map(_.checkpoints).getOrElse(Nil),
-          allModels,
-          assignments
-        ).element
-      ),
+      CheckpointAssignments(
+        architecture,
+        modelService,
+        browsers,
+        assignments
+      ).element,
       // The assistant prompt an image or video configuration prefers; a chat
       // configuration is the assistant.
       if (architecture.exists(_.tool == RuntimeTool.SdCpp))

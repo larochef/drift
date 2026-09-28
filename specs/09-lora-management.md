@@ -42,7 +42,7 @@ sends paths and weights per request.
   and previews, and queues one download per file.
 - The generation form's picker (`components/LoraPicker.scala`, also used by
   the run configuration form, `28`) searches label, trigger words, tags and
-  description, has an **NSFW** checkbox (on by default), seeds the strength
+  description, has an **NSFW** checkbox (off by default), seeds the strength
   from the LoRA's default, inserts trigger words into the prompt on click, and
   marks "⚠ needs restart" any file the live session's `capabilities.loras`
   does not list.

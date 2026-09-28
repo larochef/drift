@@ -32,6 +32,10 @@ class ResultBrowser(
     query: Var[String],
     onSearch: () => Unit,
     searchHint: String = "Search models...",
+    /** Searches worth one click, as chips under the field: a component's family
+      * and the architecture it comes packaged with.
+      */
+    suggestions: List[String] = Nil,
     /** The site's own controls, under the search field. */
     filters: Seq[Mod[HtmlElement]] = Nil,
     /** Said when a search came back with nothing. */
@@ -90,6 +94,23 @@ class ResultBrowser(
 
   private lazy val searchView: HtmlElement = div(
     SearchField(query, service.searching, onSearch, hint = searchHint),
+    if (suggestions.isEmpty) emptyNode
+    else
+      div(
+        cls := "buttons are-small mb-2",
+        span(cls := "text-secondary is-size-7 mr-2", "Search for"),
+        suggestions.map(suggestion =>
+          button(
+            cls := "button is-rounded",
+            cls("is-info") <-- query.signal.map(_.trim == suggestion),
+            suggestion,
+            onClick --> { _ =>
+              query.set(suggestion)
+              onSearch()
+            }
+          )
+        )
+      ),
     filters,
     ResultsPlaceholder(
       busy = service.searching,

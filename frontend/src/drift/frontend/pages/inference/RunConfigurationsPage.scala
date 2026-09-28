@@ -50,15 +50,15 @@ class RunConfigurationsPage(
     */
   private val selectedRuntimeIds = Var(Map.empty[String, String])
 
-  private val createForm =
-    RunConfigurationForm(
-      toolArchitectures,
-      service.allModels,
-      loraService,
-      browsers,
-      assistantService.library.ofKind(PromptKind.AssistantSystem),
-      runtimeService.runtimes
-    )
+  private val createModal = NewRunConfigurationModal(
+    service,
+    toolArchitectures,
+    loraService,
+    browsers,
+    assistantService.library.ofKind(PromptKind.AssistantSystem),
+    runtimeService.runtimes,
+    onClose = () => showForm.set(false)
+  )
 
   /** The configuration being edited, in the edit modal — creating and editing
     * both happen in a modal, never in place, so the grid never moves under the
@@ -238,12 +238,6 @@ class RunConfigurationsPage(
     case Local(path)               => path
   }
 
-  private def handleCreate(): Unit = {
-    val rm = createForm.snapshot()
-    if (rm.id.nonEmpty && rm.label.nonEmpty && rm.architectureId.nonEmpty)
-      service.push(Command.Create(rm))
-  }
-
   private def handleDelete(id: String): Unit =
     service.push(Command.Delete(id))
 
@@ -263,7 +257,7 @@ class RunConfigurationsPage(
         RunConfigurationEditCard(
           rm,
           architecture,
-          service.allModels,
+          service.modelService,
           loraService,
           browsers,
           assistantService.library.ofKind(PromptKind.AssistantSystem),
@@ -418,25 +412,12 @@ class RunConfigurationsPage(
       )
     ),
     hr(),
-    child <-- showForm.signal.map {
-      case false => emptyNode
-      case true  =>
-        configurationModal(
-          "New run configuration",
-          createForm.element,
-          button(
-            cls := "button is-success",
-            span(cls := "plus-icon", "+"),
-            " Create",
-            onClick --> (_ => handleCreate())
-          ),
-          () => showForm.set(false)
-        )
-    },
+    child <-- showForm.signal.map(if (_) createModal.element else emptyNode),
     child <-- editCard.signal.map {
       case None       => emptyNode
       case Some(card) =>
-        configurationModal(
+        NewRunConfigurationModal.frame(
+          service,
           s"Edit: ${card.rm.label}",
           card.element,
           button(
@@ -452,32 +433,6 @@ class RunConfigurationsPage(
       children <-- viewData
     )
   )
-
-  /** Creating or editing a configuration: the form in a modal, with the
-    * service's errors inside it \u2014 a refused save would otherwise explain
-    * itself behind the backdrop \u2014 and the confirming button beside Cancel.
-    */
-  private def configurationModal(
-      title: String,
-      form: HtmlElement,
-      confirm: HtmlElement,
-      onCancel: () => Unit
-  ): HtmlElement =
-    BrowserModal(
-      title = Val(title),
-      body = Seq(ErrorBanner(service), form),
-      onCancel = onCancel,
-      footerRight = div(
-        cls := "buttons",
-        confirm,
-        button(cls := "button", "Cancel", onClick --> (_ => onCancel()))
-      ),
-      modalMods = Seq(
-        documentEvents(_.onKeyDown).filter(_.key == "Escape")
-          --> (_ => onCancel())
-      ),
-      cardMods = Seq(styleAttr := "width: min(60rem, 95vw);")
-    ).element
 
   lazy val element: HtmlElement = div(
     cls := "content",
@@ -496,7 +451,6 @@ class RunConfigurationsPage(
     },
     service.architectures --> archsNow,
     service.events --> Observer {
-      case Event.Created(_) => createForm.reset(); showForm.set(false)
       case Event.Updated(_) => cancelEdit()
       case _                => ()
     },

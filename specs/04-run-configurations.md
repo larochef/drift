@@ -17,6 +17,11 @@ the launcher turns it into argv ([`07`](07-launch-and-supervision.md)).
 - **New run configuration**: label, architecture, a model per slot (dropdowns
   filtered by family), override parameters, default LoRAs
   ([`28`](28-configuration-loras.md)). An edit card offers the same fields.
+- Each slot has **+ Add model**: the architecture page's `ModelForm`, its
+  source browser opened on the configuration's architecture, then its details
+  modal. The saved model is registered in the slot's family and assigned to the
+  slot once the server has stored it. LoRAs install from the default-LoRA
+  picker's `LoraInstallButton` the same way.
 - A card carries a `ready` / `incomplete` tag. When blocked it names each reason:
   unknown architecture, an unassigned required slot, a model no longer registered,
   weights not downloaded (with a **Download missing** button and sizes, counting

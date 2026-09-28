@@ -9,9 +9,10 @@ import com.raquo.laminar.api.L.*
 /** Registers one model in a checkpoint slot (`specs/02-model-registry.md`,
   * `specs/03-model-discovery.md`), or edits one already registered. The browser
   * opens first and what is picked there *is* the source — none of it is typed
-  * (François, 2026-09-17) — then this panel takes the id and the label to save
-  * it under, shows the source as it stands, and offers the way back to the
-  * browser.
+  * (François, 2026-09-17) — then a modal of its own takes the id and the label
+  * to save it under, shows the source as it stands, and offers the way back to
+  * the browser. A modal, not a panel in the page, so what is left to do after
+  * the browser closes cannot be missed (François, 2026-09-28).
   *
   * Editing starts from the stored model instead, with the browser closed and
   * the id fixed: the id is the file name and every run configuration assigns by
@@ -29,8 +30,14 @@ class ModelForm(
       * add, so the panel goes away with it.
       */
     onCancel: () => Unit,
+    /** The model to store; the caller closes the form. */
+    onSave: Model => Unit,
     /** The model being edited, none meaning a new one. */
-    editing: Option[Model] = None
+    editing: Option[Model] = None,
+    /** The slot it is for: how the browser searches (`SourceBrowser`), and the
+      * modal's title.
+      */
+    slot: Option[CheckpointRef] = None
 ) extends Component {
 
   private val source = Var(editing.map(_.source))
@@ -89,12 +96,20 @@ class ModelForm(
     browsing.set(false)
   }
 
+  private def save(): Unit = snapshot().foreach(onSave)
+
+  private val heading: String = editing match {
+    case Some(stored) => s"Edit ${stored.label}"
+    case None         =>
+      slot.fold("Add a model")(ref => s"Add a ${ref.name} model")
+  }
+
   lazy val element: HtmlElement = div(
-    child <-- source.signal.map {
-      case Some(picked) => panel(picked)
-      // The browser is up and nothing is picked yet: there is nothing to say
-      // behind it.
-      case None => emptyNode
+    // Behind the browser there is nothing to show: the details modal comes
+    // back once it closes on a pick.
+    child <-- source.signal.combineWith(browsing.signal).map {
+      case (Some(picked), false) => details(picked)
+      case _                     => emptyNode
     },
     child <-- browsing.signal.map {
       case false => emptyNode
@@ -103,6 +118,7 @@ class ModelForm(
           browsers = browsers,
           architecture = architecture,
           forLoras = false,
+          slot = slot,
           installed = allModels.map(Installed.models),
           onFile = (picked, label) => pick(picked, label),
           onCancel = () => {
@@ -113,8 +129,23 @@ class ModelForm(
     }
   )
 
+  private def details(picked: ModelSource): HtmlElement = BrowserModal(
+    title = Val(heading),
+    onCancel = onCancel,
+    body = Seq(panel(picked)),
+    footerRight = div(
+      cls := "buttons",
+      button(
+        cls := "button is-success",
+        if (editing.isDefined) "Save" else "Add",
+        disabled <-- ready.map(!_),
+        onClick --> (_ => save())
+      ),
+      BrowserModal.cancelButton(onCancel)
+    )
+  ).element
+
   private def panel(picked: ModelSource): HtmlElement = div(
-    cls := "card bg-table-header card-content",
     div(
       cls := "columns",
       div(

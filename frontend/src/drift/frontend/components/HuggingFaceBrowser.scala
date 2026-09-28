@@ -31,7 +31,8 @@ class HuggingFaceBrowser(
     // `RepositoryBrowser`, which is what uses them.
     installed: Signal[Installed] = Val(Installed.none),
     onInstall: Option[(String, List[String], LoraGrouping) => Unit] = None,
-    sourceSwitch: Mod[HtmlElement] = emptyNode
+    sourceSwitch: Mod[HtmlElement] = emptyNode,
+    suggestions: List[String] = Nil
 ) extends RepositoryBrowser(
       initialQuery,
       onSelect,
@@ -40,7 +41,8 @@ class HuggingFaceBrowser(
       forLoras,
       installed,
       onInstall,
-      sourceSwitch
+      sourceSwitch,
+      suggestions
     ) {
 
   private val sortOptions = List(

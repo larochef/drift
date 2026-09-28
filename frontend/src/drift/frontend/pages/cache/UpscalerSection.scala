@@ -193,6 +193,7 @@ class UpscalerSection(
       case true  =>
         CivitaiBrowser(
           service = browsers.civitai,
+          authTokens = browsers.authTokens,
           initialQuery = "",
           initialModelType = Some("UPSCALER"),
           civitaiBaseModels = List.empty,

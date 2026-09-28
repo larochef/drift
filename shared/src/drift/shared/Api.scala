@@ -189,7 +189,23 @@ case class CheckpointRef(
       */
     flag: String,
     required: Boolean = true
-)
+) {
+
+  /** The architecture's own model — what makes it this architecture — rather
+    * than a component it shares with others (a text encoder, a VAE, a vision
+    * projector…): read off the flag it is passed with.
+    */
+  def ownModel: Boolean = CheckpointRef.ownModelFlags.contains(flag)
+}
+object CheckpointRef {
+  private val ownModelFlags = Set(
+    "--diffusion-model",
+    "--high-noise-diffusion-model",
+    "--uncond-diffusion-model",
+    "--model",
+    "-m"
+  )
+}
 
 enum ModelSourceType derives CanEqual {
   case HuggingFace, ModelScope, Civitai, Local

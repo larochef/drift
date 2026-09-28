@@ -1,6 +1,6 @@
 package drift.frontend.components
 
-import drift.frontend.services.CivitaiService
+import drift.frontend.services.{AuthTokenService, CivitaiService}
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -14,6 +14,7 @@ import com.raquo.laminar.api.L.*
   */
 class CivitaiBrowser(
     service: CivitaiService,
+    authTokens: AuthTokenService,
     initialQuery: String,
     initialModelType: Option[String] = Some("CHECKPOINT"),
     civitaiBaseModels: List[String] = List.empty,
@@ -63,17 +64,61 @@ class CivitaiBrowser(
   private val sortFilter = Var(sortOptions.head._1)
   private val baseModelsVar = Var(civitaiBaseModels)
   // Sent explicitly either way — Civitai's absent-parameter default hides
-  // models the site shows, some of them SFW-flagged (bugs/19).
-  private val includeNsfw = Var(true)
+  // models the site shows, some of them SFW-flagged (bugs/19). Off by
+  // default, per François.
+  private val includeNsfw = Var(false)
 
-  lazy val element: HtmlElement = {
-    // Before anything renders: stale results of another context never show.
-    service.enterContext(
-      s"${initialModelType.getOrElse("")}|${civitaiBaseModels.mkString(",")}|" +
-        initialQuery
+  /** Civitai answers every download 401 without a token, so while none is set
+    * (saved and active, or `CIVITAI_API_TOKEN`) the browser asks for one first;
+    * saving it makes it active, which swaps the browser in.
+    */
+  lazy val element: HtmlElement = div(
+    authTokens.effects,
+    onMountCallback(_ => authTokens.push(AuthTokenService.Command.Load)),
+    child <-- authTokens.hasToken(AuthProvider.Civitai).map {
+      case None        => emptyNode
+      case Some(false) => tokenRequest
+      case Some(true)  =>
+        // Before anything renders: stale results of another context never
+        // show.
+        service.enterContext(
+          s"${initialModelType.getOrElse("")}|" +
+            s"${civitaiBaseModels.mkString(",")}|$initialQuery"
+        )
+        browser.element
+    }
+  )
+
+  private lazy val tokenForm =
+    AuthTokenForm(authTokens, Some(AuthProvider.Civitai), "Civitai")
+
+  private lazy val tokenRequest: HtmlElement = BrowserModal(
+    title = Val("Civitai needs an API token"),
+    onCancel = onCancel,
+    headerAction = div(cls := "browser-head-actions", sourceSwitch),
+    modalMods = Seq(cls := "browser-modal"),
+    body = Seq(
+      ErrorBanner(authTokens),
+      p(
+        cls := "text-secondary mb-4",
+        "Civitai refuses downloads without an API key. Create one under ",
+        a(
+          href := "https://civitai.com/user/account",
+          target := "_blank",
+          rel := "noopener noreferrer",
+          "API Keys in your Civitai account settings"
+        ),
+        " and paste it here; it is saved in Settings → Authentication and ",
+        "sent to civitai.com only."
+      ),
+      tokenForm.fields
+    ),
+    footerRight = div(
+      cls := "buttons",
+      tokenForm.saveButton(() => ()),
+      BrowserModal.cancelButton(onCancel)
     )
-    browser.element
-  }
+  ).element
 
   private lazy val browser = ResultBrowser(
     browsing = browsing,

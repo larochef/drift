@@ -40,7 +40,8 @@ import org.scalajs.dom
     hfService,
     ModelScopeService(),
     CivitaiService(),
-    FileService()
+    FileService(),
+    authTokenService
   )
 
   renderOnDomContentLoaded(

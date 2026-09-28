@@ -13,19 +13,11 @@ import org.scalajs.dom.window
 class AuthenticationSection(authTokenService: AuthTokenService)
     extends Component {
 
-  /** The add modal's fields. They outlive the modal, so closing and reopening
-    * does not lose what was typed; saving clears them and closes it.
+  /** The add modal's fields outlive the modal, so closing and reopening does
+    * not lose what was typed; saving clears them and closes it.
     */
   private val showAddToken = Var(false)
-  private val newTokenProvider = Var[AuthProvider](AuthProvider.Civitai)
-  private val newTokenLabel = Var("")
-  private val newTokenValue = Var("")
-
-  private def providerLabel(provider: AuthProvider): String = provider match {
-    case AuthProvider.Civitai     => "Civitai"
-    case AuthProvider.HuggingFace => "HuggingFace"
-    case AuthProvider.ModelScope  => "ModelScope"
-  }
+  private val tokenForm = AuthTokenForm(authTokenService)
 
   /** Enough to recognize a token, not enough to shoulder-surf it. */
   private def masked(token: String): String =
@@ -56,7 +48,7 @@ class AuthenticationSection(authTokenService: AuthTokenService)
             strong(token.label),
             span(
               cls := "tag is-dark is-small ml-2",
-              providerLabel(token.provider)
+              AuthTokenForm.providerLabel(token.provider)
             ),
             span(cls := "text-secondary is-size-7 ml-2", masked(token.token)),
             if (isActive)
@@ -86,54 +78,13 @@ class AuthenticationSection(authTokenService: AuthTokenService)
           onClick --> { _ =>
             if (
               window.confirm(
-                s"Delete token '${token.label}' (${providerLabel(token.provider)})?"
+                s"Delete token '${token.label}' (${AuthTokenForm.providerLabel(token.provider)})?"
               )
             ) authTokenService.push(AuthTokenService.Command.Delete(token.id))
           }
         )
       )
     )
-  }
-
-  /** Saves the typed token under an id made from its label — unique among the
-    * saved ones — then clears the fields and closes the modal.
-    */
-  private def save(tokens: List[AuthToken]): Unit = {
-    val label = newTokenLabel.now().trim
-    val token = newTokenValue.now().trim
-    if (label.nonEmpty && token.nonEmpty) {
-      val slug = label.toLowerCase
-        .map(c => if (c.isLetterOrDigit) c else '-')
-        .split('-')
-        .filter(_.nonEmpty)
-        .mkString("-") match {
-        case ""    => "token"
-        case other => other
-      }
-      val taken = tokens.map(_.id).toSet
-      val id =
-        if (!taken(slug)) slug
-        else
-          Iterator
-            .from(2)
-            .map(n => s"$slug-$n")
-            .filterNot(taken)
-            .next()
-      authTokenService.push(
-        AuthTokenService.Command.Create(
-          AuthToken(
-            id = id,
-            label = label,
-            provider = newTokenProvider.now(),
-            token = token,
-            createdAt = System.currentTimeMillis()
-          )
-        )
-      )
-      newTokenLabel.set("")
-      newTokenValue.set("")
-      showAddToken.set(false)
-    }
   }
 
   private def addTokenModal: Modifier[HtmlElement] =
@@ -160,69 +111,10 @@ class AuthenticationSection(authTokenService: AuthTokenService)
                 onClick --> (_ => showAddToken.set(false))
               )
             ),
-            sectionTag(
-              cls := "modal-card-body",
-              div(
-                cls := "field",
-                label(cls := "label text-primary", "Provider"),
-                div(
-                  cls := "select",
-                  select(
-                    onChange.mapToValue --> Observer[String] { name =>
-                      AuthProvider.values
-                        .find(_.toString == name)
-                        .foreach(newTokenProvider.set)
-                    },
-                    AuthProvider.values.toList.map(provider =>
-                      option(
-                        value := provider.toString,
-                        if (provider == newTokenProvider.now()) selected := true
-                        else emptyNode,
-                        providerLabel(provider)
-                      )
-                    )
-                  )
-                )
-              ),
-              div(
-                cls := "field",
-                label(cls := "label text-primary", "Label"),
-                input(
-                  cls := "input",
-                  placeholder := "e.g. main account",
-                  controlled(
-                    value <-- newTokenLabel.signal,
-                    onInput.mapToValue --> newTokenLabel
-                  )
-                )
-              ),
-              div(
-                cls := "field",
-                label(cls := "label text-primary", "Token"),
-                input(
-                  cls := "input",
-                  placeholder := "token",
-                  controlled(
-                    value <-- newTokenValue.signal,
-                    onInput.mapToValue --> newTokenValue
-                  )
-                )
-              )
-            ),
+            sectionTag(cls := "modal-card-body", tokenForm.fields),
             footerTag(
               cls := "modal-card-foot",
-              child <-- authTokenService.tokens.map { tokens =>
-                button(
-                  cls := "button is-primary",
-                  "Save token",
-                  disabled <-- newTokenLabel.signal
-                    .combineWith(newTokenValue.signal)
-                    .map { (label, token) =>
-                      label.trim.isEmpty || token.trim.isEmpty
-                    },
-                  onClick --> (_ => save(tokens))
-                )
-              },
+              tokenForm.saveButton(() => showAddToken.set(false)),
               button(
                 cls := "button",
                 "Cancel",

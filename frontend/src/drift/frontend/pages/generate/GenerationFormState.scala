@@ -91,8 +91,8 @@ class GenerationFormState {
     */
   val selectedLoraIdsVar = Var(List.empty[String])
   val loraStrengthsVar = Var(Map.empty[String, String])
-  // Default checked, per François: the checkbox exists to hide, not to gate.
-  val includeNsfwLorasVar = Var(true)
+  // Unchecked by default, per François.
+  val includeNsfwLorasVar = Var(false)
 
   // "Reuse these parameters" (`specs/12-gallery.md`): the recorded request
   // becomes the base the submit copies the form over, so fields the form never

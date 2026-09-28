@@ -77,7 +77,7 @@ there, and its community shares LoRAs with cover images, much like Civitai.
 - Type a query; sort by most downloaded, most liked, newest or oldest. The
   browser is already filtered to the type you came for (checkpoint, LoRA or
   upscaler) and to the base models the architecture declares.
-- **Include NSFW** (on by default) is in the toolbar.
+- **Include NSFW** (off by default) is in the toolbar.
 - An opened model shows only the versions made for the architecture you are
   adding to — installing a Wan 2.1 LoRA into Wan 2.2 is the easiest mistake to
   make. **Versions for other base models (N)** at the top of **Files** shows
@@ -125,6 +125,11 @@ for the next model you open.
 - An upscaler: same version flow, from the Model Cache's Upscalers tab.
 
 ## Tokens
+
+Civitai refuses every download without an API key, so while none is set (in
+Settings or through `CIVITAI_API_TOKEN`) the Civitai browser opens on a token
+form instead of its search: paste a key from your Civitai account settings and
+it is saved as the active Civitai token, and the browser appears.
 
 Add a HuggingFace token in [settings.md](settings.md) for gated repositories
 (their files and their cards) and a Civitai token for creator-restricted or

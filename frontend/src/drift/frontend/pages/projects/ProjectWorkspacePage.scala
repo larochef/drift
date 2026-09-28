@@ -5,6 +5,7 @@ import drift.frontend.components.*
 import drift.frontend.pages.assistant.AssistantPanel
 import drift.frontend.pages.gallery.GenerationDetailHost
 import drift.frontend.pages.generate.GenerationPanel
+import drift.frontend.pages.inference.NewRunConfigurationModal
 import drift.frontend.services.*
 import drift.frontend.services.ProjectService.Command
 import drift.shared.*
@@ -44,7 +45,9 @@ class ProjectWorkspacePage(
     /** The path past `/projects/<id>`: the generation open in the detail view,
       * and which of its outputs (`GenerationDetailHost.boundToUrl`).
       */
-    section: Signal[List[String]]
+    section: Signal[List[String]],
+    /** For a picker's **+ New**: the model browsers its form opens. */
+    browsers: BrowserServices
 ) extends Component {
 
   /** What the live image model suggests for the assistant (`specs/32`): its
@@ -257,6 +260,36 @@ class ProjectWorkspacePage(
 
   // ---------------------------------------------------------------- layout
 
+  /** A picker's **+ New** (François, 2026-09-28): the run configurations page's
+    * own modal, offering the architectures of the picker's tool that make what
+    * the project makes.
+    */
+  private def newConfiguration(
+      tool: RuntimeTool,
+      kind: Option[ProjectKind],
+      onCreated: RunConfiguration => Unit,
+      onClose: () => Unit
+  ): HtmlElement =
+    NewRunConfigurationModal(
+      runConfigurationService,
+      runConfigurationService.architectures.map(
+        _.filter(a => a.tool == tool && kind.forall(_.accepts(a)))
+      ),
+      loraService,
+      browsers,
+      assistantService.library.ofKind(PromptKind.AssistantSystem),
+      runtimeService.runtimes,
+      onClose = onClose,
+      onCreated = onCreated,
+      heading = tool match {
+        case RuntimeTool.LlamaCpp => "New chat configuration"
+        case _                    =>
+          kind.fold("New run configuration")(k =>
+            s"New ${k.noun} configuration"
+          )
+      }
+    ).element
+
   lazy val element: HtmlElement = div(
     cls := "content workspace",
     GenerationDetailHost.boundToUrl(
@@ -404,7 +437,8 @@ class ProjectWorkspacePage(
       projectService,
       sessionService,
       sessions,
-      prerequisites
+      prerequisites,
+      newConfiguration
     ).element,
     child <-- isText.map {
       case true =>

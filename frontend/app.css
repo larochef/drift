@@ -602,6 +602,47 @@ select.select:focus {
   gap: 0.5rem;
 }
 
+/* A run configuration's checkpoint slot: its name, its model and + Add model
+   on one row that wraps rather than overflows — the select shrinks first, a
+   long model label never pushes the button out of the card. */
+.checkpoint-slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.checkpoint-slot-name {
+  flex: 0 0 12rem;
+  max-width: 100%;
+}
+
+.checkpoint-slot-select {
+  flex: 1 1 12rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.checkpoint-slot-add {
+  flex: 0 0 auto;
+}
+
+/* The runtime select and Launch: spaced like the footer's other controls,
+   the button stretched to the select's height rather than Bulma's taller
+   small-button one (François, 2026-09-28). */
+.run-configuration-launch-controls {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.run-configuration-launch-controls > .button {
+  height: auto;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 /* What a model lacks before it can launch, in the launch button's place
    (specs/46): the missing-runtime notice with its install, then the weights'
    download, wrapping as one right-aligned group. */

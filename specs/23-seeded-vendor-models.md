@@ -34,7 +34,7 @@ slot of every built-in architecture of both tools.
   are the same file; `qwen3-vl-8b-instruct` serves Ideogram 4, Boogu Image and
   Qwen Image 2.1, and `qwen3-vl-8b-instruct-mmproj` Boogu Image Edit and Qwen
   Image 2.1's editing slot;
-  `mage-flow-vae`, `wan-2.1-vae`, `t5xxl`, `qwen-image-vae`, `z-image-vae`,
+  `mage-flow-vae`, `wan-2.1-vae`, `umt5-xxl`, `qwen-image-vae`, `z-image-vae`,
   `flux1-vae`, `ministral-3-3b`, `gemma-2-2b`, `gemma-2-2b-tokenizer`,
   `pid-flux2-diffusion` likewise), so one download serves every taker.
 - Nothing is downloaded at seed time; a slot's weights are fetched when a run

@@ -239,52 +239,12 @@ class ArchitectureCard(
           }
         }
       ),
-      // One panel at a time, under the models it belongs to: only one
-      // checkpoint is expanded, and opening either form closes the other.
-      child <-- editForm.signal.map {
-        case None            => emptyNode
-        case Some((_, form)) =>
-          div(
-            cls := "mt-2 mb-3",
-            form.element,
-            div(
-              cls := "buttons mt-2",
-              button(
-                cls := "button is-small is-success",
-                "Save",
-                disabled <-- form.ready.map(!_),
-                onClick --> (_ => handleEdit())
-              ),
-              button(
-                cls := "button is-small",
-                "Cancel",
-                onClick --> (_ => editForm.set(None))
-              )
-            )
-          )
-      },
+      // One form at a time, each in its own modal: opening either closes the
+      // other.
+      child <-- editForm.signal.map(_.map(_._2.element).getOrElse(emptyNode)),
       child <-- addForm.signal.map {
-        case Some((`idx`, form)) =>
-          div(
-            cls := "mt-2",
-            form.element,
-            div(
-              cls := "buttons mt-2",
-              button(
-                cls := "button is-small is-success",
-                span(cls := "plus-icon", "+"),
-                " Add",
-                disabled <-- form.ready.map(!_),
-                onClick --> (_ => handleAdd())
-              ),
-              button(
-                cls := "button is-small",
-                "Cancel",
-                onClick --> (_ => addForm.set(None))
-              )
-            )
-          )
-        case _ =>
+        case Some((`idx`, form)) => form.element
+        case _                   =>
           button(
             cls := "button is-small is-info",
             span(cls := "plus-icon", "+"),
@@ -300,7 +260,12 @@ class ArchitectureCard(
                       a,
                       cp.familyId,
                       allModels,
-                      onCancel = () => addForm.set(None)
+                      onCancel = () => addForm.set(None),
+                      onSave = model => {
+                        onAddModel(model)
+                        addForm.set(None)
+                      },
+                      slot = Some(cp)
                     )
                   )
                 )
@@ -310,14 +275,6 @@ class ArchitectureCard(
       }
     )
   }
-
-  private def handleAdd(): Unit =
-    addForm.now().foreach { case (_, form) =>
-      form.snapshot().foreach { model =>
-        onAddModel(model)
-        addForm.set(None)
-      }
-    }
 
   private def startEdit(model: Model): Unit = {
     addForm.set(None)
@@ -331,20 +288,17 @@ class ArchitectureCard(
             model.familyId,
             allModels,
             onCancel = () => editForm.set(None),
-            editing = Some(model)
+            onSave = saved => {
+              onSaveModel(saved)
+              editForm.set(None)
+            },
+            editing = Some(model),
+            slot = a.checkpoints.find(_.familyId == model.familyId)
           )
         )
       )
     )
   }
-
-  private def handleEdit(): Unit =
-    editForm.now().foreach { case (_, form) =>
-      form.snapshot().foreach { model =>
-        onSaveModel(model)
-        editForm.set(None)
-      }
-    }
 
   private def optionRow(
       label: String,

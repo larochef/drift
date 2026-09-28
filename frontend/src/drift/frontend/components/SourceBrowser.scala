@@ -31,7 +31,12 @@ class SourceBrowser(
       * finding a wan 2.2 pair often means several installs from one search.
       */
     onInstall: Option[(LoraInstallSource, LoraGrouping) => Unit] = None,
-    installed: Signal[Installed] = Val(Installed.none)
+    installed: Signal[Installed] = Val(Installed.none),
+    /** Registering a model: the slot it is for. A component — a text encoder, a
+      * VAE, a vision projector — is looked for by its family, not by the
+      * architecture (`specs/03-model-discovery.md`).
+      */
+    slot: Option[CheckpointRef] = None
 ) extends Component {
 
   /** Where the search starts. A site that filters by base model needs no name —
@@ -41,6 +46,31 @@ class SourceBrowser(
   private def searchFor(baseModels: List[String]): String =
     if (baseModels.nonEmpty) ""
     else architecture.label.replaceAll("""\s*\([^)]*\)""", "").trim
+
+  /** A slot for a model the architecture shares with others: its files are not
+    * the architecture's, and no base-model filter can find them.
+    */
+  private val component: Option[CheckpointRef] =
+    slot.filter(ref => !forLoras && !ref.ownModel)
+
+  /** What a component is searched as: its family, less the suffix naming the
+    * part of a release it is — an mmproj or an MTP head is in the same
+    * repositories as the model itself.
+    */
+  private def familyQuery(ref: CheckpointRef): String =
+    ref.familyId.replaceAll("""-(mmproj|mtp|tokenizer)$""", "")
+
+  /** A component's two searches: its family finds the standalone releases, the
+    * architecture's name the repositories that repackage it. A VAE's family
+    * rarely names a repository, so the architecture comes first there.
+    */
+  private val componentSearches: List[String] = component.toList.flatMap {
+    ref =>
+      val family = familyQuery(ref)
+      val architectureName = searchFor(Nil)
+      (if (ref.familyId.contains("vae")) List(architectureName, family)
+       else List(family, architectureName)).distinct
+  }
 
   /** Civitai hosts no chat model LoRAs (`specs/35-assistant-loras.md`), and it
     * lists LoRAs by base model: without one there is nothing it could show.
@@ -57,8 +87,11 @@ class SourceBrowser(
 
   private val offered: List[ModelSourceType] =
     List(
+      // Civitai has no type for a text encoder or a projector, and its
+      // base-model filter only finds the architecture's own checkpoints.
       Option.when(
-        !(forLoras && architecture.tool == RuntimeTool.LlamaCpp)
+        !(forLoras && architecture.tool == RuntimeTool.LlamaCpp) &&
+          component.isEmpty
       )(ModelSourceType.Civitai),
       Some(ModelSourceType.HuggingFace),
       Some(ModelSourceType.ModelScope),
@@ -116,6 +149,7 @@ class SourceBrowser(
       case ModelSourceType.Civitai =>
         CivitaiBrowser(
           service = browsers.civitai,
+          authTokens = browsers.authTokens,
           initialQuery =
             if (forLoras) "" else searchFor(architecture.civitaiBaseModels),
           initialModelType = Some(if (forLoras) "LORA" else "CHECKPOINT"),
@@ -135,7 +169,9 @@ class SourceBrowser(
           if (forLoras) architecture.huggingFaceBaseModels else Nil
         HuggingFaceBrowser(
           huggingFace = browsers.huggingFace,
-          initialQuery = searchFor(baseModels),
+          initialQuery =
+            componentSearches.headOption.getOrElse(searchFor(baseModels)),
+          suggestions = componentSearches,
           onSelect =
             (repo, file) => onFile(HuggingFace(repo, file), labelOf(file)),
           onCancel = onCancel,
@@ -156,7 +192,9 @@ class SourceBrowser(
           if (forLoras) architecture.modelScopeBaseModels else Nil
         ModelScopeBrowser(
           modelScope = browsers.modelScope,
-          initialQuery = searchFor(baseModels),
+          initialQuery =
+            componentSearches.headOption.getOrElse(searchFor(baseModels)),
+          suggestions = componentSearches,
           onSelect =
             (repo, path) => onFile(ModelScope(repo, path), labelOf(path)),
           onCancel = onCancel,

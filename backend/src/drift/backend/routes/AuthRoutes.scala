@@ -23,5 +23,8 @@ def authEndpoints(
     onDeleted = tokens.cleanupDeleted
   ) ++ List(
     getAuthTokenSelection.serverLogicSuccess[Identity](_ => tokens.selection),
-    setAuthTokenSelection.serverLogicSuccess[Identity](tokens.saveSelection)
+    setAuthTokenSelection.serverLogicSuccess[Identity](tokens.saveSelection),
+    getEnvironmentAuthProviders.serverLogicSuccess[Identity](_ =>
+      tokens.fromEnvironment
+    )
   )

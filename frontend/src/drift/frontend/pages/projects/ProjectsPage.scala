@@ -16,42 +16,13 @@ import org.scalajs.dom.window
   */
 class ProjectsPage(service: ProjectService) extends Component {
   private val showForm = Var(false)
-  private val labelVar = Var("")
-  private val briefVar = Var("")
-  private val nsfwVar = Var(false)
-  private val kindVar = Var(ProjectKind.Image)
+  private lazy val newProject =
+    NewProjectModal(service, () => showForm.set(false))
 
   /** NSFW projects stay out of the list unless asked for (François,
     * 2026-09-08); the choice lasts for the page's life.
     */
   private val showNsfw = Var(false)
-
-  private def slug(label: String): String =
-    label.toLowerCase
-      .map(c => if (c.isLetterOrDigit) c else '-')
-      .split('-')
-      .filter(_.nonEmpty)
-      .mkString("-")
-
-  private def create(): Unit = {
-    val label = labelVar.now().trim
-    if (label.nonEmpty) {
-      val now = System.currentTimeMillis()
-      service.push(
-        Command.Create(
-          Project(
-            id = s"${slug(label)}-${now % 100000}",
-            label = label,
-            brief = briefVar.now().trim,
-            createdAt = now,
-            lastUsedAt = now,
-            nsfw = nsfwVar.now(),
-            kind = kindVar.now()
-          )
-        )
-      )
-    }
-  }
 
   /** Two questions, because they have different answers (François, 2026-09-09):
     * the project always goes, and the images it made go with it only when that
@@ -180,16 +151,6 @@ class ProjectsPage(service: ProjectService) extends Component {
     cls := "content",
     service.effects,
     onMountCallback(_ => service.push(Command.Load)),
-    service.events --> Observer[ProjectService.Event] {
-      case ProjectService.Event.Created(project) =>
-        labelVar.set("")
-        briefVar.set("")
-        nsfwVar.set(false)
-        kindVar.set(ProjectKind.Image)
-        showForm.set(false)
-        Page.ProjectWorkspace(project.id).navigate()
-      case _ => ()
-    },
     ErrorBanner(service),
     div(
       cls := "level",
@@ -200,7 +161,7 @@ class ProjectsPage(service: ProjectService) extends Component {
           cls := "button is-primary",
           span(cls := "plus-icon", "+"),
           " New Project",
-          onClick --> (_ => showForm.update(!_))
+          onClick --> (_ => showForm.set(true))
         )
       )
     ),
@@ -214,98 +175,29 @@ class ProjectsPage(service: ProjectService) extends Component {
       ),
       " Show NSFW projects"
     ),
-    child <-- showForm.signal.map {
-      case false => emptyNode
-      case true  =>
-        div(
-          cls := "box bg-card p-4 mb-4",
-          div(
-            cls := "field",
-            label(cls := "label text-primary", "Name"),
-            input(
-              cls := "input",
-              placeholder := "Fox poster",
-              controlled(
-                value <-- labelVar.signal,
-                onInput.mapToValue --> labelVar
-              )
-            )
-          ),
-          div(
-            cls := "field",
-            label(cls := "label text-primary", "Brief"),
-            textArea(
-              cls := "textarea",
-              rows := 3,
-              placeholder :=
-                "What is being made, in your words — the assistant reads this",
-              controlled(
-                value <-- briefVar.signal,
-                onInput.mapToValue --> briefVar
-              )
-            )
-          ),
-          div(
-            cls := "field",
-            label(cls := "label text-primary", "Makes"),
-            div(
-              cls := "control",
-              ProjectKind.values.toList.map(kind =>
-                label(
-                  cls := "radio text-primary mr-4",
-                  input(
-                    typ := "radio",
-                    nameAttr := "project-kind",
-                    checked <-- kindVar.signal.map(_ == kind),
-                    onChange --> (_ => kindVar.set(kind))
-                  ),
-                  s" ${kind.noun.capitalize}s"
-                )
-              )
+    child <-- showForm.signal.map(if (_) newProject.element else emptyNode),
+    child <-- service.projectsLoaded
+      .combineWith(service.projects.map(_.isEmpty))
+      .distinct
+      .map {
+        case (true, true) =>
+          NewProjectModal.invitation(
+            "Start your first project",
+            List(
+              "A project is one thing you are making — a poster, a " +
+                "character, a short clip. It keeps every version of your " +
+                "prompt and everything each version made, whichever model " +
+                "ran it, so you can go back, compare and carry on.",
+              "Give it a name and a brief in your own words: the assistant " +
+                "reads the brief to help you write prompts. Then pick an " +
+                "image or video model at the top of the workspace — or " +
+                "create one there — and generate."
             ),
-            p(
-              cls := "help text-secondary",
-              "The workspace offers only the models that make them; " +
-                "changeable later"
-            )
-          ),
-          div(
-            cls := "field",
-            label(
-              cls := "checkbox text-primary",
-              input(
-                typ := "checkbox",
-                checked <-- nsfwVar.signal,
-                onChange.mapToChecked --> nsfwVar
-              ),
-              " NSFW — hidden from the list unless asked for; its LoRA picker shows the NSFW ones"
-            )
-          ),
-          div(
-            cls := "buttons",
-            button(
-              cls := "button is-success",
-              "Create",
-              disabled <-- labelVar.signal.map(_.trim.isEmpty),
-              onClick --> (_ => create())
-            ),
-            button(
-              cls := "button",
-              "Cancel",
-              onClick --> (_ => showForm.set(false))
-            )
+            () => showForm.set(true),
+            Some("Just try a model" -> (() => Page.Models.navigate()))
           )
-        )
-    },
-    child <-- service.projects.combineWith(showNsfw.signal).map {
-      (projects, _) =>
-        if (projects.isEmpty)
-          p(
-            cls := "text-secondary",
-            "No projects yet. A project keeps the versions of a prompt and every image they made, on whichever model."
-          )
-        else emptyNode
-    },
+        case _ => emptyNode
+      },
     div(
       cls := "projects-grid",
       children <-- service.projects

@@ -36,8 +36,11 @@ Always visible:
   2.2) also **high-noise steps** and **high-noise CFG**; **frames** on video.
 - **Seed** with a **Random** toggle: drift draws the seed itself and shows it,
   so every result is reproducible. Untick Random to keep a seed.
-- The LoRA picker, prefilled with the configuration's default LoRAs. See
-  [loras.md](loras.md).
+- The LoRA picker, prefilled with the configuration's default LoRAs, with
+  **+ Add LoRA** to install more. See [loras.md](loras.md).
+- **↻ Restart**, beside **Stop session**, stops the model and starts it again
+  on the same runtime, keeping the form as it is: what a LoRA installed since
+  the launch needs, and the quick way out of a server gone wrong.
 
 Folded sections, opened on click. A closed section says when it is doing
 something (an image attached, hires on, a non-default sampler):

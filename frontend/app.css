@@ -602,6 +602,73 @@ select.select:focus {
   gap: 0.5rem;
 }
 
+/* What an empty projects page or gallery says, in the middle of the page:
+   what a project is and the button that starts one (François, 2026-09-28). */
+.empty-invitation {
+  max-width: 38rem;
+  margin: 4rem auto;
+  padding: 0 1rem;
+  text-align: center;
+}
+
+/* The mosaic under it: wider than the text, square tiles, the style over the
+   bottom of each. */
+.empty-invitation .showcase {
+  width: min(52rem, 92vw);
+  margin: 3rem 0 0 50%;
+  transform: translateX(-50%);
+}
+
+/* Eight pictures, always in even rows: four across, two on a phone. */
+.showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+@media (max-width: 700px) {
+  .showcase-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.showcase-tile {
+  position: relative;
+  margin: 0;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 8px;
+  background: hsl(25, 10%, 18%);
+}
+
+.showcase-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.showcase-tile:hover img {
+  transform: scale(1.05);
+}
+
+.showcase-tile figcaption {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 1.5rem 0.6rem 0.45rem;
+  background: linear-gradient(transparent, hsla(0, 0%, 0%, 0.75));
+  font-size: 0.75rem;
+  text-align: left;
+}
+
+.showcase-style {
+  color: hsl(35, 20%, 95%);
+  font-weight: 600;
+}
+
 /* A run configuration's checkpoint slot: its name, its model and + Add model
    on one row that wraps rather than overflows — the select shrinks first, a
    long model label never pushes the button out of the card. */

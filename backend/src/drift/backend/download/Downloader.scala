@@ -285,6 +285,11 @@ final class Downloader(
         // Completions land here on one thread: record each, so a cancel or
         // crash resumes at chunk granularity.
         .runForeach { chunk =>
+          // The chunk's bytes reach the disk before the sidecar says they
+          // did: the sidecar is small and can land first, and after a machine
+          // crash it claimed chunks the file never held — a full-size
+          // download that failed its checksum (bugs/33).
+          channel.force(false)
           completed.add(chunk)
           saveChunkState(
             partFile,

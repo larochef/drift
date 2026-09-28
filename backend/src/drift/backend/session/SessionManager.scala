@@ -524,10 +524,12 @@ final class SessionManager(
 
   /** Kills the session's server and launches the same configuration again on
     * the same runtime: what stopping a generation costs on a build that cannot
-    * interrupt one (`specs/08-inference-ui.md`). The relaunch waits for the old
-    * process to be gone, so the port it holds is free by the time the new one
-    * binds; it runs on a thread of its own, since a load takes minutes and the
-    * answer is due now. Answers with the session as it stands, stopped.
+    * interrupt one (`specs/08-inference-ui.md`), and the generation form's
+    * **Restart** — a LoRA installed since the launch is only listed by a new
+    * server. The relaunch waits for the old process to be gone, so the port it
+    * holds is free by the time the new one binds; it runs on a thread of its
+    * own, since a load takes minutes and the answer is due now. Answers with
+    * the session as it stands, stopped.
     */
   def restart(sessionId: String): Option[Session] =
     entries.asScala.values.find(_.session.id == sessionId).map { entry =>
@@ -541,7 +543,7 @@ final class SessionManager(
             _.waitFor(SessionManager.GraceSeconds + 5, TimeUnit.SECONDS)
           )
           logger.info(
-            s"Session $sessionId: restarting '$configurationId' after a forced cancel"
+            s"Session $sessionId: restarting '$configurationId'"
           )
           launch(configurationId, runtimeId)
           ()

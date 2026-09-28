@@ -3,6 +3,10 @@
 The **Gallery** page is everything drift ever made, rebuilt from the files on
 disk, so it needs no running session and survives restarts.
 
+An empty gallery explains what lands there and offers **Create a project**
+(or **Just try a model**). While none of your results is in a project, a line
+above them suggests starting one, with the same button.
+
 ## Browsing
 
 - A grid grouped by day, newest first. One tile per image; a batch's images

@@ -170,6 +170,9 @@ class ProjectWorkspacePage(
           logService = logService,
           onStop =
             () => sessionService.push(SessionService.Command.Stop(sessionId)),
+          onRestart = () =>
+            sessionService.push(SessionService.Command.Restart(sessionId)),
+          browsers = browsers,
           project = Some(
             GenerationPanel.ProjectBinding(
               projectId = projectId,

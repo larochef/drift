@@ -116,6 +116,16 @@ val launchSession: PublicEndpoint[LaunchSessionRequest, Unit, Session, Any] =
 /** Stops the session's process — SIGTERM, then SIGKILL after a grace period.
   * Answers with the stopped session, or nothing for an unknown id.
   */
+/** Kills the session's server and launches its configuration again on the same
+  * runtime, once the old process is gone: a LoRA installed since the launch is
+  * listed, a server gone wrong starts afresh. Answers with the session as it
+  * stands, stopped; the relaunch arrives on the status socket.
+  */
+val restartSession: PublicEndpoint[String, Unit, Option[Session], Any] =
+  sessionsBase.post
+    .in("sessions" / path[String] / "restart")
+    .out(jsonBody[Option[Session]])
+
 val stopSession: PublicEndpoint[String, Unit, Option[Session], Any] =
   sessionsBase.delete
     .in("sessions" / path[String])

@@ -13,6 +13,11 @@ built from what the loaded model reports it supports, not from hardcoded lists.
   panel (`pages/generate/GenerationPanel`), during loading too, with an honest
   loading state; Stop returns to the list. Projects host the same panel in
   their workspace (19).
+- **↻ Restart** (`POST /api/sessions/{id}/restart`, `SessionManager.restart`:
+  stop, wait for the process, launch the same configuration on the same
+  runtime) hands the panel's `GenerationFormState` to the relaunched session's
+  panel, which keeps it instead of seeding. The LoRA picker carries
+  `LoraInstallButton` for the session's architecture (33).
 - The form's controls come from `GET /api/sessions/{id}/capabilities`
   (samplers, schedulers, modes, per-mode features and limits) and its defaults
   from the run configuration: `sd-server` seeds `defaults_by_mode` from its

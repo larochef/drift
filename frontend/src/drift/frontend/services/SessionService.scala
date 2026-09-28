@@ -13,6 +13,9 @@ object SessionService {
     /** `runtimeId` empty launches on the default runtime. */
     case Launch(runConfigurationId: String, runtimeId: Option[String])
     case Stop(sessionId: String)
+
+    /** Stop and launch again on the same runtime (`restartSession`). */
+    case Restart(sessionId: String)
   }
 }
 
@@ -30,6 +33,7 @@ class SessionService(statusSocket: StatusSocketService) extends ServiceErrors {
   private val listFn = ApiClient.stream(drift.shared.listSessions)
   private val launchFn = ApiClient.stream(drift.shared.launchSession)
   private val stopFn = ApiClient.stream(drift.shared.stopSession)
+  private val restartFn = ApiClient.stream(drift.shared.restartSession)
 
   private val _sessions = Var(Map.empty[String, Session])
 
@@ -78,6 +82,18 @@ class SessionService(statusSocket: StatusSocketService) extends ServiceErrors {
       case Success((id, None)) =>
         reportFailure("Stopping the session", s"'$id' no longer exists.")
       case Failure(err) => reportFailure("Stopping the session", err)
+    },
+    cmdBus.events
+      .collect { case Command.Restart(sessionId) => sessionId }
+      .flatMapMerge(id =>
+        restartFn(id).map(stopped => (id, stopped)).recoverToTry
+      ) --> Observer[Try[(String, Option[Session])]] {
+      case Success((_, Some(session))) =>
+        clearError()
+        applyOne(session)
+      case Success((id, None)) =>
+        reportFailure("Restarting the session", s"'$id' no longer exists.")
+      case Failure(err) => reportFailure("Restarting the session", err)
     },
     // The socket pushes the whole session list whenever it changes, so
     // `starting` flips to `ready` (or a crash to `failed`) without the user

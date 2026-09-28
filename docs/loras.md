@@ -104,7 +104,11 @@ The generation form has a LoRA picker:
   trigger words as one-click inserts into the prompt. Nothing is inserted for
   you; the prompt is yours.
 - "⚠ needs restart" on a LoRA means the running session cannot see its file
-  yet (installed or moved after launch). Stop and relaunch the session.
+  yet (installed or moved after launch). **↻ Restart** at the top of the
+  form starts the model again with your form as it is.
+- **+ Add LoRA** in the generation form's picker installs one for the running
+  model's architecture without leaving the page, from Civitai, HuggingFace,
+  ModelScope or this machine.
 - A wan 2.2 pair is sent as both files automatically, the high-noise half
   applied to the high-noise stage.
 

@@ -27,5 +27,8 @@ def sessionEndpoints(
     // beside it.
     if (stopped.exists(_.tool == RuntimeTool.SdCpp)) generations.clearScratch()
     stopped
-  }
+  },
+  // The scratch outputs stay: the same model comes back, and what it made is
+  // still the user's to keep.
+  restartSession.serverLogicSuccess[Identity](manager.restart)
 )

@@ -2,6 +2,7 @@ package drift.frontend.pages.gallery
 
 import drift.frontend.Page
 import drift.frontend.components.{Component, ErrorBanner}
+import drift.frontend.pages.projects.NewProjectModal
 import drift.frontend.services.*
 import drift.frontend.services.HistoryService.{Command, Event}
 import drift.shared.*
@@ -50,6 +51,13 @@ class GalleryPage(
     */
   private val selecting = Var(false)
   private val selection = Var(Set.empty[String])
+
+  /** Starting a project from the gallery's invitations (François, 2026-09-28):
+    * the projects page's own modal, opening the new workspace.
+    */
+  private val creatingProject = Var(false)
+  private lazy val newProject =
+    NewProjectModal(projectService, () => creatingProject.set(false))
 
   private val labels: Signal[Map[String, String]] =
     runConfigurationService.runConfigurations
@@ -458,14 +466,49 @@ class GalleryPage(
     ErrorBanner(upscalerService),
     toolbar,
     selectionBar,
+    child <-- creatingProject.signal.map(
+      if (_) newProject.element else emptyNode
+    ),
     child <-- historyService.daysLoaded
-      .combineWith(historyService.days)
+      .combineWith(
+        historyService.days.map(_.isEmpty),
+        projectService.projectsLoaded,
+        projectService.projects.map(_.isEmpty)
+      )
+      .distinct
       .map {
-        case (true, Nil) =>
-          p(
-            cls := "text-secondary",
-            "Nothing generated yet — completed generations appear here, " +
-              "grouped by day."
+        case (true, true, _, _) =>
+          NewProjectModal.invitation(
+            "Nothing generated yet",
+            List(
+              "Everything you generate lands here, grouped by day, whichever " +
+                "model made it: open one to reuse its settings, upscale it, " +
+                "redraw or edit it.",
+              "The best place to start is a project: it keeps each version " +
+                "of your prompt with what it made, and the assistant helps " +
+                "you write them. You can also just try a model on its own."
+            ),
+            () => creatingProject.set(true),
+            Some("Just try a model" -> (() => Page.Models.navigate()))
+          )
+        case (true, false, true, true) =>
+          div(
+            cls := "notification bg-card mb-4 is-flex is-align-items-center " +
+              "is-flex-wrap-wrap",
+            styleAttr := "gap: 0.75rem;",
+            p(
+              cls := "text-secondary mb-0",
+              styleAttr := "flex: 1 1 20rem;",
+              "None of this is in a project yet. A project keeps every " +
+                "version of a prompt beside what it made, so you can compare " +
+                "and go back — and the assistant reads its brief."
+            ),
+            button(
+              cls := "button is-primary",
+              span(cls := "plus-icon", "+"),
+              " Create a project",
+              onClick --> (_ => creatingProject.set(true))
+            )
           )
         case _ => emptyNode
       },

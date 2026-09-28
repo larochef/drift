@@ -7,6 +7,12 @@ whatever model ran them. Projects are the first page of the sidebar and what
 
 ## Creating a project
 
+**New Project** opens a window for it; with no project yet, the page explains
+what one is and offers **Create a project** in the middle, beside **Just try a
+model** for trying a model without one, over eight pictures in different
+styles made with Krea 2, one of drift's starter models (hover one for its
+prompt). Creating it opens its workspace.
+
 - Give it a name and, optionally, a brief: what you are making, in your own
   words. The assistant reads the brief.
 - Choose what it **makes**: images (the default), videos or texts. The

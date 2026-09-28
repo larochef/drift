@@ -47,6 +47,12 @@ class GenerationPanel(
       */
     logService: LogService,
     onStop: () => Unit,
+    /** Stops the session and launches the configuration again; the form is
+      * handed to the panel the new session gets.
+      */
+    onRestart: () => Unit,
+    /** For the LoRA picker's install button: the browsers it opens. */
+    browsers: BrowserServices,
     /** Inside a project workspace (`specs/19-…`): the form follows the selected
       * version, and every submission names the project and the version it was
       * made from.
@@ -100,7 +106,12 @@ class GenerationPanel(
     */
   private val lastProposal = Var(Option.empty[PromptProposal])
 
-  private val state = GenerationFormState()
+  /** The form a restart handed over, when this panel is the relaunched
+    * session's: kept as it was rather than seeded afresh.
+    */
+  private val carried = GenerationPanel.takeCarried(configurationId)
+
+  private val state = carried.getOrElse(GenerationFormState())
 
   private val seeding = RecipeSeeding(
     state,
@@ -213,13 +224,13 @@ class GenerationPanel(
       .map(all => all.findLast(_.status.isActive).orElse(all.lastOption))
       .distinct
 
-  private val seeded = Var(false)
+  private val seeded = Var(carried.isDefined)
 
   /** Whether the project's selected version has seeded this form. Once per
     * panel: a new panel is built when the model picker switches configuration,
     * which is the only moment a recipe is laid over the form on its own.
     */
-  private val versionSeeded = Var(false)
+  private val versionSeeded = Var(carried.isDefined)
 
   // Built once, so a mode switch keeps what is typed in its search field.
   private lazy val loraPicker = LoraPicker(
@@ -229,8 +240,20 @@ class GenerationPanel(
     strengths = state.loraStrengthsVar,
     includeNsfw = state.includeNsfwLorasVar,
     serverPaths = capabilitiesSignal.map(_.map(_.loras.map(_.path).toSet)),
-    onTriggerWord = Some(insertTriggerWord)
+    onTriggerWord = Some(insertTriggerWord),
+    // Installed for the architecture; the running server lists it after a
+    // Restart, which the picker's "needs restart" mark says.
+    headerAction = child <-- targetArchitecture.map(
+      _.map(architecture =>
+        LoraInstallButton(browsers, architecture, loraService).element
+      ).getOrElse(emptyNode)
+    )
   )
+
+  private def restart(): Unit = {
+    GenerationPanel.carry(configurationId, state)
+    onRestart()
+  }
 
   private def insertTriggerWord(word: String): Unit =
     state.promptVar.update { prompt =>
@@ -425,6 +448,14 @@ class GenerationPanel(
           }
         ),
         button(
+          cls := "button mr-2",
+          "↻ Restart",
+          title := "Stop the model and start it again on the same runtime, " +
+            "keeping this form: it picks up LoRAs installed since it " +
+            "started, and starts afresh if it misbehaves",
+          onClick --> (_ => restart())
+        ),
+        button(
           cls := "button is-warning",
           "⏹ Stop session",
           onClick --> (_ => onStop())
@@ -526,6 +557,22 @@ class GenerationPanel(
 }
 
 object GenerationPanel {
+
+  /** A form on its way from a restarted session's panel to the next one of the
+    * same configuration. One at a time: only one generation panel is up.
+    */
+  private var carried = Option.empty[(String, GenerationFormState)]
+
+  private def carry(configurationId: String, state: GenerationFormState): Unit =
+    carried = Some(configurationId -> state)
+
+  private def takeCarried(
+      configurationId: String
+  ): Option[GenerationFormState] =
+    carried.filter(_._1 == configurationId).map { (_, state) =>
+      carried = None
+      state
+    }
 
   /** The workspace's hooks into the panel (`specs/19-…`): which project, and
     * which version is selected — as a signal for seeding and as a snapshot for

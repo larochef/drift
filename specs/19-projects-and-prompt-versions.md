@@ -19,6 +19,15 @@ them.
   hidden unless "Show NSFW projects" is ticked, with a count of what is hidden.
 - **Deleting a project** asks twice: the project and its versions always go;
   its images only when the second confirmation says so.
+- **New Project** opens `NewProjectModal` (name, brief, kind, NSFW); a created
+  project opens its workspace. With none yet (`ProjectService.projectsLoaded`
+  and an empty list) the page shows an invitation in its middle — what a
+  project is, **Create a project**, **Just try a model** → Models. The gallery
+  shows the same invitation when it has nothing, and a one-line suggestion
+  with the button while no project exists (`12`). Under the invitation,
+  `Showcase` lays out eight SFW pictures, each a different style, made with
+  the Krea 2 Turbo starter at 1024² and shipped as 640px WebP (~250 KB) in
+  `frontend/public/assets/showcase/`: the only static path the backend serves.
 - **Workspace** `/projects/{id}`:
   - Header: name and brief editable in place, the NSFW flag, the kind, and
     two pickers — the image (or video) model and the assistant — listing that

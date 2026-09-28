@@ -336,7 +336,11 @@ class RunConfigurationsPage(
       loraService = loraService,
       projectService = projectService,
       logService = logService,
-      onStop = () => sessionService.push(SessionService.Command.Stop(sessionId))
+      onStop =
+        () => sessionService.push(SessionService.Command.Stop(sessionId)),
+      onRestart =
+        () => sessionService.push(SessionService.Command.Restart(sessionId)),
+      browsers = browsers
     ).element
 
   private def assistantElement(

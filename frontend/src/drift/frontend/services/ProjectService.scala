@@ -48,6 +48,12 @@ class ProjectService(statusSocket: StatusSocketService) extends ServiceErrors {
 
   val projects: Signal[List[Project]] = _projects.signal
 
+  /** Whether the list has answered at least once — an empty page must invite a
+    * first project, not before it knows there is none.
+    */
+  private val _projectsLoaded = Var(false)
+  val projectsLoaded: Signal[Boolean] = _projectsLoaded.signal
+
   /** Per project id, newest first. */
   val generations: Signal[Map[String, List[Generation]]] = _generations.signal
 
@@ -114,6 +120,7 @@ class ProjectService(statusSocket: StatusSocketService) extends ServiceErrors {
         case Success(projects) =>
           clearError()
           _projects.set(projects.sortBy(-_.lastUsedAt))
+          _projectsLoaded.set(true)
         case Failure(err) => reportFailure("Loading projects", err)
       },
     cmdBus.events

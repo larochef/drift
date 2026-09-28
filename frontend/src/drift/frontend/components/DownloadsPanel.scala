@@ -29,18 +29,28 @@ class DownloadsPanel(service: GlobalDownloadsService) extends Component {
       .getOrElse(item.detail)
     div(
       cls := "mb-2",
-      p(
-        cls := "is-size-7 text-primary mb-0",
-        styleAttr :=
-          "white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
-        title := s"${item.label}${
-            if (item.detail.nonEmpty) s" — ${item.detail}" else ""
-          }",
-        s"${kindIcon(item.kind)} ${item.label}"
+      div(
+        cls := "is-flex is-align-items-center",
+        p(
+          cls := "is-size-7 text-primary mb-0 is-flex-grow-1",
+          styleAttr :=
+            "white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
+          title := s"${item.label}${
+              if (item.detail.nonEmpty) s" — ${item.detail}" else ""
+            }",
+          s"${kindIcon(item.kind)} ${item.label}"
+        ),
+        if (item.cancelling) emptyNode
+        else
+          button(
+            cls := "delete is-small ml-1",
+            title := "Cancel this download",
+            onClick --> (_ => service.cancel(item.target))
+          )
       ),
       // No value at all renders Bulma's indeterminate animation — honest for
       // queued/unpacking states with no byte counts.
-      percent match {
+      percent.filterNot(_ => item.cancelling) match {
         case Some(p) =>
           progressTag(
             cls := "progress is-info is-small mb-0",
@@ -52,7 +62,8 @@ class DownloadsPanel(service: GlobalDownloadsService) extends Component {
       },
       p(
         cls := "is-size-7 text-secondary mb-0",
-        percent.map(p => s"$p% — ").getOrElse("") + sizeText
+        if (item.cancelling) "cancelling…"
+        else percent.map(p => s"$p% — ").getOrElse("") + sizeText
       )
     )
   }
@@ -75,10 +86,22 @@ class DownloadsPanel(service: GlobalDownloadsService) extends Component {
             ),
             transferring.map(row),
             if (queued.nonEmpty)
-              p(
-                cls := "is-size-7 text-secondary mb-0",
-                s"${queued.size} pending download" +
-                  (if (queued.size == 1) "" else "s")
+              div(
+                cls := "is-flex is-align-items-center",
+                p(
+                  cls := "is-size-7 text-secondary mb-0 is-flex-grow-1",
+                  s"${queued.size} pending download" +
+                    (if (queued.size == 1) "" else "s")
+                ),
+                if (queued.forall(_.cancelling)) emptyNode
+                else
+                  button(
+                    cls := "delete is-small ml-1",
+                    title := "Cancel the pending downloads",
+                    onClick --> (_ =>
+                      queued.foreach(item => service.cancel(item.target))
+                    )
+                  )
               )
             else emptyNode
           )

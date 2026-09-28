@@ -18,5 +18,6 @@ def upscalerEndpoints(
     manager.installFromCivitai
   ),
   deleteUpscaler.serverLogicSuccess[Identity](manager.delete),
-  listUpscalerDownloads.serverLogicSuccess[Identity](_ => manager.listJobs)
+  listUpscalerDownloads.serverLogicSuccess[Identity](_ => manager.listJobs),
+  cancelUpscalerDownload.serverLogicSuccess[Identity](manager.cancelDownload)
 )

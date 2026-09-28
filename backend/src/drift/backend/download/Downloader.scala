@@ -7,7 +7,7 @@ import java.nio.channels.FileChannel
 import java.nio.charset.StandardCharsets
 import java.nio.file.*
 import java.security.MessageDigest
-import java.util.concurrent.{ConcurrentHashMap, Semaphore}
+import java.util.concurrent.{ConcurrentHashMap, Semaphore, TimeUnit}
 import java.util.concurrent.atomic.AtomicLong
 import scala.jdk.CollectionConverters.*
 import scala.jdk.OptionConverters.*
@@ -66,7 +66,12 @@ private object ChunkState {
   * every caller (models, LoRAs, runtimes) — saturating a host with five
   * transfers of four connections each helps nobody.
   */
-final class Downloader(client: HttpClient) {
+final class Downloader(
+    client: HttpClient,
+    /** Silence before a transfer is dropped (`StallWatch`); tests shorten it.
+      */
+    stallMillis: Long = Downloader.StallMillis
+) {
   private val logger = Logger[Downloader]
   private val bufferSize = 256 * 1024
   private val progressEveryBytes = 4L * 1024 * 1024
@@ -80,18 +85,25 @@ final class Downloader(client: HttpClient) {
       isCancelled: () => Boolean = () => false,
       onProgress: (Long, Option[Long]) => Unit = (_, _) => ()
   ): DownloadOutcome = {
+    // A cancel is honoured wherever the download stands: before it starts —
+    // the caller may have spent a while on metadata — and while it waits for
+    // its host's slot, which can take as long as another download.
+    if (isCancelled()) return DownloadOutcome.Cancelled
     val permit = Downloader.hostPermit(url)
-    permit.acquire()
+    while (!permit.tryAcquire(250, TimeUnit.MILLISECONDS))
+      if (isCancelled()) return DownloadOutcome.Cancelled
     try
-      fetchWithPermit(
-        url,
-        partFile,
-        finalFile,
-        expectedSha256,
-        headers,
-        isCancelled,
-        onProgress
-      )
+      if (isCancelled()) DownloadOutcome.Cancelled
+      else
+        fetchWithPermit(
+          url,
+          partFile,
+          finalFile,
+          expectedSha256,
+          headers,
+          isCancelled,
+          onProgress
+        )
     finally permit.release()
   }
 
@@ -108,7 +120,9 @@ final class Downloader(client: HttpClient) {
       Files.createDirectories(finalFile.getParent)
       Files.createDirectories(partFile.getParent)
 
-      probeRangeSupport(url, headers) match {
+      val probed = probeRangeSupport(url, headers, isCancelled)
+      if (isCancelled()) return DownloadOutcome.Cancelled
+      probed match {
         case Some(totalBytes) if totalBytes >= Downloader.ChunkedThreshold =>
           chunkedFetch(
             url,
@@ -151,11 +165,19 @@ final class Downloader(client: HttpClient) {
     */
   private def probeRangeSupport(
       url: String,
-      headers: Map[String, String]
-  ): Option[Long] =
+      headers: Map[String, String],
+      isCancelled: () => Boolean
+  ): Option[Long] = {
+    // Only to cut the wait short on a cancel; the timeout below bounds it.
+    val watch = StallWatch(isCancelled, Long.MaxValue)
     try {
       val response = client.send(
-        request(url, headers).header("Range", "bytes=0-0").build(),
+        request(url, headers)
+          .header("Range", "bytes=0-0")
+          // Headers only: a server that accepts and says nothing must not
+          // hold the download (and its host slot) before it starts.
+          .timeout(java.time.Duration.ofMillis(Downloader.StallMillis))
+          .build(),
         HttpResponse.BodyHandlers.ofInputStream()
       )
       try
@@ -169,7 +191,10 @@ final class Downloader(client: HttpClient) {
             .flatMap(_.toLongOption)
         else None
       finally response.body().close()
-    } catch { case NonFatal(_) => None }
+    } catch {
+      case NonFatal(_) | _: InterruptedException => None
+    } finally watch.close()
+  }
 
   // ----------------------------------------------------------------- chunked
 
@@ -218,6 +243,9 @@ final class Downloader(client: HttpClient) {
           while (!done) {
             if (isCancelled()) throw InterruptedException("cancelled")
             attempt += 1
+            // This attempt's bytes alone: a retry takes back what it counted,
+            // never what the other workers have read meanwhile.
+            var attemptBytes = 0L
             try {
               downloadChunk(
                 url,
@@ -228,6 +256,7 @@ final class Downloader(client: HttpClient) {
                 totalBytes,
                 isCancelled,
                 read => {
+                  attemptBytes += read
                   val total = downloadedTotal.addAndGet(read)
                   val last = lastReported.get
                   if (
@@ -242,9 +271,13 @@ final class Downloader(client: HttpClient) {
                 logger.info(
                   s"Chunk $chunk attempt $attempt failed (${err.getMessage}); retrying"
                 )
-                // The failed attempt's partial bytes were counted; recount
-                // from the completed set to keep progress honest.
-                downloadedTotal.set(completedBytes)
+                // The failed attempt's partial bytes were counted; take back
+                // those only. Resetting to the completed chunks also dropped
+                // the other workers' bytes in flight, and the bar fell back by
+                // several chunks on every retry — a TheRock archive of several
+                // GB on a flaky connection went back and forth for minutes
+                // (François, 2026-09-28).
+                downloadedTotal.addAndGet(-attemptBytes)
             }
           }
           chunk
@@ -307,6 +340,39 @@ final class Downloader(client: HttpClient) {
   ): Unit = {
     val start = chunk.toLong * chunkBytes
     val endInclusive = math.min(start + chunkBytes, totalBytes) - 1
+    val watch = StallWatch(isCancelled, stallMillis)
+    try
+      downloadRange(
+        url,
+        headers,
+        channel,
+        start,
+        endInclusive,
+        isCancelled,
+        watch,
+        onRead
+      )
+    catch {
+      // Silence, not failure of the server: a retry on a new connection.
+      case _: InterruptedException | _: java.io.IOException if watch.stalled =>
+        throw new java.io.IOException(
+          s"no data for ${stallMillis / 1000}s on range $start-$endInclusive"
+        )
+      case _: java.io.IOException if isCancelled() =>
+        throw InterruptedException("cancelled")
+    } finally watch.close()
+  }
+
+  private def downloadRange(
+      url: String,
+      headers: Map[String, String],
+      channel: FileChannel,
+      start: Long,
+      endInclusive: Long,
+      isCancelled: () => Boolean,
+      watch: StallWatch,
+      onRead: Long => Unit
+  ): Unit = {
     val response = client.send(
       request(url, headers)
         .header("Range", s"bytes=$start-$endInclusive")
@@ -335,6 +401,7 @@ final class Downloader(client: HttpClient) {
             position + written
           )
         position += read
+        watch.touch()
         onRead(read)
         read = in.read(buffer)
       }
@@ -433,63 +500,84 @@ final class Downloader(client: HttpClient) {
     val digest = MessageDigest.getInstance("SHA-256")
     var alreadyDownloaded = primeDigest(digest, partFile)
 
-    var builder = request(url, headers)
-    if (alreadyDownloaded > 0)
-      builder = builder.header("Range", s"bytes=$alreadyDownloaded-")
+    val watch = StallWatch(isCancelled, stallMillis)
+    var downloaded = 0L
+    val totalBytes =
+      try {
+        var builder = request(url, headers)
+        if (alreadyDownloaded > 0)
+          builder = builder.header("Range", s"bytes=$alreadyDownloaded-")
 
-    val response =
-      client.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream())
-    val status = response.statusCode()
+        val response =
+          client.send(
+            builder.build(),
+            HttpResponse.BodyHandlers.ofInputStream()
+          )
+        val status = response.statusCode()
 
-    val appending = status match {
-      case 206 => true
-      case 200 =>
-        // The server ignored the range: start over, including the digest.
-        if (alreadyDownloaded > 0) {
-          digest.reset()
-          alreadyDownloaded = 0L
+        val appending = status match {
+          case 206 => true
+          case 200 =>
+            // The server ignored the range: start over, including the digest.
+            if (alreadyDownloaded > 0) {
+              digest.reset()
+              alreadyDownloaded = 0L
+            }
+            false
+          case other =>
+            response.body().close()
+            return DownloadOutcome.Failed(s"HTTP $other from $url")
         }
-        false
-      case other =>
-        response.body().close()
-        return DownloadOutcome.Failed(s"HTTP $other from $url")
-    }
 
-    val totalBytes = contentTotal(response, status, alreadyDownloaded)
+        downloaded = alreadyDownloaded
+        val total = contentTotal(response, status, alreadyDownloaded)
 
-    val out = Files.newOutputStream(
-      partFile,
-      StandardOpenOption.CREATE,
-      StandardOpenOption.WRITE,
-      if (appending) StandardOpenOption.APPEND
-      else StandardOpenOption.TRUNCATE_EXISTING
-    )
-    val in = response.body()
-    var downloaded = alreadyDownloaded
-    var lastReported = 0L
-    try {
-      onProgress(downloaded, totalBytes)
-      val buffer = new Array[Byte](bufferSize)
-      var read = in.read(buffer)
-      while (read > 0) {
-        if (isCancelled()) {
+        val out = Files.newOutputStream(
+          partFile,
+          StandardOpenOption.CREATE,
+          StandardOpenOption.WRITE,
+          if (appending) StandardOpenOption.APPEND
+          else StandardOpenOption.TRUNCATE_EXISTING
+        )
+        val in = response.body()
+        var lastReported = 0L
+        try {
+          onProgress(downloaded, total)
+          val buffer = new Array[Byte](bufferSize)
+          var read = in.read(buffer)
+          while (read > 0) {
+            if (isCancelled()) {
+              logger.info(s"Download cancelled at $downloaded bytes: $url")
+              return DownloadOutcome.Cancelled
+            }
+            out.write(buffer, 0, read)
+            digest.update(buffer, 0, read)
+            downloaded += read
+            watch.touch()
+            if (downloaded - lastReported >= progressEveryBytes) {
+              lastReported = downloaded
+              onProgress(downloaded, total)
+            }
+            read = in.read(buffer)
+          }
+        } finally {
+          try in.close()
+          catch { case NonFatal(_) => () }
+          out.close()
+        }
+        total
+      } catch {
+        // The part file keeps what arrived: starting again resumes it.
+        case _: InterruptedException | _: java.io.IOException
+            if watch.stalled =>
+          return DownloadOutcome.Failed(
+            s"no data for ${stallMillis / 1000}s at $downloaded bytes"
+          )
+        case _: InterruptedException | _: java.io.IOException
+            if isCancelled() =>
           logger.info(s"Download cancelled at $downloaded bytes: $url")
           return DownloadOutcome.Cancelled
-        }
-        out.write(buffer, 0, read)
-        digest.update(buffer, 0, read)
-        downloaded += read
-        if (downloaded - lastReported >= progressEveryBytes) {
-          lastReported = downloaded
-          onProgress(downloaded, totalBytes)
-        }
-        read = in.read(buffer)
-      }
-    } finally {
-      try in.close()
-      catch { case NonFatal(_) => () }
-      out.close()
-    }
+      } finally watch.close()
     onProgress(downloaded, totalBytes)
 
     val actualSha256 = digest.digest().map("%02x".format(_)).mkString
@@ -580,6 +668,11 @@ object Downloader {
 
   /** How often one chunk may fail before the download does. */
   val ChunkAttempts = 3
+
+  /** Silence on a transfer's connection before it is dropped and retried
+    * (`StallWatch`).
+    */
+  val StallMillis: Long = 30_000L
 
   /** One piece of the work queue — also the resume granularity. */
   val ChunkBytes: Long = 64L * 1024 * 1024

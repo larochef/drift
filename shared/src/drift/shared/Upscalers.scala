@@ -97,6 +97,8 @@ case class UpscalerDownloadJob(
 object UpscalerDownloadJob {
   given JsonValueCodec[List[UpscalerDownloadJob]] =
     JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+  given JsonValueCodec[Option[UpscalerDownloadJob]] =
+    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
 }
 
 // `base` in Api.scala is private to that file (tracked as bug 16); the same
@@ -139,3 +141,10 @@ val listUpscalerDownloads
   upscalersBase.get
     .in("upscaler-downloads")
     .out(jsonBody[List[UpscalerDownloadJob]])
+
+/** Stops an upscaler's download; the job as it stands, none if unknown. */
+val cancelUpscalerDownload
+    : PublicEndpoint[String, Unit, Option[UpscalerDownloadJob], Any] =
+  upscalersBase.post
+    .in("upscaler-downloads" / path[String]("upscalerId") / "cancel")
+    .out(jsonBody[Option[UpscalerDownloadJob]])

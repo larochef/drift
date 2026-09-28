@@ -109,10 +109,24 @@ control, projects, text projects, the assistant, PiD, redraw and edit. The card
 says which one, and a runner that isn't installed is marked so. Chat models get
 configurations the same way. **New run configuration** creates one; the card's **Edit** changes it.
 
+drift adds six starter configurations on first start: Flux.2 Klein 9B,
+Krea 2 Turbo and Qwen Image 2.1 for images, MiniMax H3 for video, PiD 1.5
+(FLUX.2) for diffusion upscaling and Qwen 3.6 35B-A3B for chat. After that
+they are yours like any other: edit them, delete them — a deleted one does not
+come back.
+
 Each card shows whether the configuration is **ready** or **incomplete**, and
-names what blocks it — an empty slot, a deleted model, weights not downloaded yet
-(**Download missing** fetches them; while they download or wait in the
-queue, the card says so instead of offering the button again). A collapsible preview shows the exact
+names what blocks it — an empty slot, a deleted model, weights not downloaded yet.
+While weights are missing, the **Launch** button is replaced by **Download the
+weights**; it says so while they download, and turns back into **Launch** once
+they are on disk. With no runtime to run it, the same place says so and lets you
+pick one to install — drift's runner too, where the architecture runs on it,
+which switches the configuration's runner (see
+[getting-started.md](getting-started.md)). The same swap
+happens wherever a model is started: a
+project's model pickers (the entry reads *download the weights*, and picking it
+downloads rather than launches), the gallery's reuse and *try this task*
+buttons, and the redraw, edit and PiD panels. A collapsible preview shows the exact
 command line it would run, with **Copy**.
 
 ### How parameters resolve

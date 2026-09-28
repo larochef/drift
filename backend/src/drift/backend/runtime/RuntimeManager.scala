@@ -64,6 +64,16 @@ final class RuntimeManager(
     runnerFiles
   )
 
+  private val resolution = RuntimeInstallResolution(storage, installs)
+
+  /** Installs a build picked where configurations could not launch, and moves
+    * them to its engine once it validates (`specs/46`).
+    */
+  def installFor(
+      request: InstallForConfigurationsRequest
+  ): List[RuntimeInstallJob] =
+    resolution.installFor(request)
+
   /** The installed drift runner brought to the one this build ships
     * (`specs/43`); run at startup.
     */
@@ -135,6 +145,50 @@ final class RuntimeManager(
       pinnedId: Option[String]
   ): Either[String, LaunchRuntime] =
     selections.resolveForLaunch(tool, engine, pinnedId)
+
+  /** The builds to offer per tool where a launch finds none
+    * (`specs/46-starter-configurations.md`): ROCm only where the ROCm driver
+    * exposes an AMD GPU, paired for its gfx target; Vulkan and CPU always;
+    * drift's runner where this drift carries it and the GPU is the one its
+    * kernels are built for. Recommended: ROCm for sd-cpp when there is one,
+    * Vulkan otherwise.
+    */
+  def installOptions: List[RuntimeInstallOption] = {
+    val gfx = GpuDetection.amdGfxTarget()
+    val runner = runnerFiles.offer.available && gfx.contains(RunnerFiles.Gfx)
+    RuntimeTool.values.toList.flatMap { tool =>
+      val preferred =
+        if (tool == RuntimeTool.SdCpp && gfx.isDefined) RuntimeBackend.Rocm
+        else RuntimeBackend.Vulkan
+      val backends = gfx.fold(List.empty[RuntimeBackend])(_ =>
+        List(RuntimeBackend.Rocm)
+      ) ++ List(RuntimeBackend.Vulkan, RuntimeBackend.Cpu)
+      backends.map { backend =>
+        val target = Option.when(backend == RuntimeBackend.Rocm)(gfx).flatten
+        RuntimeInstallOption(
+          tool,
+          RuntimeEngine.upstream(tool),
+          Some(InstallLatestRequest(tool, backend, target)),
+          RuntimeManager.latestId(tool, backend),
+          s"${tool.displayName} on ${backend match {
+              case RuntimeBackend.Rocm   => "ROCm"
+              case RuntimeBackend.Vulkan => "Vulkan"
+              case RuntimeBackend.Cpu    => "CPU"
+            }}" + target.fold("")(t => s" ($t)"),
+          recommended = backend == preferred
+        )
+      } ++ Option.when(runner)(
+        RuntimeInstallOption(
+          tool,
+          RuntimeEngine.DriftRunner,
+          None,
+          RunnerFiles.id(tool),
+          RunnerFiles.label(tool),
+          recommended = false
+        )
+      )
+    }
+  }
 
   /** After a delete: the files nothing uses any more; deleting one of the drift
     * runner's runtimes deletes the other too.

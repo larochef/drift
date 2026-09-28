@@ -295,6 +295,8 @@ case class LoraDownloadJob(
 object LoraDownloadJob {
   given JsonValueCodec[List[LoraDownloadJob]] =
     JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+  given JsonValueCodec[Option[LoraDownloadJob]] =
+    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
 }
 
 // `base` in Api.scala is private to that file (tracked as bug 16); the same
@@ -350,3 +352,11 @@ val pairLoras: PublicEndpoint[PairLoraRequest, Unit, InstallLoraResponse, Any] =
 
 val listLoraDownloads: PublicEndpoint[Unit, Unit, List[LoraDownloadJob], Any] =
   lorasBase.get.in("lora-downloads").out(jsonBody[List[LoraDownloadJob]])
+
+/** Stops one LoRA file's transfer; the job as it stands, none if unknown. */
+val cancelLoraDownload
+    : PublicEndpoint[(String, String), Unit, Option[LoraDownloadJob], Any] =
+  lorasBase.post
+    .in("lora-downloads" / path[String]("loraId") / path[String]("fileName"))
+    .in("cancel")
+    .out(jsonBody[Option[LoraDownloadJob]])

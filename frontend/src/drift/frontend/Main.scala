@@ -16,6 +16,12 @@ import org.scalajs.dom
   val cacheService = CacheService()
   val downloadService = DownloadService(statusSocketService)
   val runtimeService = RuntimeService(statusSocketService)
+  val prerequisites = LaunchPrerequisites(
+    runConfigurationService,
+    cacheService,
+    downloadService,
+    runtimeService
+  )
   val authTokenService = AuthTokenService()
   val promptTemplateService = PromptTemplateService()
   val sessionService = SessionService(statusSocketService)
@@ -45,6 +51,7 @@ import org.scalajs.dom
       architectureService,
       cacheService,
       downloadService,
+      prerequisites,
       runtimeService,
       authTokenService,
       promptTemplateService,

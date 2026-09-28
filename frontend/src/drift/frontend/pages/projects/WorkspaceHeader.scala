@@ -1,8 +1,12 @@
 package drift.frontend.pages.projects
 
 import drift.frontend.Page
-import drift.frontend.components.Component
-import drift.frontend.services.{ProjectService, SessionService}
+import drift.frontend.components.{Component, LaunchOrDownload}
+import drift.frontend.services.{
+  LaunchPrerequisites,
+  ProjectService,
+  SessionService
+}
 import drift.frontend.services.ProjectService.Command
 import drift.shared.*
 
@@ -18,7 +22,8 @@ class WorkspaceHeader(
     currentProject: () => Option[Project],
     projectService: ProjectService,
     sessionService: SessionService,
-    sessions: WorkspaceSessions
+    sessions: WorkspaceSessions,
+    prerequisites: LaunchPrerequisites
 ) extends Component {
 
   // Editing state apart from the text: the signal that builds an editor
@@ -96,78 +101,153 @@ class WorkspaceHeader(
   )
 
   /** A tool's model picker: its configurations, the live one marked, picking
-    * another stopping the live session and launching that one. Rebuilt only
-    * when the live session or the configurations change, not with the live
-    * session's progress, which would reset an open select.
+    * another stopping the live session and launching that one — or, when its
+    * weights are not on disk yet, downloading them and leaving the live one
+    * running (`specs/46-starter-configurations.md`). Rebuilt only when the live
+    * session, the configurations or a download's start or end change, not with
+    * progress, which would reset an open select.
     */
   private def modelPicker(
       tool: RuntimeTool,
       title: Signal[String],
       /** The project's kind, which narrows the list to the models making it. */
       kind: Signal[Option[ProjectKind]]
-  ): HtmlElement = div(
-    cls := "field is-grouped is-align-items-center mb-0",
-    span(cls := "text-secondary is-size-7 mr-2", child.text <-- title),
-    child <-- sessions
-      .liveKey(tool)
-      .combineWith(sessions.configurationsOf(tool, kind), kind)
-      .map { (live, listed, kind) =>
-        val liveConfiguration = live.map(_._2)
-        // Sessions are not the project's: a live model of the other kind
-        // stays listed, marked, so the select names what actually runs.
-        val configurations =
-          listed.filter((c, fits) => fits || liveConfiguration.contains(c.id))
-        div(
-          cls := "control",
-          select(
-            cls := "select is-small",
-            onChange.mapToValue --> Observer[String] { id =>
-              if (id.nonEmpty && !liveConfiguration.contains(id)) {
-                live.foreach((sessionId, _) =>
-                  sessionService.push(SessionService.Command.Stop(sessionId))
-                )
-                sessionService.push(SessionService.Command.Launch(id, None))
-              }
-            },
-            option(
-              value := "",
-              selected := live.isEmpty,
-              if (configurations.isEmpty)
-                kind
-                  .fold("no configuration")(k => s"no ${k.noun} configuration")
-              else "choose a model…"
-            ),
-            configurations.map((c, fits) =>
+  ): HtmlElement = {
+    // A model picked before it could launch: it stays selected while what it
+    // lacks downloads, and launches once nothing is missing (François,
+    // 2026-09-28). Picking again, or the empty entry, replaces it.
+    val picked = Var(Option.empty[String])
+
+    def launch(id: String, live: Option[(String, String)]): Unit = {
+      live.foreach((sessionId, _) =>
+        sessionService.push(SessionService.Command.Stop(sessionId))
+      )
+      sessionService.push(SessionService.Command.Launch(id, None))
+    }
+
+    div(
+      cls := "field is-grouped is-align-items-center mb-0",
+      picked.signal
+        .combineWith(prerequisites.byConfiguration, sessions.liveKey(tool))
+        --> Observer[
+          (
+              Option[String],
+              Map[String, LaunchPrerequisites.Missing],
+              Option[(String, String)]
+          )
+        ] { (pick, missing, live) =>
+          pick.filterNot(missing.contains).foreach { id =>
+            picked.set(None)
+            if (!live.exists(_._2 == id)) launch(id, live)
+          }
+        },
+      span(cls := "text-secondary is-size-7 mr-2", child.text <-- title),
+      child <-- sessions
+        .liveKey(tool)
+        .combineWith(
+          sessions.configurationsOf(tool, kind),
+          kind,
+          prerequisites.byConfiguration,
+          picked.signal
+        )
+        .map { (live, listed, kind, missing, pick) =>
+          val liveConfiguration = live.map(_._2)
+          val shown = pick.orElse(liveConfiguration)
+          // Sessions are not the project's: a live model of the other kind
+          // stays listed, marked, so the select names what actually runs.
+          val configurations =
+            listed.filter((c, fits) => fits || liveConfiguration.contains(c.id))
+          div(
+            cls := "control",
+            select(
+              cls := "select is-small",
+              onChange.mapToValue --> Observer[String] { id =>
+                if (id.isEmpty) picked.set(None)
+                else if (!liveConfiguration.contains(id))
+                  missing.get(id) match {
+                    // Kept until it can launch; the runtime is chosen in the
+                    // notice beside the picker.
+                    case Some(lacks) =>
+                      picked.set(Some(id))
+                      lacks.weights.foreach(w => prerequisites.download(w.idle))
+                    case None =>
+                      picked.set(None)
+                      launch(id, live)
+                  }
+                else picked.set(None)
+              },
               option(
-                value := c.id,
-                selected := liveConfiguration.contains(c.id),
-                c.label + (
-                  // the upstream engine goes without saying (`specs/43`)
-                  if (c.runner == RuntimeEngine.upstream(tool)) ""
-                  else s" · ${c.runner.displayName}"
-                ) + (
-                  if (!liveConfiguration.contains(c.id)) ""
-                  else if (fits) " (live)"
-                  else
-                    kind.fold(" (live)")(k => s" (live, not a ${k.noun} model)")
+                value := "",
+                selected := shown.isEmpty,
+                if (configurations.isEmpty)
+                  kind
+                    .fold("no configuration")(k =>
+                      s"no ${k.noun} configuration"
+                    )
+                else "choose a model…"
+              ),
+              configurations.map((c, fits) =>
+                option(
+                  value := c.id,
+                  selected := shown.contains(c.id),
+                  c.label + (
+                    // the upstream engine goes without saying (`specs/43`)
+                    if (c.runner == RuntimeEngine.upstream(tool)) ""
+                    else s" · ${c.runner.displayName}"
+                  ) + (
+                    missing
+                      .get(c.id)
+                      .fold("")(lacks =>
+                        s" · ⬇ ${LaunchPrerequisites.describe(lacks)}"
+                      )
+                  ) + (
+                    if (!liveConfiguration.contains(c.id)) ""
+                    else if (fits) " (live)"
+                    else
+                      kind
+                        .fold(" (live)")(k => s" (live, not a ${k.noun} model)")
+                  )
                 )
               )
             )
           )
-        )
-      },
-    child <-- sessions.liveStatus(tool).map {
-      case Some(status) =>
-        span(
-          cls := (status match {
-            case SessionStatus.Ready => "tag is-success is-small ml-2"
-            case _                   => "tag is-info is-small ml-2"
-          }),
-          status.toString.toLowerCase
-        )
-      case None => emptyNode
-    }
-  )
+        },
+      // No runtime to run this tool's models: said once beside the picker, with
+      // the install (`specs/46`).
+      child <-- sessions
+        .configurationsOf(tool, kind)
+        .combineWith(prerequisites.byConfiguration)
+        .map((listed, missing) =>
+          // Said once for the whole picker: every build its configurations can
+          // take, and a pick on another engine switches all that run on it.
+          // Only the ones it offers — a video model is not an image project's
+          // concern.
+          LaunchPrerequisites.RuntimeNeed
+            .merge(
+              listed
+                .collect { case (c, true) => c }
+                .flatMap(c => missing.get(c.id).flatMap(_.runtime))
+            )
+            .fold(emptyNode)(need =>
+              div(
+                cls := "control ml-2",
+                LaunchOrDownload.runtimeNotice(need, prerequisites)
+              )
+            )
+        ),
+      child <-- sessions.liveStatus(tool).map {
+        case Some(status) =>
+          span(
+            cls := (status match {
+              case SessionStatus.Ready => "tag is-success is-small ml-2"
+              case _                   => "tag is-info is-small ml-2"
+            }),
+            status.toString.toLowerCase
+          )
+        case None => emptyNode
+      }
+    )
+  }
 
   lazy val element: HtmlElement = div(
     cls := "mb-3",
@@ -295,10 +375,13 @@ class WorkspaceHeader(
           cls := "is-flex is-flex-wrap-wrap",
           modelPicker(RuntimeTool.LlamaCpp, Val("Chat model"), Val(None))
         )
+      // One picker per row, whatever the notices beside them say: a row that
+      // shortened while installing pulled the assistant up beside the image
+      // model, and the header jumped about (François, 2026-09-28).
       case kind =>
         div(
-          cls := "is-flex is-flex-wrap-wrap",
-          styleAttr := "gap: 1rem;",
+          cls := "is-flex is-flex-direction-column",
+          styleAttr := "gap: 0.5rem;",
           modelPicker(
             RuntimeTool.SdCpp,
             Val(kind match {

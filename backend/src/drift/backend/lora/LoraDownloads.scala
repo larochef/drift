@@ -6,6 +6,7 @@ import drift.shared.*
 
 import java.nio.file.*
 import java.util.concurrent.{ConcurrentHashMap, Executors}
+import java.util.concurrent.atomic.AtomicBoolean
 import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
 
@@ -31,7 +32,10 @@ final private[lora] class LoraDownloads(
 
   private val logger = Logger[LoraDownloads]
 
-  final private class Entry(@volatile var job: LoraDownloadJob)
+  final private class Entry(
+      @volatile var job: LoraDownloadJob,
+      val cancelled: AtomicBoolean = AtomicBoolean(false)
+  )
   private val jobs = ConcurrentHashMap[String, Entry]()
 
   private val executor = Executors.newFixedThreadPool(
@@ -45,6 +49,19 @@ final private[lora] class LoraDownloads(
 
   def listJobs: List[LoraDownloadJob] =
     jobs.values.asScala.map(_.job).toList.sortBy(j => (j.loraId, j.fileName))
+
+  /** Stops one file's transfer from the downloads panel: a queued one at once,
+    * a running one at its next read, its `.part` kept for a resume. The LoRA
+    * stays installed without that file, so a restart resumes it
+    * (`resumeInterrupted`) — deleting the LoRA is what drops it for good.
+    */
+  def cancel(loraId: String, fileName: String): Option[LoraDownloadJob] =
+    Option(jobs.get(s"$loraId/$fileName")).map { entry =>
+      entry.cancelled.set(true)
+      if (entry.job.state == DownloadState.Queued)
+        entry.job = entry.job.copy(state = DownloadState.Cancelled)
+      entry.job
+    }
 
   // ----------------------------------------------------------------- install
 
@@ -98,39 +115,42 @@ final private[lora] class LoraDownloads(
         jobs.put(key, entry)
         executor.submit(new Runnable {
           def run(): Unit =
-            try {
-              entry.job = entry.job.copy(state = DownloadState.Downloading)
-              Files.createDirectories(target.getParent)
-              val outcome = fetch(
-                file,
-                target,
-                (done, total) =>
-                  entry.job = entry.job.copy(
-                    downloadedBytes = done,
-                    totalBytes = total.orElse(entry.job.totalBytes)
-                  )
-              )
-              entry.job = outcome match {
-                case DownloadOutcome.Completed(_, bytes) =>
-                  entry.job.copy(
-                    state = DownloadState.Completed,
-                    downloadedBytes = bytes,
-                    totalBytes = entry.job.totalBytes.orElse(Some(bytes))
-                  )
-                case DownloadOutcome.Cancelled =>
-                  entry.job.copy(state = DownloadState.Cancelled)
-                case DownloadOutcome.Failed(reason) =>
-                  entry.job
-                    .copy(state = DownloadState.Failed, error = Some(reason))
-              }
-            } catch {
-              case NonFatal(err) =>
-                logger.warn(s"LoRA download $key blew up", err)
-                entry.job = entry.job.copy(
-                  state = DownloadState.Failed,
-                  error = Some(Option(err.getMessage).getOrElse(err.toString))
+            if (entry.cancelled.get()) ()
+            else
+              try {
+                entry.job = entry.job.copy(state = DownloadState.Downloading)
+                Files.createDirectories(target.getParent)
+                val outcome = fetch(
+                  file,
+                  target,
+                  () => entry.cancelled.get(),
+                  (done, total) =>
+                    entry.job = entry.job.copy(
+                      downloadedBytes = done,
+                      totalBytes = total.orElse(entry.job.totalBytes)
+                    )
                 )
-            }
+                entry.job = outcome match {
+                  case DownloadOutcome.Completed(_, bytes) =>
+                    entry.job.copy(
+                      state = DownloadState.Completed,
+                      downloadedBytes = bytes,
+                      totalBytes = entry.job.totalBytes.orElse(Some(bytes))
+                    )
+                  case DownloadOutcome.Cancelled =>
+                    entry.job.copy(state = DownloadState.Cancelled)
+                  case DownloadOutcome.Failed(reason) =>
+                    entry.job
+                      .copy(state = DownloadState.Failed, error = Some(reason))
+                }
+              } catch {
+                case NonFatal(err) =>
+                  logger.warn(s"LoRA download $key blew up", err)
+                  entry.job = entry.job.copy(
+                    state = DownloadState.Failed,
+                    error = Some(Option(err.getMessage).getOrElse(err.toString))
+                  )
+              }
         })
     }
   }
@@ -139,6 +159,7 @@ final private[lora] class LoraDownloads(
   private def fetch(
       file: LoraFile,
       target: Path,
+      isCancelled: () => Boolean,
       onProgress: (Long, Option[Long]) => Unit
   ): DownloadOutcome =
     file.source match {
@@ -152,7 +173,7 @@ final private[lora] class LoraDownloads(
           expectedSha256 = file.sha256,
           headers =
             civitaiToken().map(t => "Authorization" -> s"Bearer $t").toMap,
-          isCancelled = () => false,
+          isCancelled = isCancelled,
           onProgress = onProgress
         )
       case source: HuggingFace =>
@@ -160,7 +181,7 @@ final private[lora] class LoraDownloads(
           source,
           target,
           file.sha256,
-          () => false,
+          isCancelled,
           onProgress
         )
       case source: ModelScope =>
@@ -168,7 +189,7 @@ final private[lora] class LoraDownloads(
           source,
           target,
           file.sha256,
-          () => false,
+          isCancelled,
           onProgress
         )
       case Local(path) => copyFromDisk(Paths.get(path), target, onProgress)

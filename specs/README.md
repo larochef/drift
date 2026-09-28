@@ -57,6 +57,7 @@ in [`../docs/`](../docs/README.md).
 | [43](43-runners-per-architecture.md) | Runners per architecture: the drift runner installed from the runtimes page, supported runners and model kind, a runner per configuration | done in code, run on a copy of the configuration |
 | [44](44-generation-progress.md) | Generation progress: batch and image bars, the runner reporting its own progress | planned |
 | [45](45-redraw-steps-and-reference.md) | Redraw: full steps at any strength, a reference at the tile's scale, reference-taking models only | planned |
+| [46](46-starter-configurations.md) | Starter run configurations; every launch becomes a download while weights are missing | done in code, not yet run live |
 
 ## What is left
 

@@ -15,6 +15,8 @@ import drift.backend.session.SessionManager
 import drift.backend.storage.StorageService
 import drift.backend.upscale.UpscalerManager
 
+import scala.concurrent.duration.DurationInt
+
 import com.typesafe.scalalogging.Logger
 import ox.*
 import sttp.shared.Identity
@@ -198,9 +200,9 @@ import sttp.tapir.server.netty.sync.*
   )
 
   val nettyConfig =
-    NettyConfig.default.socketConfig(
-      NettySocketConfig.default.withReuseAddress
-    )
+    NettyConfig.default
+      .requestTimeout(5.minutes)
+      .socketConfig(NettySocketConfig.default.withReuseAddress)
 
   supervised {
     val server = NettySyncServer(nettyConfig)

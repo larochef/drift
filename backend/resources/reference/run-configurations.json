@@ -1,0 +1,100 @@
+[
+  {
+    "id": "starter-flux2-klein-9b",
+    "label": "Flux.2 Klein 9B",
+    "architectureId": "flux.2-klein-9B",
+    "assignments": {
+      "diffusion": "flux-2-klein-9b-q4-k-m",
+      "vae": "flux2-vae",
+      "llm": "qwen3-8b-ud-q4-k-xl"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "SdCpp"
+  },
+  {
+    "id": "starter-krea2",
+    "label": "Krea 2 Turbo",
+    "architectureId": "krea2",
+    "assignments": {
+      "diffusion": "krea-2-turbo-q4-k-m",
+      "vae": "wan-2-1-vae",
+      "llm": "qwen3-vl-4b-instruct-ud-q4-k-xl"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "SdCpp"
+  },
+  {
+    "id": "starter-qwen-image-2.1",
+    "label": "Qwen Image 2.1",
+    "architectureId": "qwen-image-2.1",
+    "assignments": {
+      "diffusion": "qwen-image-2.1-q4-k",
+      "vae": "qwen-image-2.1-vae-bf16",
+      "llm": "qwen3-vl-8b-instruct-ud-q4-k-xl",
+      "llm vision": "qwen3-vl-8b-instruct-mmproj-f16"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "SdCpp"
+  },
+  {
+    "id": "starter-minimax-h3",
+    "label": "MiniMax H3 (video)",
+    "architectureId": "minimax-h3",
+    "assignments": {
+      "diffusion": "minimax-h3-fl2va-pruned-q4-k",
+      "vae": "minimax-h3-video-vae",
+      "audio-vae": "minimax-h3-audio-vae",
+      "llm": "h3-text-encoder-unsloth"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "SdCpp"
+  },
+  {
+    "id": "starter-pid-flux2",
+    "label": "PiD 1.5 upscale (FLUX.2)",
+    "architectureId": "pid-flux2",
+    "assignments": {
+      "diffusion": "pid-flux2-4-steps-diffusion",
+      "llm": "pid-gemma-2-2b-comfy",
+      "tokenizer": "gemma-2-2b-tokenizer-unsloth",
+      "vae": "flux2-vae"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "SdCpp"
+  },
+  {
+    "id": "starter-qwen3.6-35b-a3b",
+    "label": "Qwen 3.6 35B-A3B (chat)",
+    "architectureId": "qwen3.6-35b-a3b",
+    "assignments": {
+      "model": "qwen3.6-35b-a3b-mtp-unsloth",
+      "mmproj": "qwen-3.6-mmprof"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "LlamaCpp"
+  }
+]

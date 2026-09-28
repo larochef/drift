@@ -1,7 +1,8 @@
 package drift.frontend.pages.gallery
 
-import drift.frontend.components.Component
+import drift.frontend.components.{Component, LaunchOrDownload}
 import drift.frontend.pages.gallery.PostProcessSection.*
+import drift.frontend.services.LaunchPrerequisites
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -32,6 +33,10 @@ class PidUpscalePanel(
     showTileGrid: Var[Boolean],
     /** The source's prompt, inherited — what the prompt field starts with. */
     sourcePrompt: String,
+    /** What each configuration still has to download: the job's button becomes
+      * the download while the chosen model cannot start (`specs/46`).
+      */
+    prerequisites: LaunchPrerequisites,
     onPid: (GenerationOutput, PidUpscaleRequest) => Unit
 ) extends Component {
 
@@ -219,24 +224,28 @@ class PidUpscalePanel(
           )
         )
       ),
-      button(
-        cls := "button is-small is-link",
-        disabled <-- refused,
-        "✨ PiD upscale",
-        onClick.compose(_.sample(image)) --> (_.foreach(output =>
-          onPid(
-            output,
-            PidUpscaleRequest(
-              runConfigurationId = configurationVar.now(),
-              width = widthVar.now().trim.toIntOption,
-              height = heightVar.now().trim.toIntOption,
-              prompt = promptVar.now(),
-              steps = stepsVar.now().trim.toIntOption.getOrElse(4),
-              seed = seedOf(seedVar)
+      LaunchOrDownload(
+        prerequisites.of(configurationVar.signal),
+        prerequisites,
+        button(
+          cls := "button is-small is-link",
+          disabled <-- refused,
+          "✨ PiD upscale",
+          onClick.compose(_.sample(image)) --> (_.foreach(output =>
+            onPid(
+              output,
+              PidUpscaleRequest(
+                runConfigurationId = configurationVar.now(),
+                width = widthVar.now().trim.toIntOption,
+                height = heightVar.now().trim.toIntOption,
+                prompt = promptVar.now(),
+                steps = stepsVar.now().trim.toIntOption.getOrElse(4),
+                seed = seedOf(seedVar)
+              )
             )
-          )
-        ))
-      )
+          ))
+        )
+      ).element
     )
   )
 

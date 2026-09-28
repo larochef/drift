@@ -77,6 +77,12 @@ final class LoraManager(
 
   def listJobs: List[LoraDownloadJob] = downloads.listJobs
 
+  def cancelDownload(
+      loraId: String,
+      fileName: String
+  ): Option[LoraDownloadJob] =
+    downloads.cancel(loraId, fileName)
+
   /** Re-queues every installed LoRA file that is not on disk, once at start
     * (`LoraDownloads`).
     */

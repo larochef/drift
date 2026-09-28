@@ -377,6 +377,43 @@ object InstallLatestRequest {
     JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
 }
 
+/** A build drift offers to install where a launch finds no runtime of its
+  * engine (`specs/46-starter-configurations.md`): each upstream backend the
+  * machine can run, installed as any latest-tracking runtime is, and drift's
+  * own runner where this drift carries it for the machine's GPU. The user
+  * picks; `recommended` marks the preselected one — ROCm for sd-cpp on an AMD
+  * GPU the ROCm driver exposes, Vulkan otherwise.
+  */
+case class RuntimeInstallOption(
+    tool: RuntimeTool,
+    engine: RuntimeEngine,
+    /** The upstream install; none for the drift runner, which installs both its
+      * runtimes from the jar drift ships (`specs/43`).
+      */
+    request: Option[InstallLatestRequest],
+    runtimeId: String,
+    /** What the choice names: "sd-cpp on ROCm (gfx1151)". */
+    label: String,
+    recommended: Boolean
+)
+object RuntimeInstallOption {
+  given JsonValueCodec[List[RuntimeInstallOption]] =
+    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+}
+
+/** Install `option` for configurations that could not launch, and move those of
+  * them whose architecture runs on its engine to it once it validates
+  * (`specs/46-starter-configurations.md`).
+  */
+case class InstallForConfigurationsRequest(
+    option: RuntimeInstallOption,
+    configurationIds: List[String]
+)
+object InstallForConfigurationsRequest {
+  given JsonValueCodec[InstallForConfigurationsRequest] =
+    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+}
+
 /** Install drift's own runner (`specs/43`): both its runtimes, chat and images,
   * on one TheRock build; empty pairs the one matching the ROCm its kernels were
   * built with.
@@ -506,6 +543,13 @@ val installRuntime
     .in(jsonBody[InstallRuntimeRequest])
     .out(jsonBody[RuntimeInstallJob])
 
+/** The builds offered per tool (`RuntimeInstallOption`). */
+val runtimeInstallOptions
+    : PublicEndpoint[Unit, Unit, List[RuntimeInstallOption], Any] =
+  runtimesBase.get
+    .in("runtime-installs" / "options")
+    .out(jsonBody[List[RuntimeInstallOption]])
+
 val listRuntimeInstalls
     : PublicEndpoint[Unit, Unit, List[RuntimeInstallJob], Any] =
   runtimesBase.get.in("runtime-installs").out(jsonBody[List[RuntimeInstallJob]])
@@ -533,6 +577,17 @@ val runnerOffer: PublicEndpoint[Unit, Unit, RunnerOffer, Any] =
   runtimesBase.get.in("runtime-installs" / "runner").out(jsonBody[RunnerOffer])
 
 /** Installs drift's own runner: one job per runtime, chat and images. */
+val installForConfigurations: PublicEndpoint[
+  InstallForConfigurationsRequest,
+  Unit,
+  List[RuntimeInstallJob],
+  Any
+] =
+  runtimesBase.post
+    .in("runtime-installs" / "for-configurations")
+    .in(jsonBody[InstallForConfigurationsRequest])
+    .out(jsonBody[List[RuntimeInstallJob]])
+
 val installRunner
     : PublicEndpoint[InstallRunnerRequest, Unit, List[RuntimeInstallJob], Any] =
   runtimesBase.post

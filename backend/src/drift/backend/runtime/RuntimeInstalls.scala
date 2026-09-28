@@ -37,6 +37,24 @@ final private[runtime] class RuntimeInstalls(
 
   private val entries = ConcurrentHashMap[String, RuntimeInstallEntry]()
 
+  /** What runs once an install validates, before its job reads `Completed`
+    * (`RuntimeInstallResolution`): whoever sees the job complete sees its
+    * effects too. Dropped when the install fails.
+    */
+  private val onValid = ConcurrentHashMap[String, () => Unit]()
+
+  /** Runs `action` when the running install of `runtimeId` validates; answers
+    * false when none is running, leaving the caller to act on the outcome it
+    * can read.
+    */
+  def whenValid(runtimeId: String)(action: () => Unit): Boolean = {
+    onValid.put(runtimeId, action)
+    val running =
+      Option(entries.get(runtimeId)).exists(_.job.state.isActive)
+    if (!running) onValid.remove(runtimeId, action)
+    running
+  }
+
   // Two at a time, the same figure the model downloads use
   // (`Downloader.MaxTransfersPerHost`) - a runtime install is a download like
   // any other and had no business being the one thing that queued
@@ -492,6 +510,13 @@ final private[runtime] class RuntimeInstalls(
         // validation must not delete the working files it was replacing.
         if (validated.valid)
           previous.foreach(cleanup.cleanupSuperseded(_, validated))
+        Option(onValid.remove(id)).filter(_ => validated.valid).foreach { act =>
+          try act()
+          catch {
+            case NonFatal(err) =>
+              logger.warn(s"After installing $id: ${err.getMessage}")
+          }
+        }
         entry.job = entry.job.copy(
           state =
             if (validated.valid) RuntimeInstallState.Completed

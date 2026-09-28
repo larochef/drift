@@ -23,5 +23,8 @@ def loraEndpoints(
   ),
   pairLoras.serverLogicSuccess[Identity](manager.pair),
   deleteLora.serverLogicSuccess[Identity](manager.delete),
-  listLoraDownloads.serverLogicSuccess[Identity](_ => manager.listJobs)
+  listLoraDownloads.serverLogicSuccess[Identity](_ => manager.listJobs),
+  cancelLoraDownload.serverLogicSuccess[Identity]((loraId, fileName) =>
+    manager.cancelDownload(loraId, fileName)
+  )
 )

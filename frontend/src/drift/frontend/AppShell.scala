@@ -78,6 +78,7 @@ class AppShell(
     architectureService: ArchitectureService,
     cacheService: CacheService,
     downloadService: DownloadService,
+    prerequisites: LaunchPrerequisites,
     runtimeService: RuntimeService,
     authTokenService: AuthTokenService,
     promptTemplateService: PromptTemplateService,
@@ -120,6 +121,7 @@ class AppShell(
               postProcessService,
               upscalerService,
               runtimeService,
+              prerequisites,
               section
             ).element
           }
@@ -142,6 +144,7 @@ class AppShell(
               upscalerService,
               runtimeService,
               logService,
+              prerequisites,
               section
             ).element
           }

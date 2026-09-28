@@ -81,8 +81,8 @@ GET  /api/assistant/uploads/{id}            the bytes back
   (a `stream: Boolean = true` would vanish).
 - tapir needs explicit `Schema.derived` givens for the sealed `ChatAttachment`
   and every shape holding it.
-- Qwen's MTP build does not support `--mmproj`: a vision configuration
-  assigns the projector and overrides `--spec-type none`. Gemma 4 ships its
+- Qwen's MTP build takes `--mmproj` beside MTP drafting from llama.cpp b9240
+  on (older builds crashed on the pair). Gemma 4 ships its
   MTP head as a separate GGUF, so a configuration wanting it assigns the `mtp`
   slot and adds the spec flags itself.
 - Verbose reasoning is a launch-time lever: `--reasoning-budget N` or

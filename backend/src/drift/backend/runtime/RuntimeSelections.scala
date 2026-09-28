@@ -18,6 +18,14 @@ final private[runtime] class RuntimeSelections(storage: StorageService) {
   def save(next: RuntimeSelection): RuntimeSelection =
     storage.save("settings", "runtime-selection", next)
 
+  /** Reads, changes and writes the selection as one step. Two runtimes
+    * validating at once — the drift runner's pair, installed together — each
+    * set their tool's default from the same stale read, and the second write
+    * lost the first's (seen 2026-09-28: the text default never set).
+    */
+  def update(change: RuntimeSelection => RuntimeSelection): RuntimeSelection =
+    synchronized(save(change(current)))
+
   /** The runtime a launch uses — the pin, else `engine`'s: the tool's default
     * when it is that engine's, else the engine's newest valid build — refusing
     * with a named reason if none resolves to something that runs, or if it is a

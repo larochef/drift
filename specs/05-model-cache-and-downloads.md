@@ -38,7 +38,21 @@ copy serves drift and `huggingface_hub` alike.
   architecture (`09`); a weight file offers **Convert…** (`25`).
 - The global downloads panel at the sidebar bottom lists every transfer kind
   (model, LoRA, upscaler, runtime, conversion) with progress; queued transfers
-  fold into one summary line.
+  fold into one summary line. Each row has a ✕ that cancels it, and the
+  summary line one that cancels every queued transfer; a row being
+  cancelled reads *cancelling…* over an animated bar until the job ends. A
+  cancel lands wherever the transfer stands — before it starts, waiting for
+  its host's slot, during the range probe, or in a read gone silent. A read
+  with no data for 30 s is dropped (`StallWatch`: the JDK HttpClient has no
+  body read timeout, and a silently dead connection held its transfer and its
+  host slot forever): a chunk retries on a new connection, a single-stream
+  transfer fails and resumes when started again. A cancelled download
+  keeps its `.part` for a resume; a LoRA or upscaler stays registered, so a
+  restart resumes it (deleting it is what drops it). Each kind cancels
+  through its own endpoint: `/api/downloads/{model}/cancel`,
+  `/api/lora-downloads/{lora}/{file}/cancel`,
+  `/api/upscaler-downloads/{upscaler}/cancel`,
+  `/api/runtime-installs/{runtime}/cancel` and the conversion's.
 
 ## Shape
 

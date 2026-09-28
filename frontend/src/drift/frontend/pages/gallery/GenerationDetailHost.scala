@@ -37,6 +37,10 @@ class GenerationDetailHost(
       * so how large its tiles are.
       */
     runtimeService: RuntimeService,
+    /** What each configuration still has to download: its launch is offered as
+      * that download until the weights are on disk (`specs/46`).
+      */
+    prerequisites: LaunchPrerequisites,
     /** What to do once a reuse is staged: the gallery leaves for the inference
       * page, the workspace fills the panel it already shows.
       */
@@ -197,7 +201,8 @@ class GenerationDetailHost(
         */
       live: Option[String],
       configurations: List[RunConfiguration],
-      labels: Map[String, String]
+      labels: Map[String, String],
+      missing: Map[String, LaunchPrerequisites.Missing]
   ): ReuseOffer = {
     val ownLabel = labelOf(labels, generation.runConfigurationId)
     val others = configurations
@@ -235,6 +240,21 @@ class GenerationDetailHost(
               "sampling settings shown carry over, its own defaults fill the " +
               "rest. Stop it to launch another configuration with this task."
           )
+        )
+      // What it lacks — a runtime to choose, weights to download — is offered
+      // in the launch's place (`specs/46`).
+      case None if missing.contains(generation.runConfigurationId) =>
+        ReuseOffer(
+          List.empty,
+          Some(
+            s"$ownLabel cannot launch yet: " +
+              LaunchPrerequisites.describe(
+                missing(generation.runConfigurationId)
+              ) + "."
+          ),
+          others,
+          launchOther,
+          preparing = Some(generation.runConfigurationId)
         )
       case None
           if configurations.exists(_.id == generation.runConfigurationId) =>
@@ -297,9 +317,13 @@ class GenerationDetailHost(
         if (generation.derivation.isDefined) Val(ReuseOffer(List.empty, None))
         else
           liveGenerationConfiguration
-            .combineWith(generationConfigurations, labels)
-            .map((live, configurations, labels) =>
-              offerFor(generation, live, configurations, labels)
+            .combineWith(
+              generationConfigurations,
+              labels,
+              prerequisites.byConfiguration
+            )
+            .map((live, configurations, labels, missing) =>
+              offerFor(generation, live, configurations, labels, missing)
             ),
       upscalers = upscalerService.upscalers.distinct,
       pidConfigurations = pidConfigurations,
@@ -362,6 +386,7 @@ class GenerationDetailHost(
       openSection = openSection,
       openTask = openTask,
       panelHidden = panelHidden,
+      prerequisites = prerequisites,
       initialOutputIndex = shown.outputIndex
     ).element
   }

@@ -65,6 +65,12 @@ class RunConfigurationsPage(
     * user (François, 2026-09-15).
     */
   private val editCard = Var(Option.empty[RunConfigurationEditCard])
+
+  /** What each configuration lacks before it can launch. Its effects are not
+    * mounted: this page mounts the services it reads already.
+    */
+  private val prerequisites =
+    LaunchPrerequisites(service, cacheService, downloadService, runtimeService)
   // Mirror of service.architectures kept in sync below, so event handlers
   // (startEdit) can read the current value synchronously.
   private val archsNow = Var(List.empty[Architecture])
@@ -217,11 +223,8 @@ class RunConfigurationsPage(
             runtimeId => selectedRuntimeIds.update(_ + (rm.id -> runtimeId)),
             handleDelete,
             startEdit,
-            ids =>
-              ids.foreach(id =>
-                downloadService.push(DownloadService.Command.Start(id))
-              ),
-            downloadService.jobs,
+            prerequisites.of(Val(rm.id)),
+            prerequisites,
             handleLaunch,
             id => sessionService.push(SessionService.Command.Stop(id))
           ).element
@@ -483,6 +486,7 @@ class RunConfigurationsPage(
     downloadService.effects,
     sessionService.effects,
     runtimeService.effects,
+    prerequisites.followInstalls,
     generationService.effects,
     loraService.effects,
     downloadService.events --> Observer {
@@ -507,6 +511,8 @@ class RunConfigurationsPage(
       cacheService.push(CacheService.Command.Load)
       sessionService.push(SessionService.Command.Load)
       runtimeService.push(RuntimeService.Command.Load)
+      runtimeService.push(RuntimeService.Command.LoadInstalls)
+      runtimeService.push(RuntimeService.Command.LoadInstallOptions)
       // The default LoRAs pick from the collection; without this it stayed
       // empty until the Architectures page had loaded it.
       loraService.push(LoraService.Command.Load)

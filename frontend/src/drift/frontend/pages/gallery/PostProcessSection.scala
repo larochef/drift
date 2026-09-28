@@ -1,6 +1,7 @@
 package drift.frontend.pages.gallery
 
 import drift.frontend.components.{Component, FoldedSection}
+import drift.frontend.services.LaunchPrerequisites
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -32,6 +33,10 @@ class PostProcessSection(
     editTemplates: Signal[List[PromptTemplate]],
     liveSessions: Signal[List[(String, String)]],
     jobs: Signal[List[PostProcessJob]],
+    /** What each configuration still has to download: a panel whose model
+      * cannot start yet offers the download instead of its job.
+      */
+    prerequisites: LaunchPrerequisites,
     /** The image on screen and the box drawn on it, for the redraw panel. */
     viewed: Var[Option[ViewedImage]],
     /** Where the redraw panel publishes what a selection would cost. */
@@ -87,6 +92,7 @@ class PostProcessSection(
         showTileGrid,
         gridOffset,
         openTask.signal.map(_ == PostProcessSection.RedrawTask),
+        prerequisites,
         onRedraw
       ).element
     ),
@@ -102,6 +108,7 @@ class PostProcessSection(
         showTileGrid,
         gridOffset,
         openTask.signal.map(_ == PostProcessSection.EditTask),
+        prerequisites,
         onEdit
       ).element
     ),
@@ -115,6 +122,7 @@ class PostProcessSection(
         pidTiles,
         showTileGrid,
         sourcePrompt,
+        prerequisites,
         onPid
       ).element
     ),

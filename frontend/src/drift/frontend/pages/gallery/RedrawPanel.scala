@@ -3,6 +3,7 @@ package drift.frontend.pages.gallery
 import drift.frontend.components.*
 import drift.frontend.pages.gallery.PostProcessSection.*
 import drift.frontend.pages.gallery.TileAreaFields.TilePlan
+import drift.frontend.services.LaunchPrerequisites
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -42,6 +43,10 @@ class RedrawPanel(
       * draws.
       */
     active: Signal[Boolean],
+    /** What each configuration still has to download: the job's button becomes
+      * the download while the chosen model cannot start (`specs/46`).
+      */
+    prerequisites: LaunchPrerequisites,
     onRedraw: (GenerationOutput, RedrawRequest) => Unit
 ) extends Component {
 
@@ -315,16 +320,20 @@ class RedrawPanel(
         div(child <-- costLine),
         area.gridControls
       ),
-      button(
-        cls := "button is-small is-link",
-        child.text <-- viewed.signal.map(shown =>
-          if (shown.exists(_.selection.isDefined)) "✨ Redraw selection"
-          else "✨ Redraw"
-        ),
-        onClick.compose(_.sample(image)) --> (_.foreach(output =>
-          onRedraw(output, request)
-        ))
-      )
+      LaunchOrDownload(
+        prerequisites.of(configurationVar.signal),
+        prerequisites,
+        button(
+          cls := "button is-small is-link",
+          child.text <-- viewed.signal.map(shown =>
+            if (shown.exists(_.selection.isDefined)) "✨ Redraw selection"
+            else "✨ Redraw"
+          ),
+          onClick.compose(_.sample(image)) --> (_.foreach(output =>
+            onRedraw(output, request)
+          ))
+        )
+      ).element
     )
   )
 

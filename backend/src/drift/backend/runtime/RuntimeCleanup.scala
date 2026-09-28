@@ -37,9 +37,11 @@ final private[runtime] class RuntimeCleanup(
           deleteOwnedTree(Paths.get(rock))
       }
     }
-    val current = selections.current
-    if (current.defaultFor(runtime.tool).contains(runtime.id))
-      selections.save(current.withDefault(runtime.tool, None))
+    selections.update(current =>
+      if (current.defaultFor(runtime.tool).contains(runtime.id))
+        current.withDefault(runtime.tool, None)
+      else current
+    )
   }
 
   /** After a latest runtime upgrades to a new tag's directory: remove the tag

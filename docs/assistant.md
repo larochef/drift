@@ -16,8 +16,8 @@ you write and refine prompts, and can look at what you generated.
    Model Cache (see [model-cache.md](model-cache.md)).
 2. On **Models → Run configurations**, create a configuration for the chat
    architecture and assign the files. Assign the projector if you want the
-   assistant to see images. Qwen's MTP build cannot take a projector: add the
-   parameter `--spec-type none` to a vision configuration.
+   assistant to see images; vision and MTP drafting work together on
+   llama.cpp b9240 and later.
 3. You need a llama.cpp runtime, installed from **Settings** like an sd-cpp
    one (see [settings.md](settings.md)).
 

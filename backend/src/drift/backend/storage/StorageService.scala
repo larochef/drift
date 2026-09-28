@@ -9,12 +9,21 @@ import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
 
 import com.github.plokhotnyuk.jsoniter_scala.core.*
+import com.github.plokhotnyuk.jsoniter_scala.macros.JsonCodecMaker
 import com.typesafe.scalalogging.Logger
 
 /** A stored entity as seeding needs it: who owns it, and the bytes it holds
   * (`StorageService.storedRecords`).
   */
 private case class StoredRecord(builtIn: Boolean, text: String)
+
+/** The reference ids a seed-once collection has already been given
+  * (`StorageService.seedOnce`).
+  */
+private case class SeededIds(ids: List[String])
+private object SeededIds {
+  given JsonValueCodec[SeededIds] = JsonCodecMaker.make
+}
 
 class StorageService(basePath: Path) {
   private val logger = Logger[StorageService]
@@ -212,6 +221,40 @@ class StorageService(basePath: Path) {
       }
   }
 
+  /** Seeds each reference item once, then leaves it to the user: edited,
+    * deleted, never written again (`specs/46-starter-configurations.md`).
+    * Unlike `seedFromResource`, where the reference stays authoritative, the
+    * items are ordinary records from the moment they land, so what was already
+    * seeded is kept in `settings/seeded-<entityType>.json` — the records
+    * themselves cannot say it once the user may delete them. An id a record
+    * already holds is marked seeded without being written.
+    */
+  private def seedOnce[T](
+      entityType: String,
+      resourcePath: String,
+      extractId: T => String
+  )(using JsonValueCodec[T], JsonValueCodec[List[T]]): Unit = {
+    val marker = s"seeded-$entityType"
+    val seeded = get[SeededIds]("settings", marker).fold(Set.empty)(_.ids.toSet)
+    val fresh = loadResource[T](resourcePath)
+      .filterNot(item => seeded.contains(extractId(item)))
+    if (fresh.nonEmpty) {
+      val written = fresh.count { item =>
+        val id = extractId(item)
+        val absent =
+          !Files.exists(basePath.resolve(entityType).resolve(s"$id.json"))
+        if (absent) save(entityType, id, item)
+        absent
+      }
+      save(
+        "settings",
+        marker,
+        SeededIds((seeded ++ fresh.map(extractId)).toList.sorted)
+      )
+      logger.info(s"seeded $written $entityType from $resourcePath, once")
+    }
+  }
+
   private def loadResource[T](
       resourcePath: String
   )(using JsonValueCodec[List[T]]): List[T] = {
@@ -261,6 +304,14 @@ class StorageService(basePath: Path) {
     seedFromResource[PromptTemplate](
       "prompt-templates",
       "reference/prompt-templates.json",
+      _.id
+    )
+    // Starter configurations (`specs/46-starter-configurations.md`): a fresh
+    // install launches one once its runtime and weights are there. Seeded once,
+    // then the user's to change or delete.
+    seedOnce[RunConfiguration](
+      "run-configurations",
+      "reference/run-configurations.json",
       _.id
     )
     tagUntaggedArchitectures()

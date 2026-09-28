@@ -602,6 +602,18 @@ select.select:focus {
   gap: 0.5rem;
 }
 
+/* What a model lacks before it can launch, in the launch button's place
+   (specs/46): the missing-runtime notice with its install, then the weights'
+   download, wrapping as one right-aligned group. */
+.launch-prerequisites,
+.launch-prerequisite {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 /* Civitai search results, civitai.com-style: a grid of preview tiles with the
    model information overlaid on the image rather than beside it. */
 .civitai-results-grid {

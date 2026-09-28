@@ -36,6 +36,7 @@ def runtimeEndpoints(
     installRuntime.serverLogicSuccess[Identity](manager.install),
     runnerOffer.serverLogicSuccess[Identity](_ => manager.runnerOffer),
     installRunner.serverLogicSuccess[Identity](manager.installRunner),
+    installForConfigurations.serverLogicSuccess[Identity](manager.installFor),
     installLatestRuntime.serverLogicSuccess[Identity](request =>
       manager.installLatest(
         request.tool,
@@ -49,6 +50,9 @@ def runtimeEndpoints(
     ),
     changeRuntimeTheRock.serverLogicSuccess[Identity]((id, request) =>
       manager.changeTheRock(id, request.theRockVersion)
+    ),
+    runtimeInstallOptions.serverLogicSuccess[Identity](_ =>
+      manager.installOptions
     ),
     listRuntimeInstalls.serverLogicSuccess[Identity](_ => manager.listInstalls),
     cancelRuntimeInstall.serverLogicSuccess[Identity](manager.cancelInstall)

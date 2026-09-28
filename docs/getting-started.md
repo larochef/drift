@@ -16,41 +16,35 @@ If you leave a tab open while you restart drift on a new build, a notice at
 the top of the page offers to reload it — a page older than the backend cannot
 read what it sends, and nothing on it updates by itself until you do.
 
-## 1. Install a runtime
+## 1. Install a runtime when asked
 
-Settings → **Add a runtime**. Pick the tool (sd-cpp for images and videos,
-llama.cpp for the assistant) and a backend:
+Where a model cannot start because nothing runs it yet, drift says *No image
+runtime is installed.* (or *video*, or *text* for chat; *Choose the video
+runtime for …* when one is installed but not one that model runs on) with a
+choice of build
+and an **Install** button. drift's own runner comes first where it can run the
+model; sd-cpp or llama.cpp builds (ROCm if you have an AMD GPU, Vulkan, CPU)
+follow. Picking a different engine than a configuration's switches that
+configuration to it. The one you install is used from then on. Other
+releases, or a build you compiled yourself, are in Settings → **Add a
+runtime**; see [settings.md](settings.md).
 
-- **ROCm** for AMD GPUs — drift downloads the release and the matching ROCm
-  (TheRock) build and pairs them.
-- **Vulkan** for NVIDIA and other GPUs.
-- **CPU** as a fallback.
+## 2. Pick a model and download it
 
-The install shows its progress on the page. Once it is valid, make it the
-default runtime for that tool. The **Adopt** tab registers a build you
-compiled yourself instead. Details in [settings.md](settings.md).
+drift adds ready-made run configurations on first start: **Flux.2 Klein 9B**, **Krea 2
+Turbo** and **Qwen Image 2.1** for images, **MiniMax H3** for video, **PiD 1.5**
+to upscale, and **Qwen 3.6 35B-A3B** as a chat assistant. On Models → **Run
+configurations**, press **Download the weights** on the one you want; the
+button becomes **Launch** once the files are on disk. Progress shows in the
+downloads panel at the bottom of the sidebar; its ✕ cancels a download
+(it resumes where it stopped if you start it again).
 
-## 2. Get a model
+Building your own configurations — other architectures, other files, LoRAs,
+parameters — comes later; see [models.md](models.md) and
+[browsers.md](browsers.md). Some HuggingFace repositories are gated and need a
+token: Settings → Authentication.
 
-Models → the architectures come seeded, each with reference models filling its
-checkpoint slots. Two ways to get weights:
-
-- Model Cache → **Not downloaded** lists the seeded models; download one
-  (Flux.2 Klein 4B is a good, fast first choice).
-- Or search HuggingFace or Civitai from an architecture card and install a
-  model from there, see [browsers.md](browsers.md).
-
-Some HuggingFace repositories are gated and need a token: Settings →
-Authentication. Progress shows in the downloads panel at the bottom of the
-sidebar.
-
-## 3. Make a run configuration
-
-Models → **New run configuration**: pick an architecture and a model for each slot,
-keep the defaults, save. The launch preview shows the exact command line drift
-will run and notes anything the runtime vetoed. See [models.md](models.md).
-
-## 4. Generate
+## 3. Generate
 
 Two ways:
 
@@ -63,7 +57,7 @@ Two ways:
 
 The form and its options are in [generating.md](generating.md).
 
-## 5. From there
+## 4. From there
 
 - Everything generated is in the [Gallery](gallery.md), with upscale, diffusion
   upscale and redraw one click away.

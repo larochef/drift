@@ -36,8 +36,16 @@ object RuntimeService {
     /** Whether this drift carries a runner to install (`specs/43`). */
     case LoadRunnerOffer
 
+    /** The builds to offer per tool where a launch finds none (`specs/46`). */
+    case LoadInstallOptions
+
     /** Install drift's own runner: both its runtimes, on one TheRock build. */
     case InstallRunner(theRockVersion: Option[String])
+
+    /** Install a build picked where configurations could not launch; the
+      * backend moves them to its engine once it validates (`specs/46`).
+      */
+    case InstallFor(request: InstallForConfigurationsRequest)
 
     /** Re-resolve the newest release for a latest runtime and install it if
       * newer. The TheRock pick matters only when that release declares a ROCm
@@ -63,6 +71,11 @@ object RuntimeService {
       * validation still registers the runtime, marked invalid).
       */
     case InstallSettled(runtimeId: String)
+
+    /** An `InstallFor` was answered: configurations may have moved already (the
+      * engine was installed), or the install is now under way.
+      */
+    case InstallForAnswered(runtimeId: String)
   }
 
   /** How long an install may go without a word from the socket before the list
@@ -96,7 +109,18 @@ class RuntimeService(statusSocket: StatusSocketService) extends ServiceErrors {
     ApiClient.stream(drift.shared.installLatestRuntime)
   private val upgradeFn = ApiClient.stream(drift.shared.upgradeRuntime)
   private val runnerOfferFn = ApiClient.stream(drift.shared.runnerOffer)
+  private val installOptionsFn =
+    ApiClient.stream(drift.shared.runtimeInstallOptions)
   private val installRunnerFn = ApiClient.stream(drift.shared.installRunner)
+  private val installForFn =
+    ApiClient.stream(drift.shared.installForConfigurations)
+
+  private val _requested = Var(Set.empty[String])
+
+  /** Runtime ids whose `InstallFor` is sent but not answered: an install is
+    * starting before any job says so, and the button shows it at once.
+    */
+  val requested: Signal[Set[String]] = _requested.signal
   private val changeTheRockFn =
     ApiClient.stream(drift.shared.changeRuntimeTheRock)
   private val listRulesFn = ApiClient.stream(drift.shared.listRuntimeRules)
@@ -106,6 +130,12 @@ class RuntimeService(statusSocket: StatusSocketService) extends ServiceErrors {
     ApiClient.stream(drift.shared.cancelRuntimeInstall)
 
   private val _runtimes = Var(List.empty[Runtime])
+  private val _runtimesLoaded = Var(false)
+
+  /** Whether the list has been read once: an empty list before that says
+    * nothing about what is installed.
+    */
+  val runtimesLoaded: Signal[Boolean] = _runtimesLoaded.signal
   private val _selection = Var(RuntimeSelection())
   private val _releases = Var(Map.empty[RuntimeTool, List[RuntimeRelease]])
   private val _targets = Var(List.empty[String])
@@ -116,6 +146,15 @@ class RuntimeService(statusSocket: StatusSocketService) extends ServiceErrors {
 
   /** Whether drift's own runner can be installed; none until asked. */
   val runnerOffer: Signal[Option[RunnerOffer]] = _runnerOffer.signal
+
+  private val _installOptions =
+    Var(Map.empty[RuntimeTool, List[RuntimeInstallOption]])
+
+  /** The builds to choose from where a launch finds no runtime of its tool, the
+    * recommended one first.
+    */
+  val installOptions: Signal[Map[RuntimeTool, List[RuntimeInstallOption]]] =
+    _installOptions.signal
 
   val runtimes: Signal[List[Runtime]] = _runtimes.signal
   val selection: Signal[RuntimeSelection] = _selection.signal
@@ -195,6 +234,7 @@ class RuntimeService(statusSocket: StatusSocketService) extends ServiceErrors {
         case Success((runtimes, selection, rules)) =>
           clearError()
           _runtimes.set(runtimes.sortBy(_.label))
+          _runtimesLoaded.set(true)
           _selection.set(selection)
           _rules.set(rules)
         case Failure(err) => reportFailure("Loading runtimes", err)
@@ -255,6 +295,22 @@ class RuntimeService(statusSocket: StatusSocketService) extends ServiceErrors {
         case Failure(err) => reportFailure("Resolving the ROCm build", err)
       },
     cmdBus.events
+      .collect { case Command.LoadInstallOptions => () }
+      .flatMapSwitch(_ => installOptionsFn(()).recoverToTry)
+      --> Observer[Try[List[RuntimeInstallOption]]] {
+        case Success(options) =>
+          clearError()
+          _installOptions.set(
+            options
+              .groupBy(_.tool)
+              .view
+              .mapValues(_.sortBy(!_.recommended))
+              .toMap
+          )
+        case Failure(err) =>
+          reportFailure("Reading the runtimes to install", err)
+      },
+    cmdBus.events
       .collect { case Command.LoadRunnerOffer => () }
       .flatMapMerge(_ => runnerOfferFn(()).recoverToTry)
       --> Observer[Try[RunnerOffer]] {
@@ -274,6 +330,23 @@ class RuntimeService(statusSocket: StatusSocketService) extends ServiceErrors {
           jobs.foreach(applyJob)
         case Failure(err) => reportFailure("Installing the runner", err)
       },
+    cmdBus.events
+      .collect { case Command.InstallFor(request) => request }
+      .flatMapMerge { request =>
+        val id = request.option.runtimeId
+        _requested.update(_ + id)
+        installForFn(request).recoverToTry.map(result => (id, result))
+      } --> Observer[(String, Try[List[RuntimeInstallJob]])] { (id, result) =>
+      _requested.update(_ - id)
+      result match {
+        case Success(jobs) =>
+          clearError()
+          jobs.foreach(applyJob)
+          push(Command.Load)
+          evtBus.writer.onNext(Event.InstallForAnswered(id))
+        case Failure(err) => reportFailure("Installing the runtime", err)
+      }
+    },
     cmdBus.events
       .collect { case Command.InstallLatest(request) => request }
       .flatMapMerge(request => installLatestFn(request).recoverToTry)

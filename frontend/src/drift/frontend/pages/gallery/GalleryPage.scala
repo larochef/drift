@@ -25,6 +25,8 @@ class GalleryPage(
     postProcessService: PostProcessService,
     upscalerService: UpscalerService,
     runtimeService: RuntimeService,
+    /** What each configuration still has to download before it can launch. */
+    prerequisites: LaunchPrerequisites,
     /** The path past `/gallery`: the generation open in the detail view, and
       * which of its outputs (`GenerationDetailHost.boundToUrl`).
       */
@@ -397,6 +399,7 @@ class GalleryPage(
     postProcessService.effects,
     upscalerService.effects,
     projectService.effects,
+    prerequisites.effects,
     projectService.projects.map(_.map(p => p.id -> p.label).toMap)
       --> projectLabels,
     // A detail named by the URL — a refresh, a link, the back button — is not
@@ -495,6 +498,7 @@ class GalleryPage(
       postProcessService,
       upscalerService,
       runtimeService,
+      prerequisites,
       onReuseStaged = () => Page.Models.navigate(),
       onAssistantStaged = () => Page.Models.navigate()
     )

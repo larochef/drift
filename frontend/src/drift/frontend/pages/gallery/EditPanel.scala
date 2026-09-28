@@ -3,6 +3,7 @@ package drift.frontend.pages.gallery
 import drift.frontend.components.*
 import drift.frontend.pages.gallery.PostProcessSection.*
 import drift.frontend.pages.gallery.TileAreaFields.TilePlan
+import drift.frontend.services.LaunchPrerequisites
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -30,6 +31,10 @@ class EditPanel(
       * draws.
       */
     active: Signal[Boolean],
+    /** What each configuration still has to download: the job's button becomes
+      * the download while the chosen model cannot start (`specs/46`).
+      */
+    prerequisites: LaunchPrerequisites,
     onEdit: (GenerationOutput, EditRequest) => Unit
 ) extends Component {
 
@@ -166,19 +171,23 @@ class EditPanel(
         div(child <-- costLine),
         area.gridControls
       ),
-      button(
-        cls := "button is-small is-link",
-        disabled <-- hasInstruction.map(!_),
-        title <-- hasInstruction.map(present =>
-          if (present) "" else "say what should be different first"
-        ),
-        child.text <-- area.hasSelection.map(selected =>
-          if (selected) "✨ Edit selection" else "✨ Edit"
-        ),
-        onClick.compose(_.sample(image)) --> (_.foreach(output =>
-          onEdit(output, request)
-        ))
-      )
+      LaunchOrDownload(
+        prerequisites.of(configurationVar.signal),
+        prerequisites,
+        button(
+          cls := "button is-small is-link",
+          disabled <-- hasInstruction.map(!_),
+          title <-- hasInstruction.map(present =>
+            if (present) "" else "say what should be different first"
+          ),
+          child.text <-- area.hasSelection.map(selected =>
+            if (selected) "✨ Edit selection" else "✨ Edit"
+          ),
+          onClick.compose(_.sample(image)) --> (_.foreach(output =>
+            onEdit(output, request)
+          ))
+        )
+      ).element
     )
   )
 

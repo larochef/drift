@@ -1,6 +1,7 @@
 package drift.frontend.pages.gallery
 
-import drift.frontend.components.{Component, ScrollLock}
+import drift.frontend.components.{Component, LaunchOrDownload, ScrollLock}
+import drift.frontend.services.LaunchPrerequisites
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -19,7 +20,11 @@ case class ReuseOffer(
     actions: List[ReuseAction],
     note: Option[String],
     otherConfigurations: List[(String, String)] = List.empty,
-    launchOther: String => Unit = _ => ()
+    launchOther: String => Unit = _ => (),
+    /** A configuration that cannot launch yet: its missing runtime and weights
+      * are offered in the actions' place (`specs/46`).
+      */
+    preparing: Option[String] = None
 )
 
 /** A run configuration a post-processing panel offers: a PiD one for PiD, an
@@ -121,6 +126,10 @@ class GenerationDetail(
       * height is not.
       */
     panelHidden: Var[Boolean],
+    /** What each configuration still has to download: a model that cannot start
+      * yet is offered its download instead (`specs/46`).
+      */
+    prerequisites: LaunchPrerequisites,
     /** Which output of a batch the strip starts on — the one that was clicked
       * where the caller shows a batch as separate tiles.
       */
@@ -198,6 +207,7 @@ class GenerationDetail(
       editTemplates,
       liveSessions,
       jobs,
+      prerequisites,
       picture.viewed,
       picture.redrawGeometry,
       picture.pidTiles,
@@ -311,11 +321,17 @@ class GenerationDetail(
         ),
         div(
           cls := "control",
-          button(
-            cls := "button is-link",
-            "▶ Try this task on that model",
-            onClick.compose(_.sample(chosen)) --> (id => offer.launchOther(id))
-          )
+          LaunchOrDownload(
+            prerequisites.of(chosen),
+            prerequisites,
+            button(
+              cls := "button is-link",
+              "▶ Try this task on that model",
+              onClick.compose(_.sample(chosen)) --> (id =>
+                offer.launchOther(id)
+              )
+            )
+          ).element
         )
       )
     }
@@ -398,6 +414,15 @@ class GenerationDetail(
               action.label,
               onClick --> (_ => action.run())
             )
+          )
+        ),
+        child <-- offer.map(
+          _.preparing.fold(emptyNode)(id =>
+            LaunchOrDownload(
+              prerequisites.of(Val(id)),
+              prerequisites,
+              span()
+            ).element
           )
         ),
         child <-- offer.map(tryOnAnotherModel),

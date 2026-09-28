@@ -37,6 +37,10 @@ class ProjectWorkspacePage(
     upscalerService: UpscalerService,
     runtimeService: RuntimeService,
     logService: LogService,
+    /** What each configuration still has to download: picking one offers the
+      * download rather than a launch that cannot start.
+      */
+    prerequisites: LaunchPrerequisites,
     /** The path past `/projects/<id>`: the generation open in the detail view,
       * and which of its outputs (`GenerationDetailHost.boundToUrl`).
       */
@@ -268,6 +272,7 @@ class ProjectWorkspacePage(
     historyService.effects,
     postProcessService.effects,
     upscalerService.effects,
+    prerequisites.effects,
     onMountCallback { _ =>
       projectService.push(Command.Load)
       projectService.push(Command.LoadGenerations(projectId))
@@ -369,6 +374,7 @@ class ProjectWorkspacePage(
       postProcessService,
       upscalerService,
       runtimeService,
+      prerequisites,
       // Both columns are already on screen here: staging into them is the
       // whole action, and the modal steps out of the way.
       onReuseStaged = () => {
@@ -397,7 +403,8 @@ class ProjectWorkspacePage(
       () => currentProject.now(),
       projectService,
       sessionService,
-      sessions
+      sessions,
+      prerequisites
     ).element,
     child <-- isText.map {
       case true =>

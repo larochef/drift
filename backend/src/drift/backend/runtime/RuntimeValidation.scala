@@ -26,9 +26,12 @@ final private[runtime] class RuntimeValidation(
     storage.save("runtimes", validated.id, validated)
     // The first runtime of a tool that proves itself becomes that tool's
     // default; switching afterwards is explicit.
-    val current = selections.current
-    if (validated.valid && current.defaultFor(validated.tool).isEmpty)
-      selections.save(current.withDefault(validated.tool, Some(validated.id)))
+    if (validated.valid)
+      selections.update(current =>
+        if (current.defaultFor(validated.tool).isEmpty)
+          current.withDefault(validated.tool, Some(validated.id))
+        else current
+      )
     validated
   }
 

@@ -1,6 +1,7 @@
 package drift.frontend.pages.inference
 
-import drift.frontend.components.Component
+import drift.frontend.components.{Component, LaunchOrDownload}
+import drift.frontend.services.LaunchPrerequisites
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -24,17 +25,21 @@ class RunConfigurationCard(
     onSelectRuntime: String => Unit,
     onDelete: String => Unit,
     onEdit: RunConfiguration => Unit,
-    onDownloadMissing: List[String] => Unit,
-    /** Model downloads by model id, so the missing weights already on their way
-      * are announced rather than offered again.
+    /** What it lacks before it can launch — a runtime, weights — with what
+      * supplies it (`specs/46`): the launch control offers that instead.
       */
-    downloadJobs: Signal[Map[String, DownloadJob]],
+    missing: Signal[Option[LaunchPrerequisites.Missing]],
+    prerequisites: LaunchPrerequisites,
     onLaunch: String => Unit,
     onStop: String => Unit
 ) extends Component {
   private val showCommand = Var(false)
   private val ready = blockers.isEmpty
   private val live = session.exists(_.status.isActive)
+  private val onlyWeightsMissing = blockers.nonEmpty && blockers.forall {
+    case LaunchBlocker.WeightsNotCached(_, _, _) => true
+    case _                                       => false
+  }
 
   private def statusTag(s: Session): HtmlElement = {
     val (colour, label) = s.status match {
@@ -78,13 +83,24 @@ class RunConfigurationCard(
           onClick --> (_ => onStop(s.id))
         )
       )
-    else if (ready)
-      runtimeSelect.toSeq :+
-        button(
-          cls := "button is-primary is-small",
-          "▶ Launch",
-          onClick --> (_ => onLaunch(rm.id))
-        )
+    // A missing runtime or missing weights take the launch's place
+    // (`specs/46-starter-configurations.md`); only a start or an end of an
+    // install or a download rebuilds it, never a progress tick.
+    else if (ready || onlyWeightsMissing)
+      Seq(
+        LaunchOrDownload(
+          missing,
+          prerequisites,
+          span(
+            runtimeSelect,
+            button(
+              cls := "button is-primary is-small",
+              "▶ Launch",
+              onClick --> (_ => onLaunch(rm.id))
+            )
+          )
+        ).element
+      )
     else Seq.empty
 
   /** Launching lives in its own footer strip, apart from the header's
@@ -157,57 +173,7 @@ class RunConfigurationCard(
           ul(
             cls := "is-size-7",
             blockers.map(b => li(b.message))
-          ), {
-            val downloadable = blockers.collect {
-              case LaunchBlocker.WeightsNotCached(_, modelId, _) => modelId
-            }.distinct
-            if (downloadable.isEmpty) emptyNode
-            else
-              div(
-                cls := "mt-2",
-                // Only this line follows the transfers, and only when a count
-                // changes: progress ticks must not rebuild the card.
-                child <-- downloadJobs
-                  .map { jobs =>
-                    val states =
-                      downloadable.map(id => id -> jobs.get(id).map(_.state))
-                    (
-                      states.collect {
-                        case (id, None) => id
-                        case (id, Some(state))
-                            if !state.isActive &&
-                              state != DownloadState.Completed =>
-                          id
-                      },
-                      states.count(_._2.contains(DownloadState.Downloading)),
-                      states.count(_._2.contains(DownloadState.Queued))
-                    )
-                  }
-                  .distinct
-                  .map { (idle, downloading, queued) =>
-                    val underway = List(
-                      Option.when(downloading > 0)(s"$downloading downloading"),
-                      Option.when(queued > 0)(s"$queued queued")
-                    ).flatten.mkString(", ")
-                    if (idle.isEmpty)
-                      p(
-                        cls := "is-size-7 has-text-weight-bold",
-                        if (underway.isEmpty) "⬇ Downloads finished"
-                        else s"⬇ Downloading the missing weights: $underway"
-                      )
-                    else
-                      div(
-                        button(
-                          cls := "button is-small is-info",
-                          s"⬇ Download missing (${idle.size})",
-                          onClick --> (_ => onDownloadMissing(idle))
-                        ),
-                        if (underway.isEmpty) emptyNode
-                        else span(cls := "is-size-7 ml-2", s"($underway)")
-                      )
-                  }
-              )
-          }
+          )
         ),
       // Above the command line, because they explain what is missing from it.
       // A live session shows what its own launch resolved instead: the runtime

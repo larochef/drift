@@ -140,7 +140,7 @@ class DetailPicture(
         job.paintedTiles.filter(_ > 0).map { painted =>
           val base = s"/api/post-process-jobs/${job.id}/picture?v=$painted"
           DetailPicture.JobPicture(
-            s"$base&side=${DetailPicture.ScreenSide}",
+            s"$base&side=${PostProcessPicture.ScreenSide}",
             base
           )
         }
@@ -186,11 +186,6 @@ class DetailPicture(
 }
 
 object DetailPicture {
-
-  /** The longest side the job's picture is fetched at for the screen — the
-    * outputs' own previews' size.
-    */
-  val ScreenSide: Int = 2048
 
   case class JobPicture(screen: String, fullSize: String)
 }

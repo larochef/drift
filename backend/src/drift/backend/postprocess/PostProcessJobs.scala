@@ -126,7 +126,15 @@ final private[postprocess] class PostProcessJobs(
     */
   def picture(id: String, side: Option[Int]): Option[Array[Byte]] =
     Option(pictures.get(id))
-      .flatMap(_.snapshot(side))
+      .flatMap(live =>
+        side.fold(
+          live.fullSize().flatMap(file =>
+            // Gone if the job ended since.
+            try Some(Files.readAllBytes(file))
+            catch { case NonFatal(_) => None }
+          )
+        )(live.forScreen)
+      )
       .orElse(files.storedPicture(id, side))
 
   /** The persisted output and the gallery entry it belongs to — refused for
@@ -593,6 +601,7 @@ final private[postprocess] class PostProcessJobs(
         )
       ),
       derivation = Some(derivation),
+      importedFileName = None,
       projectId = src.parent.projectId,
       promptVersionId = src.parent.promptVersionId
     )

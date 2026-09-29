@@ -182,7 +182,8 @@ class RecipeSeeding(
           status = GenerationStatus.Completed,
           submittedAt = version.createdAt,
           imageParameters = version.imageParameters,
-          videoParameters = version.videoParameters
+          videoParameters = version.videoParameters,
+          importedFileName = None
         )
       )
     )

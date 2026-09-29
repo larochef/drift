@@ -3,7 +3,6 @@ package drift.backend.postprocess
 import drift.backend.storage.StorageService
 import drift.shared.*
 
-import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
 
 /** Edit (`specs/39-seamless-edit.md`): an instruction says what should be
@@ -152,11 +151,9 @@ final private[postprocess] class Edit(
               seed = Some(seed),
               instructions = Some(instruction)
             ),
-            finish =
-              region.fold[BufferedImage => BufferedImage](edited => edited)(
-                selection =>
-                  edited => TileBlending.paste(image, edited, area, selection)
-              ),
+            finish = region.fold[PictureFinish](PictureFinish.AsPainted)(
+              PictureFinish.PastedInto(image, area, _)
+            ),
             keepTiles = request.keepTiles,
             resumed = resuming.isDefined,
             finishTile = Some(Edit.finishTile)

@@ -405,7 +405,8 @@ case class Generation(
     sessionId: String,
     runConfigurationId: String,
     /** The native job kind, "img_gen" or "vid_gen" — or, for an entry made from
-      * another's output rather than generated, "upscale" or "resize".
+      * another's output rather than generated, "upscale" or "resize" — or
+      * "import", an image brought in from outside drift.
       */
     kind: String,
     status: GenerationStatus,
@@ -419,6 +420,11 @@ case class Generation(
     error: Option[String] = None,
     /** Set on entries derived from another's output post hoc. */
     derivation: Option[Derivation] = None,
+    /** The name the file had where it came from, on an image imported into
+      * the gallery (`specs/30-gallery-ergonomics-and-image-import.md`); none on
+      * anything drift made.
+      */
+    importedFileName: Option[String],
     /** The project and version this generation belongs to
       * (`specs/19-projects-and-prompt-versions.md`); derived entries inherit
       * their parent's.

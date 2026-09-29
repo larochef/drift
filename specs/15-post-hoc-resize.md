@@ -44,14 +44,23 @@ is 26; the redraw pass that usually follows is 27.
   model is). **What the done tiles made is shown as one picture** — the job's
   result as it would be if it ended now: the source under the tiles still to
   come, the finished tiles blended in with the job's own ramps, a partial
-  redraw's paste applied (`LivePicture`). It is painted on a thread of its own
-  as each tile lands, so neither the blend nor an encode ever holds up the
-  next tile, and laid over the picture whole —
+  redraw's paste applied (`LivePicture`, the finish known as `PictureFinish`).
+  It is painted on a thread of its own as each tile lands, so neither the blend
+  nor an encode ever holds up the next tile. Beside the full-size picture it
+  keeps a copy at `PostProcessPicture.ScreenSide` (2048) that only the part
+  each tile touched is scaled into, and that copy is what is laid over the
+  picture whole —
   `GET /api/post-process-jobs/{id}/picture?side=2048&v=<paintedTiles>`, the
-  job's `paintedTiles` making each painted tile a new address. The header's
-  **⤢ Full size so far** opens the same picture without `side`, at full
-  resolution. A paused job writes its picture beside its log
-  (`postprocess-<id>-picture.png`, scaled copies cached beside it), so it is
+  job's `paintedTiles` making each painted tile a new address, and no `side`
+  larger than the screen's copy. Nothing the screen asks for is a pass over the
+  full picture: at 16384² that pass (a PNG encode of 268 Mpx, ~20 s) took
+  longer than a tile and held up every request behind it. The header's
+  **⤢ Full size so far** opens the picture without `side`, at full resolution:
+  written on the painter, between two tiles, to
+  `postprocess-<id>-picture-live.png` beside the log, and served from there
+  until the next tile lands — the first opening after a tile pays the encode,
+  the next ones do not. A paused job writes its picture beside its log
+  (`postprocess-<id>-picture.png`, with the screen's copy beside it), so it is
   still shown after a restart; a resume, a cancel or the end of the job drops
   it. What lies on disk per tile is the *finished* tile: a job that finishes
   its tiles (an edit's composite, 39) writes that, which is also what a resume

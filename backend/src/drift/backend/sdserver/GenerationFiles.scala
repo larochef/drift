@@ -44,7 +44,7 @@ final private[sdserver] class GenerationFiles(outputsRoot: Path) {
       scratch: Boolean
   ): String =
     try {
-      val (bytes, extension) = decodeImageData(data)
+      val (bytes, extension) = GenerationFiles.decodeImageData(data)
       val date =
         if (scratch) GenerationManager.ScratchDirectory else dateOf(submittedAt)
       val directory = outputsRoot.resolve(date)
@@ -59,21 +59,6 @@ final private[sdserver] class GenerationFiles(outputsRoot: Path) {
         )
         "<input image not saved>"
     }
-
-  /** Base64 payload plus file extension, from a raw base64 string or a
-    * `data:image/...;base64,` URL.
-    */
-  private def decodeImageData(data: String): (Array[Byte], String) =
-    if (data.startsWith("data:")) {
-      val comma = data.indexOf(',')
-      val mime = data.substring(5, comma).takeWhile(_ != ';')
-      val extension = mime match {
-        case "image/jpeg" => "jpeg"
-        case "image/webp" => "webp"
-        case _            => "png"
-      }
-      (Base64.getMimeDecoder.decode(data.substring(comma + 1)), extension)
-    } else (Base64.getMimeDecoder.decode(data), "png")
 
   /** Decodes the base64 payload(s) into files under the generation's directory.
     * Images come one per batch index; a video is a single encoded container.
@@ -168,4 +153,22 @@ final private[sdserver] class GenerationFiles(outputsRoot: Path) {
       s"/api/outputs/${GenerationManager.ScratchDirectory}/",
       s"/api/outputs/$date/"
     )
+}
+
+private[sdserver] object GenerationFiles {
+
+  /** Base64 payload plus file extension, from a raw base64 string or a
+    * `data:image/...;base64,` URL.
+    */
+  def decodeImageData(data: String): (Array[Byte], String) =
+    if (data.startsWith("data:")) {
+      val comma = data.indexOf(',')
+      val mime = data.substring(5, comma).takeWhile(_ != ';')
+      val extension = mime match {
+        case "image/jpeg" => "jpeg"
+        case "image/webp" => "webp"
+        case _            => "png"
+      }
+      (Base64.getMimeDecoder.decode(data.substring(comma + 1)), extension)
+    } else (Base64.getMimeDecoder.decode(data), "png")
 }

@@ -125,26 +125,53 @@ object TileBlending {
       window: ImageRegion,
       region: ImageRegion
   ): BufferedImage = {
-    val width = base.getWidth
-    val height = base.getHeight
-    val pixels = base.getRGB(0, 0, width, height, null, 0, width)
+    val result = PostProcessImages.copyOf(base)
+    val whole = ImageRegion(0, 0, window.width, window.height)
+    result.setRGB(
+      window.x,
+      window.y,
+      window.width,
+      window.height,
+      pastedPixels(base, patch, window, region, whole),
+      0,
+      window.width
+    )
+    result
+  }
+
+  /** What `paste` makes of `part` of the window alone — in the window's own
+    * pixels, row by row — so a picture shown while the job runs can be brought
+    * up to date one tile at a time instead of pasting the whole window again.
+    */
+  def pastedPixels(
+      base: BufferedImage,
+      patch: BufferedImage,
+      window: ImageRegion,
+      region: ImageRegion,
+      part: ImageRegion
+  ): Array[Int] = {
+    val pixels = base.getRGB(
+      window.x + part.x,
+      window.y + part.y,
+      part.width,
+      part.height,
+      null,
+      0,
+      part.width
+    )
     val painted =
-      patch.getRGB(0, 0, window.width, window.height, null, 0, window.width)
-    for (v <- 0 until window.height) {
-      val weightY =
-        ramp(window.y + v, region.y, region.height, window.y, window.height)
-      val row = (window.y + v) * width
-      for (u <- 0 until window.width) {
-        val weightX =
-          ramp(window.x + u, region.x, region.width, window.x, window.width)
-        val index = row + window.x + u
-        pixels(index) =
-          mix(pixels(index), painted(v * window.width + u), weightX min weightY)
+      patch.getRGB(part.x, part.y, part.width, part.height, null, 0, part.width)
+    for (v <- 0 until part.height) {
+      val y = window.y + part.y + v
+      val weightY = ramp(y, region.y, region.height, window.y, window.height)
+      for (u <- 0 until part.width) {
+        val x = window.x + part.x + u
+        val weightX = ramp(x, region.x, region.width, window.x, window.width)
+        val index = v * part.width + u
+        pixels(index) = mix(pixels(index), painted(index), weightX min weightY)
       }
     }
-    val result = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
-    result.setRGB(0, 0, width, height, pixels, 0, width)
-    result
+    pixels
   }
 
   /** How much of the repainted window a pixel at `position` on one axis keeps:

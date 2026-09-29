@@ -10,6 +10,8 @@ import java.nio.file.*
 import javax.imageio.ImageIO
 import scala.util.control.NonFatal
 
+import ox.*
+
 /** One run of a tiled job (`specs/26-tiled-pid.md`, `specs/27-redraw.md`,
   * `specs/39-seamless-edit.md`): the server its tiles run on, the tiles
   * themselves — cut, sent, judged, finished and painted in, one after another —
@@ -42,7 +44,7 @@ final private[postprocess] class TileRun(
       * redraw softens away the artifacts it is meant to remove.
       */
     prepareTile: BufferedImage => BufferedImage,
-    finish: BufferedImage => BufferedImage,
+    finish: PictureFinish,
     keepTiles: Boolean,
     finishTile: Option[TileWindow.FinishTile],
     context: Option[TileWindow.TileContext],
@@ -90,19 +92,18 @@ final private[postprocess] class TileRun(
         tile -> (left, top)
       }
     }.toMap
-  // What the tiles make so far, painted on a thread of its own for the gallery
-  // to show while the job runs (`LivePicture`).
-  val live = LivePicture(
+  // What the tiles make so far, painted on a fork of its own in the run's
+  // scope for the gallery to show while the job runs (`LivePicture`).
+  private def livePicture(using Ox) = LivePicture(
     job.id,
     reference,
     scale,
     overlaps,
     target,
     finish,
+    jobs.files.livePictureFileOf(job.id),
     count => jobs.update(job.id)(_.copy(paintedTiles = Some(count)))
   )
-  // Whether a pause handed the picture over to be kept on disk.
-  var pictureKept = false
   def tileFile(index: Int, part: String) =
     if (keepTiles)
       jobs.files.tilesDirOf(job).resolve(f"tile-${index + 1}%02d-$part.png")
@@ -132,7 +133,8 @@ final private[postprocess] class TileRun(
     * its result, a pause recorded where it stopped, or the reason it could not
     * go on. The server is stopped and the tiles cleaned up either way.
     */
-  def run(): Unit = {
+  def run(): Unit = supervised {
+    val live = livePicture
     // Tiles sent to a session drift did not start for this job are run by a
     // server whose output is that session's: the job shows what the session
     // shows rather than nothing at all.
@@ -436,10 +438,8 @@ final private[postprocess] class TileRun(
         // after the pause wins — it is the later word, and it keeps nothing.
         case Left(_) if jobs.isPaused(job) && !jobs.isCancelled(job) =>
           Files.deleteIfExists(outputFile)
-          pictureKept = true
-          live.storeAndClose(jobs.files.storePicture(job.id, _))(() =>
-            jobs.hidePicture(job.id, live)
-          )
+          live.storeAndClose(jobs.files.storePicture(job.id, _, _))
+          jobs.hidePicture(job.id, live)
           jobs.recordPaused(
             job,
             jobs.files.tilesDone(job.id, tiles.size),
@@ -459,10 +459,8 @@ final private[postprocess] class TileRun(
     } finally {
       jobs.unfollow(job)
       stopServer()
-      if (!pictureKept) {
-        live.close()
-        jobs.hidePicture(job.id, live)
-      }
+      jobs.hidePicture(job.id, live)
+      live.close()
       // A paused job keeps its tiles: they are what a resume carries on from
       // (`specs/40-pause-and-resume.md`). A cancel after the pause keeps none.
       if (!jobs.isPaused(job) || jobs.isCancelled(job))

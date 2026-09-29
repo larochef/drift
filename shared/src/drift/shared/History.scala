@@ -57,3 +57,24 @@ val deleteHistoryGeneration
   historyBase.delete
     .in("history" / path[String]("date") / path[String]("generationId"))
     .out(jsonBody[Boolean])
+
+/** An image from outside drift, brought into the gallery so it can be
+  * upscaled, redrawn or edited like one drift made
+  * (`specs/30-gallery-ergonomics-and-image-import.md`). `data` is a
+  * `data:image/...;base64,` URL, the shape input images already travel in.
+  */
+case class ImageImport(fileName: String, data: String)
+object ImageImport {
+  given Schema[ImageImport] = Schema.derived
+  given JsonValueCodec[ImageImport] = JsonCodecMaker.make
+}
+
+/** Imports one image as a gallery entry of its own, kind "import", filed under
+  * today. The failure is why it was refused — not a PNG or JPEG, unreadable.
+  */
+val importHistoryImage: PublicEndpoint[ImageImport, String, Generation, Any] =
+  historyBase.post
+    .in("history" / "imports")
+    .in(jsonBody[ImageImport])
+    .errorOut(stringBody)
+    .out(jsonBody[Generation])

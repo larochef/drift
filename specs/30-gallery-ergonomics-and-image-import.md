@@ -1,6 +1,6 @@
 # 30 — Gallery ergonomics, image import, visible post-processing
 
-**Status:** planned — two items built, four remain; nothing is designed yet
+**Status:** planned — three items built, three remain
 **Depends on:** 12, 15, 26, 27, 29
 
 The gallery detail view is where post-processing happens, and a few things
@@ -20,6 +20,17 @@ prompts are long. Plus one gap: post-processing only accepts gallery entries.
   a "▦ 2/4" badge; selecting one ticks the whole generation, since a delete
   removes it all.
 
+- **Importing images.** "⤓ Import images" in the gallery toolbar, or files
+  dropped anywhere on the gallery, `POST /api/history/imports` (file name +
+  data URL). Each image becomes a gallery entry of its own: kind `import`,
+  completed, one output `<id>-0.<png|jpeg>` and its `<id>.json` sidecar under
+  today, the usual `g<millis>-<n>` id; no session, no run configuration
+  (shown as "Imported"), no request, no project, its original name in
+  `importedFileName`. Post-processing takes it like any recorded output and
+  derivations chain from it. Only PNG and JPEG, judged from the bytes — what
+  sd-cli and the JDK decoders read; anything else is refused, not converted.
+  One picked image opens in the detail view; several stay in the grid.
+
 ## Remaining
 
 - **Switching between a batch's images.** The thumbnails that switch between
@@ -29,12 +40,6 @@ prompts are long. Plus one gap: post-processing only accepts gallery entries.
 - **Long prompts.** A prompt worked with the assistant is long and pushes
   everything else down the detail view. It should take little room by default
   (folded to a few lines, expandable, or moved out of the parameter table).
-- **Post-processing images that are not in the gallery.** Upscale, PiD and
-  redraw only accept gallery entries (derived entries of a recorded
-  generation). Open questions: an imported image as a gallery entry of its
-  own (kind `import`, no request, its own sidecar) so derivations chain from
-  it as they do now; where the import lives (gallery, drag and drop, the
-  detail view); whether it joins a project.
 - **Post-processing that is easier to follow.** A running job shows its
   progress only in the detail view of its source. It should be findable from
   anywhere — beside the global downloads panel, or on the gallery card of the

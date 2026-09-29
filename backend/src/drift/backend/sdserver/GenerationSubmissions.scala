@@ -159,6 +159,7 @@ final private[sdserver] class GenerationSubmissions(
         kind = kind,
         status = GenerationStatus.Queued,
         submittedAt = submittedAt,
+        importedFileName = None,
         scratch = scratch
       )
     )

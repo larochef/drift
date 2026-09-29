@@ -78,8 +78,11 @@ class GenerationDetailHost(
       .map(_.map(rm => rm.id -> rm.label).toMap)
       .distinct
 
+  /** An imported image, and whatever is made from it, has no configuration
+    * (`specs/30`).
+    */
   private def labelOf(labels: Map[String, String], id: String): String =
-    labels.getOrElse(id, id)
+    if (id.isEmpty) "Imported" else labels.getOrElse(id, id)
 
   private val openGeneration: Signal[Option[GenerationDetailHost.Shown]] =
     open.signal.combineWith(pool).map { (opened, generations) =>
@@ -307,6 +310,7 @@ class GenerationDetailHost(
     historyService.events --> Observer[HistoryService.Event] {
       case HistoryService.Event.Deleted(id) =>
         if (open.now().exists(_.generationId == id)) open.set(None)
+      case HistoryService.Event.Imported(_) => ()
     },
     // Keyed on the generation and the output clicked, so a detail is built
     // once per opening and nothing else rebuilds it (bugs/24).
@@ -323,9 +327,13 @@ class GenerationDetailHost(
       generation,
       configurationLabel =
         labels.map(labelOf(_, generation.runConfigurationId)).distinct,
-      // A derived entry offers no parameters to reuse — its original does.
+      // A derived entry offers no parameters to reuse — its original does —
+      // and an imported image has none at all.
       offer =
-        if (generation.derivation.isDefined) Val(ReuseOffer(List.empty, None))
+        if (
+          generation.derivation.isDefined ||
+          generation.runConfigurationId.isEmpty
+        ) Val(ReuseOffer(List.empty, None))
         else
           liveGenerationConfiguration
             .combineWith(

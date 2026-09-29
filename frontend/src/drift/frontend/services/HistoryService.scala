@@ -17,9 +17,15 @@ object HistoryService {
       */
     case LoadGeneration(generationId: String)
     case Delete(date: String, generationId: String)
+
+    /** An image from outside drift, as a gallery entry of its own
+      * (`specs/30`).
+      */
+    case Import(image: ImageImport)
   }
   enum Event {
     case Deleted(generationId: String)
+    case Imported(generation: Generation)
   }
 }
 
@@ -36,6 +42,7 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
   private val dayFn = ApiClient.stream(listHistoryDay)
   private val dayOfFn = ApiClient.stream(findHistoryGenerationDay)
   private val deleteFn = ApiClient.stream(deleteHistoryGeneration)
+  private val importFn = ApiClient.streamWithFailureReason(importHistoryImage)
 
   private val _days = Var(List.empty[HistoryDay])
 
@@ -197,6 +204,17 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
           s"nothing on disk belongs to '$generationId'."
         )
       case Failure(err) => reportFailure("Deleting the generation", err)
+    },
+    cmdBus.events
+      .collect { case Command.Import(image) => image }
+      .flatMapMerge(image => importFn(image).recoverToTry) --> Observer[
+      Try[Generation]
+    ] {
+      case Success(generation) =>
+        clearError()
+        fold(generation)
+        evtBus.writer.onNext(Event.Imported(generation))
+      case Failure(err) => reportFailure("Importing an image", err)
     },
     // Completions arrive by themselves: the socket pushes a session's list
     // whenever any of its generations change.

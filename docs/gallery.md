@@ -20,6 +20,15 @@ above them suggests starting one, with the same button.
   from its heading, and delete them behind one confirmation. Deleting removes
   the files and everything recorded about them.
 
+## Importing images
+
+**⤓ Import images** in the toolbar, or dropping files anywhere on the gallery,
+brings in PNG or JPEG images from your computer so you can upscale, redraw or
+edit them. Each lands under today with an "⤓ imported" badge and its original
+file name; one picked image opens straight in the detail view. Imports belong
+to no project and have no parameters to reuse. Other formats (WebP, GIF…) are
+refused — convert them to PNG first.
+
 ## The detail view
 
 Click a tile to open it:
@@ -267,7 +276,11 @@ last line rather than in the form: they change nothing about the job.
 is drawn over the original where it belongs, the tile being worked on pulses,
 and the rest is the plain grid. The picture rebuilds itself piece by piece, so
 you can judge a long job without waiting for it — and stop it early if the
-first tiles are not what you wanted. A paused job keeps showing how far it got. While a job is on
+first tiles are not what you wanted. **⤢ Full size so far** in the header
+opens it at full resolution; on a very large picture the first opening after a
+tile takes a while (a 16384² picture is ~20 s to prepare and heavy for the
+browser to show), opening it again before the next tile is immediate. A paused
+job keeps showing how far it got. While a job is on
 that image, it is its grid you see, not the panel's — **show the grid** turns
 it off.
 

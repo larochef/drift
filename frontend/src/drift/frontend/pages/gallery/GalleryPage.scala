@@ -2,12 +2,14 @@ package drift.frontend.pages.gallery
 
 import drift.frontend.Page
 import drift.frontend.components.{Component, ErrorBanner}
+import drift.frontend.pages.generate.readAsDataUrl
 import drift.frontend.pages.projects.NewProjectModal
 import drift.frontend.services.*
 import drift.frontend.services.HistoryService.{Command, Event}
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
+import org.scalajs.dom
 import org.scalajs.dom.window
 
 /** The gallery (`specs/12-gallery.md`): every generation drift ever recorded,
@@ -63,8 +65,11 @@ class GalleryPage(
     runConfigurationService.runConfigurations
       .map(_.map(rm => rm.id -> rm.label).toMap)
 
+  /** An imported image, and whatever is made from it, has no configuration
+    * (`specs/30`).
+    */
   private def labelOf(labels: Map[String, String], id: String): String =
-    labels.getOrElse(id, id)
+    if (id.isEmpty) "Imported" else labels.getOrElse(id, id)
 
   // Declared before `filter`, which reads them: a val referenced before its
   // own initialisation is null at bind (the trap of bugs/15's family).
@@ -122,6 +127,8 @@ class GalleryPage(
     historyService.generationsByDay.combineWith(labels).map { (byDay, labels) =>
       byDay.values.flatten
         .map(_.runConfigurationId)
+        // Imports have none, and "" is already "All configurations".
+        .filter(_.nonEmpty)
         .toList
         .distinct
         .map(id => id -> labelOf(labels, id))
@@ -348,6 +355,28 @@ class GalleryPage(
     ),
     div(
       cls := "field",
+      label(cls := "label text-primary is-small", "Import"),
+      label(
+        cls := "button is-small",
+        title := "PNG or JPEG images from your computer, to upscale, " +
+          "redraw or edit — or drop them on the gallery",
+        input(
+          typ := "file",
+          accept := "image/png,image/jpeg",
+          multiple := true,
+          styleAttr := "display: none;",
+          onChange --> { event =>
+            val field = event.target.asInstanceOf[dom.HTMLInputElement]
+            importFiles(field.files)
+            // The same file picked again must fire again.
+            field.value = ""
+          }
+        ),
+        "⤓ Import images"
+      )
+    ),
+    div(
+      cls := "field",
       label(cls := "label text-primary is-small", "Cleanup"),
       button(
         cls <-- selecting.signal.map(on =>
@@ -360,6 +389,23 @@ class GalleryPage(
       )
     )
   )
+
+  /** Whether the next import to land opens in the detail view: one picked
+    * image is there to be worked on; several are left in the grid.
+    */
+  private var openImported = false
+
+  /** Images from outside drift, each a gallery entry of its own (`specs/30`).
+    */
+  private def importFiles(files: dom.FileList): Unit = {
+    val picked = (0 until files.length).map(files(_)).toList
+    openImported = picked.size == 1
+    picked.foreach(file =>
+      readAsDataUrl(file)(data =>
+        historyService.push(Command.Import(ImageImport(file.name, data)))
+      )
+    )
+  }
 
   /** The bulk bar, shown only while selecting. */
   private def selectionBar: Node = div(
@@ -454,8 +500,17 @@ class GalleryPage(
     },
     // A gone generation cannot stay ticked; the detail's own closing is the
     // host's job.
-    historyService.events --> Observer[Event] { case Event.Deleted(id) =>
-      selection.update(_ - id)
+    historyService.events --> Observer[Event] {
+      case Event.Deleted(id) => selection.update(_ - id)
+      case Event.Imported(generation) =>
+        if (openImported)
+          openDetail.set(Some(GenerationDetailHost.Open(generation.id, 0)))
+    },
+    // Images dropped anywhere on the gallery are imported like picked ones.
+    onDragOver --> (_.preventDefault()),
+    onDrop --> { event =>
+      event.preventDefault()
+      importFiles(event.dataTransfer.files)
     },
     h1(cls := "title text-primary", "Gallery"),
     hr(),

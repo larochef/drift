@@ -46,6 +46,7 @@ object RecordedParameters {
     case "redraw"  => "Redraw"
     case "edit"    => "Edit"
     case "resize"  => "Resize"
+    case "import"  => "Imported image"
     case _         => "Image"
   }
 
@@ -80,6 +81,7 @@ object RecordedParameters {
     Some(promptOf(generation))
       .filter(_.nonEmpty)
       .orElse(generation.derivation.map(operationOf))
+      .orElse(generation.importedFileName)
       .getOrElse("")
 
   def timeOf(millis: Long): String =
@@ -106,6 +108,7 @@ object RecordedParameters {
         )
       )
       .orElse(generation.videoParameters.map(videoRows))
+      .orElse(generation.importedFileName.map(name => List("Imported file" -> name)))
       .getOrElse(List.empty)
 
   private def derivedRows(d: Derivation): List[(String, String)] =

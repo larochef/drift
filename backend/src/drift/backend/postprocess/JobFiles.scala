@@ -61,14 +61,29 @@ final private[postprocess] class JobFiles(
   private def scaledPictureOf(id: String, side: Int): Path =
     logsRoot.resolve(s"postprocess-$id-picture-$side.png")
 
-  /** Keeps a paused job's picture, replacing the one an earlier pause kept and
-    * the scaled copies made of it.
+  /** Where a running job's picture is written at full size when it is asked
+    * for (`LivePicture.fullSize`).
     */
-  def storePicture(id: String, picture: BufferedImage): Unit = {
+  def livePictureFileOf(id: String): Path =
+    logsRoot.resolve(s"postprocess-$id-picture-live.png")
+
+  /** Keeps a paused job's picture, and the copy of it `screen` is for the
+    * screen, replacing the ones an earlier pause kept.
+    */
+  def storePicture(
+      id: String,
+      picture: BufferedImage,
+      screen: BufferedImage
+  ): Unit = {
     deletePicture(id)
-    val partial = logsRoot.resolve(s"postprocess-$id-picture.png.part")
-    ImageIO.write(picture, "png", partial.toFile)
-    Files.move(partial, pictureFileOf(id), StandardCopyOption.REPLACE_EXISTING)
+    write(screen, scaledPictureOf(id, PostProcessPicture.ScreenSide))
+    write(picture, pictureFileOf(id))
+  }
+
+  private def write(image: BufferedImage, file: Path): Unit = {
+    val partial = file.resolveSibling(file.getFileName.toString + ".part")
+    ImageIO.write(image, "png", partial.toFile)
+    Files.move(partial, file, StandardCopyOption.REPLACE_EXISTING)
   }
 
   /** Drops a job's kept picture and its scaled copies — it resumed, ended, or

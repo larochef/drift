@@ -12,7 +12,7 @@ import org.scalajs.dom
   * previewed as thumbnails. The `title` on the file input names the field for
   * tests and accessibility.
   */
-private def readAsDataUrl(blob: dom.Blob)(onLoaded: String => Unit): Unit = {
+private[frontend] def readAsDataUrl(blob: dom.Blob)(onLoaded: String => Unit): Unit = {
   val reader = new dom.FileReader()
   reader.onload = _ => onLoaded(reader.result.asInstanceOf[String])
   reader.readAsDataURL(blob)

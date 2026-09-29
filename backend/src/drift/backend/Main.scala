@@ -132,6 +132,7 @@ import sttp.tapir.server.netty.sync.*
     locations.lorasRoot
   )
   val generationHistory = GenerationHistory(outputsRoot, generationManager)
+  val generationImports = GenerationImports(outputsRoot)
   val projectCovers =
     drift.backend.projects.ProjectCovers(
       storage,
@@ -176,7 +177,7 @@ import sttp.tapir.server.netty.sync.*
         OutputPreviews(outputsRoot, locations.cacheRoot)
       ) ++
       scratchEndpoints(generationManager) ++
-      historyEndpoints(generationHistory) ++
+      historyEndpoints(generationHistory, generationImports) ++
       projectEndpoints(storage, generationHistory, projectCovers) ++
       postProcessEndpoints(postProcessManager) ++
       conversionEndpoints(conversionManager) ++

@@ -183,7 +183,7 @@ final private[postprocess] class TiledJobs(
         * redraw softens away the artifacts it is meant to remove.
         */
       prepareTile: BufferedImage => BufferedImage = identity,
-      finish: BufferedImage => BufferedImage = identity,
+      finish: PictureFinish = PictureFinish.AsPainted,
       keepTiles: Boolean = false,
       finishTile: Option[TileWindow.FinishTile] = None,
       context: Option[TileWindow.TileContext] = None,

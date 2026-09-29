@@ -106,6 +106,11 @@ class GenerationCard(
               }
             )
           )
+          .orElse(
+            Option.when(generation.kind == "import")(
+              span(cls := "tag is-primary gallery-kind-badge", "⤓ imported")
+            )
+          )
           .getOrElse(emptyNode)
     ),
     div(

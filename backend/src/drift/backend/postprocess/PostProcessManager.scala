@@ -80,7 +80,10 @@ final class PostProcessManager(
 
   /** The picture a tiled job has made so far, drawn over its source. */
   def picture(id: String, side: Option[Int]): Option[Array[Byte]] =
-    jobs.picture(id, side.filter(_ > 0).map(_.min(8192)))
+    jobs.picture(
+      id,
+      side.filter(_ > 0).map(_.min(PostProcessPicture.ScreenSide))
+    )
 
   /** Carries a paused job on where it stopped, from what was stored when it
     * paused — the request as it ran, its drawn seed included.

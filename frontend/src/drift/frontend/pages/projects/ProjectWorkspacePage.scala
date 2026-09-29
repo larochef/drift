@@ -408,6 +408,7 @@ class ProjectWorkspacePage(
     // A deletion is the history's to do; the results only have to follow it.
     historyService.events --> Observer[HistoryService.Event] {
       case HistoryService.Event.Deleted(id) => projectService.forget(id)
+      case HistoryService.Event.Imported(_) => ()
     },
     onUnmountCallback { _ =>
       assistantService.projectBrief.set(None)

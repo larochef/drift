@@ -1,18 +1,20 @@
 package drift.backend.routes
 
-import drift.backend.sdserver.GenerationHistory
+import drift.backend.sdserver.{GenerationHistory, GenerationImports}
 import drift.shared.*
 
 import sttp.shared.Identity
 import sttp.tapir.server.ServerEndpoint
 
 def historyEndpoints(
-    history: GenerationHistory
+    history: GenerationHistory,
+    imports: GenerationImports
 ): List[ServerEndpoint[Any, Identity]] = List(
   listHistoryDays.serverLogicSuccess[Identity](_ => history.days),
   listHistoryDay.serverLogicSuccess[Identity](history.day),
   findHistoryGenerationDay.serverLogicSuccess[Identity](history.dayOf),
   deleteHistoryGeneration.serverLogicSuccess[Identity]((date, generationId) =>
     history.delete(date, generationId)
-  )
+  ),
+  importHistoryImage.serverLogic[Identity](imports.importImage)
 )

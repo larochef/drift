@@ -5,7 +5,6 @@ import drift.backend.runtime.SdCppBuilds
 import drift.backend.storage.StorageService
 import drift.shared.*
 
-import java.awt.image.BufferedImage
 import java.nio.file.Files
 import javax.imageio.ImageIO
 
@@ -262,11 +261,9 @@ final private[postprocess] class Redraw(
               strength = Some(request.strength),
               instructions = Some(request.instructions.trim).filter(_.nonEmpty)
             ),
-            finish =
-              region.fold[BufferedImage => BufferedImage](redrawn => redrawn)(
-                selection =>
-                  redrawn => TileBlending.paste(image, redrawn, area, selection)
-              ),
+            finish = region.fold[PictureFinish](PictureFinish.AsPainted)(
+              PictureFinish.PastedInto(image, area, _)
+            ),
             keepTiles = request.keepTiles,
             resumed = resuming.isDefined,
             context = Option.when(request.contextMargin > 0)(

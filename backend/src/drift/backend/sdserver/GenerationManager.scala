@@ -1,5 +1,6 @@
 package drift.backend.sdserver
 
+import drift.backend.Background
 import drift.backend.session.SessionManager
 import drift.shared.*
 
@@ -33,7 +34,9 @@ import com.typesafe.scalalogging.Logger
 final class GenerationManager(
     sessionManager: SessionManager,
     projectManager: drift.backend.projects.ProjectManager,
-    val outputsRoot: Path
+    val outputsRoot: Path,
+    /** Where each job is followed to its end. */
+    background: Background
 ) {
   private val logger = Logger[GenerationManager]
   private val registry = GenerationRegistry(sessionManager)
@@ -41,7 +44,7 @@ final class GenerationManager(
   private val submissions = GenerationSubmissions(
     registry,
     files,
-    GenerationMonitor(registry, files),
+    GenerationMonitor(registry, files, background),
     projectManager,
     sessionManager.architectureAndRuntimeOf
   )

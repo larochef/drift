@@ -1,6 +1,7 @@
 package drift.backend.runtime
 
 import drift.backend.storage.StorageService
+import drift.backend.{Background, WorkQueue}
 import drift.shared.*
 
 import java.nio.file.*
@@ -31,7 +32,8 @@ final private[runtime] class RuntimeInstalls(
     validation: RuntimeValidation,
     cleanup: RuntimeCleanup,
     archives: RuntimeArchives,
-    runnerFiles: RunnerFiles
+    runnerFiles: RunnerFiles,
+    background: Background
 ) {
   private val logger = Logger[RuntimeInstalls]
 
@@ -61,15 +63,7 @@ final private[runtime] class RuntimeInstalls(
   // (François, 2026-09-10). Bandwidth needs no separate rule here: installs
   // fetch through that same `Downloader`, so they share its per-host permits
   // with everything else drift is pulling.
-  private val executor =
-    Executors.newFixedThreadPool(
-      RuntimeManager.MaxConcurrentInstalls,
-      runnable => {
-        val thread = Thread(runnable, "drift-runtime-install")
-        thread.setDaemon(true)
-        thread
-      }
-    )
+  private val installs = WorkQueue(background, "drift-runtime-install", RuntimeManager.MaxConcurrentInstalls)
 
   /** Serialises anything that writes the same directory. Two installs may now
     * run together, and two of them wanting the same files is the ordinary case
@@ -123,7 +117,7 @@ final private[runtime] class RuntimeInstalls(
             RuntimeInstallJob(id, RuntimeInstallState.Queued)
           )
           entries.put(id, entry)
-          executor.submit(runnable(id, request, entry, tracksLatest))
+          installs.submit(install(id, request, entry, tracksLatest))
           entry.job
       }
     }
@@ -369,169 +363,167 @@ final private[runtime] class RuntimeInstalls(
       )
   }
 
-  private def runnable(
+  private def install(
       id: String,
       request: InstallRuntimeRequest,
       entry: RuntimeInstallEntry,
       tracksLatest: Boolean
-  ) = new Runnable {
-    def run(): Unit =
-      try {
-        if (entry.cancelled.get()) return
-        // Captured before the entity is overwritten: an upgrade moves the id to
-        // a new tag's directory, and the old one is cleaned up afterwards.
-        val previous = storage.get[Runtime]("runtimes", id)
-        entry.job = entry.job.copy(
-          state = RuntimeInstallState.Downloading,
-          startedAt = Some(System.currentTimeMillis())
-        )
+  ): Unit =
+    try {
+      if (entry.cancelled.get()) return
+      // Captured before the entity is overwritten: an upgrade moves the id to
+      // a new tag's directory, and the old one is cleaned up afterwards.
+      val previous = storage.get[Runtime]("runtimes", id)
+      entry.job = entry.job.copy(
+        state = RuntimeInstallState.Downloading,
+        startedAt = Some(System.currentTimeMillis())
+      )
 
-        val tool = request.tool
-        val backendName = request.asset.backend.toString.toLowerCase
-        val installDir =
-          runtimesRoot
-            .resolve(RuntimeManager.toolDirectory(tool))
-            .resolve(s"${request.releaseTag}-$backendName")
-        // drift's own runner: its files are written once TheRock is there
-        val runner = request.releaseTag == Runtime.DriftRunnerTag
+      val tool = request.tool
+      val backendName = request.asset.backend.toString.toLowerCase
+      val installDir =
+        runtimesRoot
+          .resolve(RuntimeManager.toolDirectory(tool))
+          .resolve(s"${request.releaseTag}-$backendName")
+      // drift's own runner: its files are written once TheRock is there
+      val runner = request.releaseTag == Runtime.DriftRunnerTag
 
-        // Resolve the TheRock pairing before any bytes move: if the bucket
-        // has no matching build there is no point downloading the release.
-        val theRockBuild: Option[TheRockBuild] =
-          if (request.asset.backend == RuntimeBackend.Rocm) {
-            val gfx =
-              request.gfxTarget.getOrElse(RuntimeManager.DefaultGfxTarget)
-            entry.job = entry.job.copy(
-              step =
-                s"matching a TheRock build for ROCm ${request.asset.rocmVersion
-                    .getOrElse("?")} on $gfx"
-            )
-            pairing.buildFor(
-              request.asset,
-              gfx,
-              request.theRockVersion
-            ) match {
-              case Right(build) => Some(build)
-              case Left(reason) =>
-                entry.job = entry.job.copy(
-                  state = RuntimeInstallState.Failed,
-                  error = Some(reason),
-                  completedAt = Some(System.currentTimeMillis())
-                )
-                return
-            }
-          } else None
-
-        // Fetch and unpack the release, unless a previous install already left
-        // a working directory — the entity may have been deleted while the
-        // files were kept, or this is a re-pairing of the same release.
-        val releaseReady = atDestination(installDir) {
-          if (runner || RuntimeManager.executableIn(installDir, tool).nonEmpty)
-            true
-          else
-            archives.fetchAndUnpack(
-              entry,
-              step =
-                s"${tool.displayName} ${request.releaseTag} ($backendName)",
-              url = request.asset.downloadUrl,
-              archiveName = request.asset.name,
-              sha256 = request.asset.sha256,
-              target = installDir
-            )
-        }
-        if (!releaseReady) return
-
-        // The ROCm runtime, shared between releases wanting the same build,
-        // so an already-unpacked one is simply reused.
-        val theRockDir = theRockBuild.map { build =>
-          runtimesRoot
-            .resolve("therock")
-            .resolve(s"${build.gfxTarget}-${build.version}")
-        }
-        val theRockReady =
-          theRockBuild.zip(theRockDir).forall { (build, target) =>
-            atDestination(target) {
-              if (Files.isDirectory(target)) true
-              else
-                archives.fetchAndUnpack(
-                  entry,
-                  step = s"ROCm ${build.version} (${build.gfxTarget})",
-                  url = build.downloadUrl,
-                  archiveName =
-                    s"therock-dist-linux-${build.gfxTarget}-${build.version}.tar.gz",
-                  // The bucket publishes no content hash (its ETags are
-                  // multipart), so this transfer goes unverified.
-                  sha256 = None,
-                  target = target
-                )
-            }
-          }
-        if (!theRockReady) return
-        if (runner)
-          theRockDir.foreach(rock =>
-            atDestination(installDir)(runnerFiles.write(installDir, tool, rock))
-          )
-
-        if (entry.cancelled.get()) {
+      // Resolve the TheRock pairing before any bytes move: if the bucket
+      // has no matching build there is no point downloading the release.
+      val theRockBuild: Option[TheRockBuild] =
+        if (request.asset.backend == RuntimeBackend.Rocm) {
+          val gfx =
+            request.gfxTarget.getOrElse(RuntimeManager.DefaultGfxTarget)
           entry.job = entry.job.copy(
-            state = RuntimeInstallState.Cancelled,
-            completedAt = Some(System.currentTimeMillis())
+            step =
+              s"matching a TheRock build for ROCm ${request.asset.rocmVersion
+                  .getOrElse("?")} on $gfx"
           )
-          return
-        }
-
-        entry.job = entry.job.copy(
-          state = RuntimeInstallState.Validating,
-          step =
-            s"${tool.executableName} ${RuntimeManager.validationFlags(tool).head}"
-        )
-        val runtime = Runtime(
-          id = id,
-          label = request.label.getOrElse(
-            s"${tool.displayName} ${request.releaseTag} $backendName"
-          ),
-          tool = tool,
-          backend = request.asset.backend,
-          releaseTag = request.releaseTag,
-          rocmVersion = request.asset.rocmVersion,
-          gfxTarget = theRockBuild.map(_.gfxTarget),
-          theRockVersion = theRockBuild.map(_.version),
-          installedAt = installDir.toString,
-          theRockPath = theRockDir.map(_.toString),
-          // the runner is drift's own, whatever registered it before
-          adopted = !runner && previous.exists(_.adopted),
-          tracksLatest = tracksLatest,
-          createdAt =
-            previous.map(_.createdAt).getOrElse(System.currentTimeMillis()),
-          modelKinds = None
-        )
-        val validated = validation.validateAndSave(runtime)
-        // Only once the replacement proves itself: an upgrade that fails
-        // validation must not delete the working files it was replacing.
-        if (validated.valid)
-          previous.foreach(cleanup.cleanupSuperseded(_, validated))
-        Option(onValid.remove(id)).filter(_ => validated.valid).foreach { act =>
-          try act()
-          catch {
-            case NonFatal(err) =>
-              logger.warn(s"After installing $id: ${err.getMessage}")
+          pairing.buildFor(
+            request.asset,
+            gfx,
+            request.theRockVersion
+          ) match {
+            case Right(build) => Some(build)
+            case Left(reason) =>
+              entry.job = entry.job.copy(
+                state = RuntimeInstallState.Failed,
+                error = Some(reason),
+                completedAt = Some(System.currentTimeMillis())
+              )
+              return
           }
-        }
-        entry.job = entry.job.copy(
-          state =
-            if (validated.valid) RuntimeInstallState.Completed
-            else RuntimeInstallState.Failed,
-          error = validated.validationError,
-          completedAt = Some(System.currentTimeMillis())
-        )
-      } catch {
-        case NonFatal(err) =>
-          logger.warn(s"Install of $id blew up", err)
-          entry.job = entry.job.copy(
-            state = RuntimeInstallState.Failed,
-            error = Some(Option(err.getMessage).getOrElse(err.toString)),
-            completedAt = Some(System.currentTimeMillis())
+        } else None
+
+      // Fetch and unpack the release, unless a previous install already left
+      // a working directory — the entity may have been deleted while the
+      // files were kept, or this is a re-pairing of the same release.
+      val releaseReady = atDestination(installDir) {
+        if (runner || RuntimeManager.executableIn(installDir, tool).nonEmpty)
+          true
+        else
+          archives.fetchAndUnpack(
+            entry,
+            step =
+              s"${tool.displayName} ${request.releaseTag} ($backendName)",
+            url = request.asset.downloadUrl,
+            archiveName = request.asset.name,
+            sha256 = request.asset.sha256,
+            target = installDir
           )
       }
-  }
+      if (!releaseReady) return
+
+      // The ROCm runtime, shared between releases wanting the same build,
+      // so an already-unpacked one is simply reused.
+      val theRockDir = theRockBuild.map { build =>
+        runtimesRoot
+          .resolve("therock")
+          .resolve(s"${build.gfxTarget}-${build.version}")
+      }
+      val theRockReady =
+        theRockBuild.zip(theRockDir).forall { (build, target) =>
+          atDestination(target) {
+            if (Files.isDirectory(target)) true
+            else
+              archives.fetchAndUnpack(
+                entry,
+                step = s"ROCm ${build.version} (${build.gfxTarget})",
+                url = build.downloadUrl,
+                archiveName =
+                  s"therock-dist-linux-${build.gfxTarget}-${build.version}.tar.gz",
+                // The bucket publishes no content hash (its ETags are
+                // multipart), so this transfer goes unverified.
+                sha256 = None,
+                target = target
+              )
+          }
+        }
+      if (!theRockReady) return
+      if (runner)
+        theRockDir.foreach(rock =>
+          atDestination(installDir)(runnerFiles.write(installDir, tool, rock))
+        )
+
+      if (entry.cancelled.get()) {
+        entry.job = entry.job.copy(
+          state = RuntimeInstallState.Cancelled,
+          completedAt = Some(System.currentTimeMillis())
+        )
+        return
+      }
+
+      entry.job = entry.job.copy(
+        state = RuntimeInstallState.Validating,
+        step =
+          s"${tool.executableName} ${RuntimeManager.validationFlags(tool).head}"
+      )
+      val runtime = Runtime(
+        id = id,
+        label = request.label.getOrElse(
+          s"${tool.displayName} ${request.releaseTag} $backendName"
+        ),
+        tool = tool,
+        backend = request.asset.backend,
+        releaseTag = request.releaseTag,
+        rocmVersion = request.asset.rocmVersion,
+        gfxTarget = theRockBuild.map(_.gfxTarget),
+        theRockVersion = theRockBuild.map(_.version),
+        installedAt = installDir.toString,
+        theRockPath = theRockDir.map(_.toString),
+        // the runner is drift's own, whatever registered it before
+        adopted = !runner && previous.exists(_.adopted),
+        tracksLatest = tracksLatest,
+        createdAt =
+          previous.map(_.createdAt).getOrElse(System.currentTimeMillis()),
+        modelKinds = None
+      )
+      val validated = validation.validateAndSave(runtime)
+      // Only once the replacement proves itself: an upgrade that fails
+      // validation must not delete the working files it was replacing.
+      if (validated.valid)
+        previous.foreach(cleanup.cleanupSuperseded(_, validated))
+      Option(onValid.remove(id)).filter(_ => validated.valid).foreach { act =>
+        try act()
+        catch {
+          case NonFatal(err) =>
+            logger.warn(s"After installing $id: ${err.getMessage}")
+        }
+      }
+      entry.job = entry.job.copy(
+        state =
+          if (validated.valid) RuntimeInstallState.Completed
+          else RuntimeInstallState.Failed,
+        error = validated.validationError,
+        completedAt = Some(System.currentTimeMillis())
+      )
+    } catch {
+      case NonFatal(err) =>
+        logger.warn(s"Install of $id blew up", err)
+        entry.job = entry.job.copy(
+          state = RuntimeInstallState.Failed,
+          error = Some(Option(err.getMessage).getOrElse(err.toString)),
+          completedAt = Some(System.currentTimeMillis())
+        )
+    }
 }

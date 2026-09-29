@@ -2,17 +2,19 @@ package drift.backend.conversion
 
 import drift.backend.process.ProcessOutput
 import drift.backend.runtime.LaunchRuntime
+import drift.backend.{Background, WorkQueue}
 import drift.shared.*
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.*
-import java.util.concurrent.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 import scala.collection.mutable.ArrayDeque
 import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
 
 import com.typesafe.scalalogging.Logger
+import ox.*
 
 /** The pre-step a quantized source needs before sd-cli sees it: drift
   * dequantizes `source` into `intermediate`, which the command then reads, and
@@ -44,28 +46,19 @@ private[conversion] case class QueuedConversion(
   * bar off the pipe like a session's log, and keeps the last lines for the
   * failure report.
   */
-final private[conversion] class ConversionJobs(logsRoot: Path) {
+final private[conversion] class ConversionJobs(
+    logsRoot: Path,
+    background: Background
+) {
   private val logger = Logger[ConversionJobs]
   private val jobs = ConcurrentHashMap[String, ConversionJob]()
-  private val queue = LinkedBlockingQueue[QueuedConversion]()
   private val counter = AtomicLong(0)
 
   /** The job running now and its process, for Cancel. */
   private val running = AtomicReference(Option.empty[(String, Process)])
 
-  private val worker = Thread(
-    () => {
-      while (true) {
-        try run(queue.take())
-        catch {
-          case NonFatal(err) => logger.warn("conversion worker", err)
-        }
-      }
-    },
-    "drift-conversions"
-  )
-  worker.setDaemon(true)
-  worker.start()
+  // One at a time.
+  private val conversions = WorkQueue(background, "drift-conversions", 1)
 
   def list: List[ConversionJob] =
     jobs.values.asScala.toList.sortBy(-_.startedAt)
@@ -75,7 +68,7 @@ final private[conversion] class ConversionJobs(logsRoot: Path) {
 
   def enqueue(job: ConversionJob, queued: QueuedConversion): ConversionJob = {
     jobs.put(job.id, job)
-    queue.put(queued)
+    conversions.submit(run(queued))
     job
   }
 
@@ -204,32 +197,36 @@ final private[conversion] class ConversionJobs(logsRoot: Path) {
           return
       }
     running.set(Some(id -> process))
-    val drained = CountDownLatch(1)
-    ProcessOutput.capture(s"drift-conversion-$id", process, logFile) { raw =>
-      val line = LogProgress.clean(raw)
-      if (line.nonEmpty)
-        LogProgress.parse(line) match {
-          case Some(progress) =>
-            update(id)(
-              _.copy(
-                progress =
-                  Some(PostProcessProgress(progress.done, progress.total)),
-                detail = progress.detail
-              )
-            )
-          case None =>
-            tail.synchronized {
-              tail.append(line)
-              if (tail.size > ConversionJobs.TailLines) tail.removeHead()
+    val exit = supervised {
+      val drained = fork(
+        ProcessOutput.drain(s"drift-conversion-$id", process, logFile) { raw =>
+          val line = LogProgress.clean(raw)
+          if (line.nonEmpty)
+            LogProgress.parse(line) match {
+              case Some(progress) =>
+                update(id)(
+                  _.copy(
+                    progress =
+                      Some(PostProcessProgress(progress.done, progress.total)),
+                    detail = progress.detail
+                  )
+                )
+              case None =>
+                tail.synchronized {
+                  tail.append(line)
+                  if (tail.size > ConversionJobs.TailLines) tail.removeHead()
+                }
+                // sd-cpp pads its level names: "[ERROR  ]".
+                if (lastError.isEmpty && LogProgress.looksLikeError(line))
+                  lastError = Some(line)
             }
-            // sd-cpp pads its level names: "[ERROR  ]".
-            if (lastError.isEmpty && LogProgress.looksLikeError(line))
-              lastError = Some(line)
         }
-    }(() => drained.countDown())
-    val exit = process.waitFor()
-    // The reader outlives the process by the last chunk of its output.
-    drained.await()
+      )
+      val exit = process.waitFor()
+      // The reader outlives the process by the last chunk of its output.
+      drained.join()
+      exit
+    }
     running.set(None)
     val lines = tail.synchronized(tail.toList)
     if (stateOf(id) == ConversionState.Cancelled) {

@@ -1,5 +1,6 @@
 package drift.backend.session
 
+import drift.backend.Background
 import drift.backend.cache.ModelCache
 import drift.backend.runtime.{LaunchRuntime, RuntimeManager}
 import drift.backend.storage.StorageService
@@ -8,10 +9,12 @@ import drift.shared.*
 import java.nio.file.*
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 import java.util.concurrent.atomic.AtomicBoolean
+import scala.concurrent.duration.DurationInt
 import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
 
 import com.typesafe.scalalogging.Logger
+import ox.{discard, sleep}
 
 /** Turns a ready run configuration into a live `sd-server` process on a known
   * port, and manages its lifecycle (`specs/07-launch-and-supervision.md`).
@@ -42,7 +45,11 @@ final class SessionManager(
     /** The flat upscaler store passed as `--hires-upscalers-dir` on every
       * launch (`specs/10-generation-time-upscaling.md`).
       */
-    upscaleRoot: Path
+    upscaleRoot: Path,
+    /** Where each session is watched, its output drained and its server
+      * reaped.
+      */
+    background: Background
 ) {
   private val logger = Logger[SessionManager]
 
@@ -69,7 +76,8 @@ final class SessionManager(
     lorasRoot,
     upscaleRoot,
     allocatePort,
-    this
+    this,
+    background
   )
 
   /** Progress is attached here rather than stored on the session: it changes
@@ -370,7 +378,7 @@ final class SessionManager(
           .directory(workingDirectory.toFile)
           // Merged, then drained by drift itself rather than redirected to the
           // file: the buffer, the progress and the file all come off the one
-          // reader thread (`specs/13-log-streaming.md`).
+          // reader fork (`specs/13-log-streaming.md`).
           .redirectErrorStream(true)
       launchRuntime.environment.foreach { (name, value) =>
         builder.environment().put(name, value)
@@ -378,7 +386,7 @@ final class SessionManager(
       val process = builder.start()
       val log = SessionLog()
       logs.put(sessionId, log)
-      SessionOutput.capture(sessionId, process, logFile, log)
+      SessionOutput.capture(sessionId, process, logFile, log, background)
       logger.info(
         s"Session $sessionId: spawned pid ${process.pid()} on port $port: $commandLine"
       )
@@ -417,7 +425,7 @@ final class SessionManager(
 
   // -------------------------------------------------------------- supervision
 
-  /** One daemon thread per session: flips `starting` to `ready` when the server
+  /** One fork per session: flips `starting` to `ready` when the server
     * answers on its port, and reaps a died process into `failed` with the log
     * tail attached — whichever state it was in — rather than leaving it
     * apparently live. Readiness is an HTTP probe — `/sdcpp/v1/capabilities` for
@@ -432,63 +440,70 @@ final class SessionManager(
       current: SessionSettings,
       tool: RuntimeTool
   ): Unit = {
-    val thread = Thread(
-      new Runnable {
-        def run(): Unit = {
-          val deadline = System.currentTimeMillis() +
-            current.readinessTimeoutMinutes.toLong * 60 * 1000
-          while (true) {
-            if (!process.isAlive) {
-              if (entry.stopRequested.get())
-                entry.session =
-                  entry.session.copy(status = SessionStatus.Stopped)
-              else {
-                val tail = SessionOutput.tail(logFile)
-                // The line that reads like the reason goes first: on a failed
-                // load it is the one thing worth seeing without scrolling, and
-                // the tail underneath still carries the context.
-                val reason = Option(logs.get(entry.session.id))
-                  .flatMap(_.errorLine)
-                  .map(line => s"\n$line")
-                  .getOrElse("")
-                entry.session = entry.session.copy(
-                  status = SessionStatus.Failed,
-                  error = Some(
-                    s"${tool.executableName} exited with code ${process.exitValue()}" +
-                      reason + (if (tail.isEmpty) "" else s"\n$tail")
-                  )
-                )
-                logger.warn(
-                  s"Session ${entry.session.id}: exited with code ${process.exitValue()}"
-                )
-              }
-              return
-            }
-            if (entry.session.status == SessionStatus.Starting) {
-              if (ServerProcesses.answersProbe(port, tool)) {
-                entry.session = entry.session.copy(status = SessionStatus.Ready)
-                logger.info(s"Session ${entry.session.id}: ready on :$port")
-              } else if (System.currentTimeMillis() > deadline) {
-                val tail = SessionOutput.tail(logFile)
-                entry.session = entry.session.copy(
-                  status = SessionStatus.Failed,
-                  error = Some(
-                    s"not ready after ${current.readinessTimeoutMinutes} minutes; giving up" +
-                      (if (tail.isEmpty) "" else s"\n$tail")
-                  )
-                )
-                ServerProcesses.terminate(process)
-                return
-              }
-            }
-            Thread.sleep(1000)
-          }
-        }
-      },
-      s"drift-session-${entry.session.id}"
+    background.start(s"drift-session-${entry.session.id}")(
+      follow(entry, process, port, logFile, current, tool)
     )
-    thread.setDaemon(true)
-    thread.start()
+  }
+
+  /** The monitor's loop, on its own fork until the process ends or fails to
+    * come up.
+    */
+  private def follow(
+      entry: Entry,
+      process: Process,
+      port: Int,
+      logFile: Path,
+      current: SessionSettings,
+      tool: RuntimeTool
+  ): Unit = {
+    val deadline = System.currentTimeMillis() +
+      current.readinessTimeoutMinutes.toLong * 60 * 1000
+    while (true) {
+      if (!process.isAlive) {
+        if (entry.stopRequested.get())
+          entry.session =
+            entry.session.copy(status = SessionStatus.Stopped)
+        else {
+          val tail = SessionOutput.tail(logFile)
+          // The line that reads like the reason goes first: on a failed
+          // load it is the one thing worth seeing without scrolling, and
+          // the tail underneath still carries the context.
+          val reason = Option(logs.get(entry.session.id))
+            .flatMap(_.errorLine)
+            .map(line => s"\n$line")
+            .getOrElse("")
+          entry.session = entry.session.copy(
+            status = SessionStatus.Failed,
+            error = Some(
+              s"${tool.executableName} exited with code ${process.exitValue()}" +
+                reason + (if (tail.isEmpty) "" else s"\n$tail")
+            )
+          )
+          logger.warn(
+            s"Session ${entry.session.id}: exited with code ${process.exitValue()}"
+          )
+        }
+        return
+      }
+      if (entry.session.status == SessionStatus.Starting) {
+        if (ServerProcesses.answersProbe(port, tool)) {
+          entry.session = entry.session.copy(status = SessionStatus.Ready)
+          logger.info(s"Session ${entry.session.id}: ready on :$port")
+        } else if (System.currentTimeMillis() > deadline) {
+          val tail = SessionOutput.tail(logFile)
+          entry.session = entry.session.copy(
+            status = SessionStatus.Failed,
+            error = Some(
+              s"not ready after ${current.readinessTimeoutMinutes} minutes; giving up" +
+                (if (tail.isEmpty) "" else s"\n$tail")
+            )
+          )
+          ServerProcesses.terminate(process)
+          return
+        }
+      }
+      sleep(1.second)
+    }
   }
 
   // -------------------------------------------------------------- job servers
@@ -505,7 +520,7 @@ final class SessionManager(
   // --------------------------------------------------------------------- stop
 
   /** SIGTERM now, SIGKILL after a grace period. The session is marked `stopped`
-    * immediately — the process is doomed either way — and the monitor thread
+    * immediately — the process is doomed either way — and the monitor
     * knows not to reinterpret the exit as a crash.
     */
   def stop(sessionId: String): Option[Session] =
@@ -516,14 +531,9 @@ final class SessionManager(
           entry.stopRequested.set(true)
           entry.session = entry.session.copy(status = SessionStatus.Stopped)
           logger.info(s"Session $sessionId: stopping pid ${process.pid()}")
-          val reaper = Thread(
-            new Runnable {
-              def run(): Unit = ServerProcesses.terminate(process)
-            },
-            s"drift-session-reaper-$sessionId"
+          background.start(s"drift-session-reaper-$sessionId")(
+            ServerProcesses.terminate(process)
           )
-          reaper.setDaemon(true)
-          reaper.start()
           entry.session
       }
     }
@@ -533,7 +543,7 @@ final class SessionManager(
     * interrupt one (`specs/08-inference-ui.md`), and the generation form's
     * **Restart** — a LoRA installed since the launch is only listed by a new
     * server. The relaunch waits for the old process to be gone, so the port it
-    * holds is free by the time the new one binds; it runs on a thread of its
+    * holds is free by the time the new one binds; it runs on a fork of its
     * own, since a load takes minutes and the answer is due now. Answers with
     * the session as it stands, stopped.
     */
@@ -544,21 +554,15 @@ final class SessionManager(
       val projectId = entry.session.projectId
       val dying = entry.process
       val stopped = stop(sessionId).getOrElse(entry.session)
-      val thread = Thread(
-        () => {
-          dying.foreach(
-            _.waitFor(SessionManager.GraceSeconds + 5, TimeUnit.SECONDS)
-          )
-          logger.info(
-            s"Session $sessionId: restarting '$configurationId'"
-          )
-          launch(configurationId, runtimeId, projectId)
-          ()
-        },
-        s"drift-session-restart-$sessionId"
-      )
-      thread.setDaemon(true)
-      thread.start()
+      background.start(s"drift-session-restart-$sessionId") {
+        dying.foreach(
+          _.waitFor(SessionManager.GraceSeconds + 5, TimeUnit.SECONDS)
+        )
+        logger.info(
+          s"Session $sessionId: restarting '$configurationId'"
+        )
+        launch(configurationId, runtimeId, projectId).discard
+      }
       stopped
     }
 

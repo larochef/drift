@@ -1,5 +1,6 @@
 package drift.backend.session
 
+import drift.backend.Background
 import drift.backend.process.ProcessOutput
 
 import java.nio.ByteBuffer
@@ -14,7 +15,7 @@ import scala.util.control.NonFatal
   */
 private[session] object SessionOutput {
 
-  /** Drains the process's merged output on a thread of its own
+  /** Drains the process's merged output on a fork of its own
     * ([[ProcessOutput.capture]]): mirrored to the session's log file, split
     * into lines for the ring buffer, its progress bars read on the way.
     */
@@ -22,13 +23,15 @@ private[session] object SessionOutput {
       sessionId: String,
       process: Process,
       logFile: Path,
-      log: SessionLog
-  ): Unit = {
-    ProcessOutput.capture(s"session-log-$sessionId", process, logFile)(
-      log.append
-    )(() => log.close())
-    ()
-  }
+      log: SessionLog,
+      background: Background
+  ): Unit =
+    ProcessOutput.capture(
+      s"session-log-$sessionId",
+      process,
+      logFile,
+      background
+    )(log.append)(() => log.close())
 
   /** The last few lines of a session's log — enough to name the error without
     * shipping a verbose multi-minute load. Reads only the file's end; a `-v`

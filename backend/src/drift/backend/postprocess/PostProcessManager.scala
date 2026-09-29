@@ -1,5 +1,6 @@
 package drift.backend.postprocess
 
+import drift.backend.Background
 import drift.backend.lora.LoraManager
 import drift.backend.runtime.RuntimeManager
 import drift.backend.sdserver.GenerationHistory
@@ -30,9 +31,12 @@ final class PostProcessManager(
     upscalerManager: UpscalerManager,
     loraManager: LoraManager,
     runtimeManager: RuntimeManager,
-    sessionManager: SessionManager
+    sessionManager: SessionManager,
+    /** Where its jobs run. */
+    background: Background
 ) {
-  private val jobs = PostProcessJobs(outputsRoot, logsRoot, history, storage)
+  private val jobs =
+    PostProcessJobs(outputsRoot, logsRoot, history, storage, background)
   jobs.loadPaused()
   private val tiles =
     TiledJobs(jobs, runtimeManager, sessionManager, loraManager)

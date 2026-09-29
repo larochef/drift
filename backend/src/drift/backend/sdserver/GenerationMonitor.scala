@@ -1,21 +1,25 @@
 package drift.backend.sdserver
 
+import drift.backend.Background
 import drift.shared.*
 
 import java.net.http.*
+import scala.concurrent.duration.DurationInt
 import scala.util.control.NonFatal
 
 import com.github.plokhotnyuk.jsoniter_scala.core.*
 import com.typesafe.scalalogging.Logger
+import ox.sleep
 
-/** Follows a submitted job to its end: one daemon thread per job polls the
+/** Follows a submitted job to its end: one fork per job polls the
   * native job every second, mirrors its state into the generation, and persists
   * the result the moment it completes — whether or not a browser is still
   * watching.
   */
 final private[sdserver] class GenerationMonitor(
     registry: GenerationRegistry,
-    files: GenerationFiles
+    files: GenerationFiles,
+    background: Background
 ) {
   private val logger = Logger[GenerationMonitor]
 
@@ -27,92 +31,85 @@ final private[sdserver] class GenerationMonitor(
     ReaderConfig.withMaxCharBufSize(256 * 1024 * 1024)
 
   def watch(entry: GenerationEntry): Unit = {
-    val thread = Thread(
-      new Runnable {
-        def run(): Unit = {
-          var consecutiveFailures = 0
-          // When sd-server last answered a poll. A hires/ESRGAN pass (or any
-          // compute saturating the GPU and every core) can starve the HTTP
-          // loop for minutes while the job is still running, so timeouts are
-          // judged by how long the silence has lasted, not how many polls
-          // sampled it — five timed-out polls used to abandon a healthy job
-          // after less than a minute.
-          var lastAnswerAt = System.currentTimeMillis()
-          def silentMillis: Long = System.currentTimeMillis() - lastAnswerAt
-          while (entry.generation.status.isActive) {
-            try {
-              val response = registry.send(
-                HttpRequest
-                  .newBuilder(
-                    registry.uri(
-                      entry.port,
-                      s"/sdcpp/v1/jobs/${entry.nativeJobId}"
-                    )
-                  )
-                  .timeout(java.time.Duration.ofSeconds(10))
-                  .GET()
-                  .build()
+    background.start(s"drift-generation-${entry.generation.id}") {
+      var consecutiveFailures = 0
+      // When sd-server last answered a poll. A hires/ESRGAN pass (or any
+      // compute saturating the GPU and every core) can starve the HTTP
+      // loop for minutes while the job is still running, so timeouts are
+      // judged by how long the silence has lasted, not how many polls
+      // sampled it — five timed-out polls used to abandon a healthy job
+      // after less than a minute.
+      var lastAnswerAt = System.currentTimeMillis()
+      def silentMillis: Long = System.currentTimeMillis() - lastAnswerAt
+      while (entry.generation.status.isActive) {
+        try {
+          val response = registry.send(
+            HttpRequest
+              .newBuilder(
+                registry.uri(
+                  entry.port,
+                  s"/sdcpp/v1/jobs/${entry.nativeJobId}"
+                )
               )
-              response.statusCode match {
-                case 200 =>
-                  mirror(
-                    entry,
-                    readFromString[NativeJob](
-                      response.body,
-                      nativeJobReaderConfig
-                    )
-                  )
-                  // Only after the document was decoded AND applied: resetting
-                  // on the bare 200 let a repeatable decode failure poll
-                  // forever — the completed job was re-fetched every second
-                  // until sd-server's TTL evicted it, which then surfaced as
-                  // the misleading "no longer knows the job".
-                  consecutiveFailures = 0
-                  lastAnswerAt = System.currentTimeMillis()
-                case 404 | 410 =>
-                  fail(entry, "sd-server no longer knows the job")
-                case other =>
-                  consecutiveFailures += 1
-                  if (consecutiveFailures >= 5)
-                    fail(entry, s"polling the job kept failing (HTTP $other)")
-              }
-            } catch {
-              // A timeout means busy, not dead: the process dying turns polls
-              // into instant connection refusals, which the branch below
-              // fails fast. Tolerate silence for as long as a heavy pass can
-              // plausibly last, and let Stop/Cancel remain the way out of a
-              // genuinely wedged server.
-              case err: HttpTimeoutException =>
-                logger.warn(
-                  s"Generation ${entry.generation.id}: poll timed out " +
-                    s"(server silent for ${silentMillis / 1000}s)"
+              .timeout(java.time.Duration.ofSeconds(10))
+              .GET()
+              .build()
+          )
+          response.statusCode match {
+            case 200 =>
+              mirror(
+                entry,
+                readFromString[NativeJob](
+                  response.body,
+                  nativeJobReaderConfig
                 )
-                if (silentMillis > GenerationManager.SilenceGraceMillis)
-                  fail(
-                    entry,
-                    s"sd-server answered nothing for ${silentMillis / 60000} " +
-                      "minutes — giving up on the job"
-                  )
-              case NonFatal(err) =>
-                consecutiveFailures += 1
-                logger.warn(
-                  s"Generation ${entry.generation.id}: poll failed " +
-                    s"($consecutiveFailures/5): ${firstLine(err)}"
-                )
-                if (consecutiveFailures >= 5)
-                  fail(
-                    entry,
-                    s"handling the job kept failing: ${firstLine(err)}"
-                  )
-            }
-            if (entry.generation.status.isActive) Thread.sleep(1000)
+              )
+              // Only after the document was decoded AND applied: resetting
+              // on the bare 200 let a repeatable decode failure poll
+              // forever — the completed job was re-fetched every second
+              // until sd-server's TTL evicted it, which then surfaced as
+              // the misleading "no longer knows the job".
+              consecutiveFailures = 0
+              lastAnswerAt = System.currentTimeMillis()
+            case 404 | 410 =>
+              fail(entry, "sd-server no longer knows the job")
+            case other =>
+              consecutiveFailures += 1
+              if (consecutiveFailures >= 5)
+                fail(entry, s"polling the job kept failing (HTTP $other)")
           }
+        } catch {
+          // A timeout means busy, not dead: the process dying turns polls
+          // into instant connection refusals, which the branch below
+          // fails fast. Tolerate silence for as long as a heavy pass can
+          // plausibly last, and let Stop/Cancel remain the way out of a
+          // genuinely wedged server.
+          case err: HttpTimeoutException =>
+            logger.warn(
+              s"Generation ${entry.generation.id}: poll timed out " +
+                s"(server silent for ${silentMillis / 1000}s)"
+            )
+            if (silentMillis > GenerationManager.SilenceGraceMillis)
+              fail(
+                entry,
+                s"sd-server answered nothing for ${silentMillis / 60000} " +
+                  "minutes — giving up on the job"
+              )
+          case NonFatal(err) =>
+            consecutiveFailures += 1
+            logger.warn(
+              s"Generation ${entry.generation.id}: poll failed " +
+                s"($consecutiveFailures/5): ${firstLine(err)}"
+            )
+            if (consecutiveFailures >= 5)
+              fail(
+                entry,
+                s"handling the job kept failing: ${firstLine(err)}"
+              )
         }
-      },
-      s"drift-generation-${entry.generation.id}"
-    )
-    thread.setDaemon(true)
-    thread.start()
+        if (entry.generation.status.isActive) sleep(1.second)
+      }
+    }
   }
 
   /** Mirrors one native job document into the drift generation. */

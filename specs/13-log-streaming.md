@@ -43,7 +43,7 @@ raw tail on demand.
   topic); the raw tail streams as NDJSON from
   `GET /api/sessions/{id}/logs` (`routes/SessionLogRoutes.scala`, replays the
   ring buffer then follows), opened only while the log view is.
-- Backend `session/SessionOutput` drains stdout and stderr on reader threads
+- Backend `session/SessionOutput` drains stdout and stderr on a reader fork
   and mirrors them verbatim to `~/.cache/drift/logs/<sessionId>.log`;
   `session/SessionLog` is the bounded ring buffer that collapses progress
   redraws (each replaces the previous).

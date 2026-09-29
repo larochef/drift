@@ -2,9 +2,12 @@ package drift.backend.session
 
 import drift.shared.*
 
-import java.util.concurrent.{ConcurrentHashMap, LinkedBlockingQueue}
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import scala.jdk.CollectionConverters.*
+
+import ox.discard
+import ox.channels.{Channel, Source}
 
 /** One session's captured output (`specs/13-log-streaming.md`).
   *
@@ -25,8 +28,9 @@ final class SessionLog(capacity: Int = SessionLog.DefaultCapacity) {
   @volatile private var lastActivity: Option[String] = None
   @volatile private var samplingPass: Option[String] = None
 
-  private val subscribers =
-    ConcurrentHashMap[Long, LinkedBlockingQueue[LogLine]]()
+  private val subscribers = ConcurrentHashMap[Long, Channel[LogLine]]()
+  // Once closed, a new follower is told at once that nothing more is coming.
+  @volatile private var closed = false
   private val nextSubscriberId = AtomicLong(0)
 
   /** Where the current phase has got to, or `None` between phases. */
@@ -80,7 +84,7 @@ final class SessionLog(capacity: Int = SessionLog.DefaultCapacity) {
             lastWasProgress = false
           }
       }
-      subscribers.values.asScala.foreach(queue => queue.offer(line))
+      subscribers.values.asScala.foreach(_.trySendOrClosed(line).discard)
     }
   }
 
@@ -89,21 +93,27 @@ final class SessionLog(capacity: Int = SessionLog.DefaultCapacity) {
     while (lines.size > capacity) lines.remove(0)
   }
 
-  /** Follows the log from now on. The queue is bounded: a subscriber that stops
-    * draining loses lines rather than growing without limit, since a stalled
-    * browser must never hold the reader thread up.
+  /** Follows the log from now on, until the session is over — the source is
+    * then done. It is bounded: a subscriber that stops draining loses lines
+    * rather than growing without limit, since a stalled browser must never
+    * hold the reader up.
     */
-  def subscribe(): (Long, LinkedBlockingQueue[LogLine]) = {
+  def subscribe(): (Long, Source[LogLine]) = {
     val id = nextSubscriberId.incrementAndGet()
-    val queue = LinkedBlockingQueue[LogLine](SessionLog.SubscriberQueueSize)
-    subscribers.put(id, queue)
-    (id, queue)
+    val channel = Channel.buffered[LogLine](SessionLog.SubscriberQueueSize)
+    subscribers.put(id, channel)
+    if (closed) unsubscribe(id)
+    (id, channel)
   }
 
-  def unsubscribe(id: Long): Unit = subscribers.remove(id)
+  def unsubscribe(id: Long): Unit =
+    Option(subscribers.remove(id)).foreach(_.doneOrClosed().discard)
 
-  /** The session is over: wake every follower so its stream can end. */
+  /** The session is over: every follower's source is done, so its stream
+    * ends.
+    */
   def close(): Unit = {
+    closed = true
     subscribers.keys.asScala.toList.foreach(unsubscribe)
     currentProgress = None
   }

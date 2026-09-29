@@ -30,7 +30,7 @@ is 26; the redraw pass that usually follows is 27.
   the rows themselves — a dozen small numbers joined into one strip were what
   made the panel unreadable before it was grouped.
 - `UpscalePanel`: the upscaler from the store and how many passes it runs.
-- Each job runs on a daemon thread, is listed under the source with a
+- Each job runs on a fork of its own, is listed under the source with a
   progress bar (PiD: tile n of m), and appears on the `postProcessJobs` topic
   of the status socket. A failure attaches the log tail and leaves no
   partial output in the gallery.
@@ -45,7 +45,7 @@ is 26; the redraw pass that usually follows is 27.
   result as it would be if it ended now: the source under the tiles still to
   come, the finished tiles blended in with the job's own ramps, a partial
   redraw's paste applied (`LivePicture`, the finish known as `PictureFinish`).
-  It is painted on a thread of its own as each tile lands, so neither the blend
+  It is painted on a fork of its own as each tile lands, so neither the blend
   nor an encode ever holds up the next tile. Beside the full-size picture it
   keeps a copy at `PostProcessPicture.ScreenSide` (2048) that only the part
   each tile touched is scaled into, and that copy is what is laid over the

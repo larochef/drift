@@ -1,5 +1,7 @@
 package drift.backend.process
 
+import drift.backend.Background
+
 import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
 import java.nio.file.*
@@ -7,7 +9,7 @@ import scala.util.control.NonFatal
 
 import com.typesafe.scalalogging.Logger
 
-/** A child process's merged output, drained on a thread of its own: mirrored
+/** A child process's merged output, drained on a fork of its own: mirrored
   * verbatim to a log file and handed over line by line — a session's sd-server
   * (`specs/13-log-streaming.md`) and a conversion's sd-cli
   * (`specs/25-model-conversion.md`) both read their progress bars this way.
@@ -15,7 +17,7 @@ import com.typesafe.scalalogging.Logger
   * The draining is the part that cannot be skipped. A full stdout pipe that
   * nobody reads blocks the child, which is the classic way to make a load
   * appear to hang at 40% - drift reads the pipe instead of handing it to the
-  * OS, so this thread is the child's only outlet.
+  * OS, so this fork is the child's only outlet.
   *
   * Splitting treats a carriage return as a terminator as well as a newline,
   * because that is how sd-cpp redraws its progress bars: without it, a whole
@@ -25,17 +27,27 @@ import com.typesafe.scalalogging.Logger
 object ProcessOutput {
   private val logger = Logger("drift.backend.process.ProcessOutput")
 
-  /** Starts the draining thread `name`: every line (or bar redraw) goes to
-    * `onLine`, and `onDone` runs once the stream has ended, whatever the
-    * reason.
+  /** Starts draining in a fork of `background` named `name`: every line (or
+    * bar redraw) goes to `onLine`, and `onDone` runs once the stream has
+    * ended, whatever the reason.
     */
   def capture(
       name: String,
       process: Process,
-      logFile: Path
-  )(onLine: String => Unit)(onDone: () => Unit): Thread = {
-    val thread = Thread(
-      () => {
+      logFile: Path,
+      background: Background
+  )(onLine: String => Unit)(onDone: () => Unit): Unit =
+    background.start(name) {
+      try drain(name, process, logFile)(onLine)
+      finally onDone()
+    }
+
+  /** Drains on the calling thread until the stream ends, whatever the reason:
+    * what a caller forks into its own scope when it waits for the end.
+    */
+  def drain(name: String, process: Process, logFile: Path)(
+      onLine: String => Unit
+  ): Unit = {
         val reader =
           InputStreamReader(process.getInputStream, StandardCharsets.UTF_8)
         try {
@@ -71,15 +83,6 @@ object ProcessOutput {
         } catch {
           case NonFatal(err) =>
             logger.warn(s"$name: reading the output stopped: ${err.getMessage}")
-        } finally {
-          reader.close()
-          onDone()
-        }
-      },
-      name
-    )
-    thread.setDaemon(true)
-    thread.start()
-    thread
+        } finally reader.close()
   }
 }

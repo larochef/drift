@@ -1,5 +1,6 @@
 package drift.backend.conversion
 
+import drift.backend.Background
 import drift.backend.cache.*
 import drift.backend.runtime.RuntimeManager
 import drift.backend.storage.StorageService
@@ -26,10 +27,12 @@ final class ConversionManager(
     storage: StorageService,
     cache: ModelCache,
     runtimeManager: RuntimeManager,
-    logsRoot: Path
+    logsRoot: Path,
+    /** Where the conversions run, one at a time. */
+    background: Background
 ) {
   private val logger = Logger[ConversionManager]
-  private val jobs = ConversionJobs(logsRoot)
+  private val jobs = ConversionJobs(logsRoot, background)
 
   sweepPartials()
 

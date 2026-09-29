@@ -24,8 +24,11 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.netty.{NettyConfig, NettySocketConfig}
 import sttp.tapir.server.netty.sync.*
 
-@main def main: Unit = {
+// One scope for all of drift: every piece of background work is a fork of it
+// (`Background`), so none outlives the server.
+@main def main: Unit = supervised {
   val logger = Logger("drift.backend.main")
+  val background = Background()
   // Every root drift writes to, resolved once here and handed down: the
   // managers take paths, never defaults (`Locations`).
   val locations = Locations.fromEnvironment()
@@ -52,7 +55,7 @@ import sttp.tapir.server.netty.sync.*
     .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
     .connectTimeout(java.time.Duration.ofSeconds(30))
     .build()
-  val downloader = Downloader(httpClient)
+  val downloader = Downloader(httpClient, StallWatches(background))
   val authTokens = AuthTokens(storage)
   val civitaiClient = CivitaiClient(token = () => authTokens.civitai)
   val huggingFaceDownloads = HuggingFaceDownloads(
@@ -77,7 +80,8 @@ import sttp.tapir.server.netty.sync.*
     modelScope = modelScopeDownloads,
     downloader = downloader,
     client = httpClient,
-    civitaiToken = () => authTokens.civitai
+    civitaiToken = () => authTokens.civitai,
+    background = background
   )
 
   val runtimeCatalog = RuntimeCatalog(githubToken = sys.env.get("GITHUB_TOKEN"))
@@ -85,7 +89,8 @@ import sttp.tapir.server.netty.sync.*
     storage,
     downloader,
     runtimeCatalog,
-    runtimesRoot = locations.runtimesRoot
+    runtimesRoot = locations.runtimesRoot,
+    background = background
   )
   runtimeManager.refreshRunner()
   val loraManager = LoraManager(
@@ -97,7 +102,8 @@ import sttp.tapir.server.netty.sync.*
     client = httpClient,
     civitaiToken = () => authTokens.civitai,
     catalog = storage.loraCatalog,
-    lorasRoot = locations.lorasRoot
+    lorasRoot = locations.lorasRoot,
+    background = background
   )
   loraManager.resumeInterrupted()
   val upscalerManager = UpscalerManager(
@@ -105,7 +111,8 @@ import sttp.tapir.server.netty.sync.*
     civitaiClient = civitaiClient,
     downloader = downloader,
     civitaiToken = () => authTokens.civitai,
-    upscaleRoot = locations.upscaleRoot
+    upscaleRoot = locations.upscaleRoot,
+    background = background
   )
   upscalerManager.resumeInterrupted()
   val sessionManager = SessionManager(
@@ -114,12 +121,13 @@ import sttp.tapir.server.netty.sync.*
     runtimeManager,
     logsRoot = locations.logsRoot,
     lorasRoot = locations.lorasRoot,
-    upscaleRoot = locations.upscaleRoot
+    upscaleRoot = locations.upscaleRoot,
+    background = background
   )
   val outputsRoot = locations.outputsRoot
   val projectManager = ProjectManager(storage)
   val generationManager =
-    GenerationManager(sessionManager, projectManager, outputsRoot)
+    GenerationManager(sessionManager, projectManager, outputsRoot, background)
   val assistantMedia =
     AssistantMedia(
       uploadsRoot = locations.uploadsRoot,
@@ -151,14 +159,16 @@ import sttp.tapir.server.netty.sync.*
     upscalerManager = upscalerManager,
     loraManager = loraManager,
     runtimeManager = runtimeManager,
-    sessionManager = sessionManager
+    sessionManager = sessionManager,
+    background = background
   )
 
   val conversionManager = ConversionManager(
     storage = storage,
     cache = modelCache,
     runtimeManager = runtimeManager,
-    logsRoot = locations.logsRoot
+    logsRoot = locations.logsRoot,
+    background = background
   )
 
   val apiEndpoints: List[ServerEndpoint[Any, Identity]] =
@@ -208,25 +218,23 @@ import sttp.tapir.server.netty.sync.*
       .idleTimeout(10.minutes)
       .socketConfig(NettySocketConfig.default.withReuseAddress)
 
-  supervised {
-    val server = NettySyncServer(nettyConfig)
-      .addEndpoints(apiEndpoints)
-      .addEndpoint(statusSocket)
-      .addEndpoint(assistantChatEndpoint(assistantProxy))
-      .addEndpoint(sessionLogEndpoint(sessionManager))
-      .addEndpoints(frontendEndpoints)
-      .host("0.0.0.0")
-      .port(4321)
-      .start()
+  val server = NettySyncServer(nettyConfig)
+    .addEndpoints(apiEndpoints)
+    .addEndpoint(statusSocket)
+    .addEndpoint(assistantChatEndpoint(assistantProxy))
+    .addEndpoint(sessionLogEndpoint(sessionManager))
+    .addEndpoints(frontendEndpoints)
+    .host("0.0.0.0")
+    .port(4321)
+    .start()
 
-    Runtime.getRuntime.addShutdownHook(new Thread({ () =>
-      logger.info("Stopping sessions and server")
-      // Children first: killing drift must not orphan an sd-server.
-      sessionManager.stopAll()
-      server.stop()
-    }))
+  Runtime.getRuntime.addShutdownHook(new Thread({ () =>
+    logger.info("Stopping sessions and server")
+    // Children first: killing drift must not orphan an sd-server.
+    sessionManager.stopAll()
+    server.stop()
+  }))
 
-    logger.info(s"Server started on http://localhost:${server.port}")
-    Thread.currentThread().join()
-  }
+  logger.info(s"Server started on http://localhost:${server.port}")
+  never
 }

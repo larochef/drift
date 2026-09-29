@@ -1,5 +1,6 @@
 package drift.backend.postprocess
 
+import drift.backend.Background
 import drift.backend.process.ProcessOutput
 import drift.backend.runtime.LaunchRuntime
 import drift.backend.sdserver.{GenerationHistory, NativeJobs}
@@ -11,12 +12,14 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.*
 import java.util.concurrent.*
 import java.util.concurrent.atomic.*
+import scala.concurrent.duration.DurationInt
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
 import scala.util.control.NonFatal
 
 import com.github.plokhotnyuk.jsoniter_scala.core.{writeToString, WriterConfig}
 import com.typesafe.scalalogging.Logger
+import ox.*
 
 /** What a running job is waiting on, so a cancel can reach it: the `sd-cli`
   * process it started, or the img_gen job one of its tiles submitted to an
@@ -55,7 +58,9 @@ final private[postprocess] class PostProcessJobs(
     outputsRoot: Path,
     logsRoot: Path,
     history: GenerationHistory,
-    storage: StorageService
+    storage: StorageService,
+    /** Where each job runs. */
+    background: Background
 ) {
 
   /** Where this job's files are — its result, its log, its tiles (`JobFiles`).
@@ -280,18 +285,14 @@ final private[postprocess] class PostProcessJobs(
     )
     cancellations.put(job.id, JobCancellation())
     logs.put(job.id, SessionLog())
-    val thread = Thread(
-      () =>
-        try run(job)
-        finally {
-          cancellations.remove(job.id)
-          logs.remove(job.id)
-          work.remove(job.id)
-        },
-      s"drift-$kind-${job.id}"
-    )
-    thread.setDaemon(true)
-    thread.start()
+    background.start(s"drift-$kind-${job.id}") {
+      try run(job)
+      finally {
+        cancellations.remove(job.id)
+        logs.remove(job.id)
+        work.remove(job.id).discard
+      }
+    }
     job
   }
 
@@ -515,16 +516,19 @@ final private[postprocess] class PostProcessJobs(
     // and the lines pass through the job's log on the way, which is what puts
     // a bar on screen while sd-cli draws it.
     val error = AtomicReference(Option.empty[String])
-    val drained = CountDownLatch(1)
-    ProcessOutput.capture(s"postprocess-${job.id}", process, logFile) { line =>
-      noteLine(job, line)
-      // sd-cpp pads its level names: "[ERROR  ]". Only this run's lines are
-      // looked at, since a job's log may already hold earlier ones.
-      if (line.contains("[ERROR"))
-        error.compareAndSet(None, Some(LogProgress.clean(line)))
-    }(() => drained.countDown())
-    try judge(process, error, drained)
-    finally Option(cancellations.get(job.id)).foreach(_.process.set(None))
+    try supervised {
+      val drained = fork(
+        ProcessOutput.drain(s"postprocess-${job.id}", process, logFile) {
+          line =>
+            noteLine(job, line)
+            // sd-cpp pads its level names: "[ERROR  ]". Only this run's lines
+            // are looked at, since a job's log may already hold earlier ones.
+            if (line.contains("[ERROR"))
+              error.compareAndSet(None, Some(LogProgress.clean(line))).discard
+        }
+      )
+      judge(process, error, drained)
+    } finally Option(cancellations.get(job.id)).foreach(_.process.set(None))
   }
 
   /** How a finished `sd-cli` run is judged: the exit code alone proves nothing
@@ -534,7 +538,7 @@ final private[postprocess] class PostProcessJobs(
   private def judge(
       process: Process,
       error: AtomicReference[Option[String]],
-      drained: CountDownLatch
+      drained: Fork[Unit]
   ): Option[String] =
     if (!process.waitFor(PostProcessJobs.TimeoutMinutes, TimeUnit.MINUTES)) {
       process.destroyForcibly()
@@ -542,7 +546,10 @@ final private[postprocess] class PostProcessJobs(
         s"sd-cli did not finish within ${PostProcessJobs.TimeoutMinutes} minutes"
       )
     } else {
-      drained.await(10, TimeUnit.SECONDS)
+      // A pipe some other process still holds open never ends: closing it
+      // ends the draining, so the scope around it can.
+      if (timeoutOption(10.seconds)(drained.join()).isEmpty)
+        process.getInputStream.close()
       if (process.exitValue() != 0)
         Some(s"sd-cli exited with ${process.exitValue()}")
       else error.get().map(line => s"sd-cli reported an error: $line")

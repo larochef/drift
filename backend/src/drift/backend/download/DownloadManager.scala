@@ -3,6 +3,7 @@ package drift.backend.download
 import drift.backend.cache.{CacheEntry, ModelCache}
 import drift.backend.routes.CivitaiClient
 import drift.backend.storage.StorageService
+import drift.backend.{Background, WorkQueue}
 import drift.shared.*
 
 import java.net.URI
@@ -10,7 +11,7 @@ import java.net.http.*
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.time.Instant
-import java.util.concurrent.{ConcurrentHashMap, Executors}
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
@@ -34,6 +35,8 @@ final class DownloadManager(
       * restart.
       */
     civitaiToken: () => Option[String],
+    /** Where its downloads run. */
+    background: Background,
     concurrency: Int = 2
 ) {
   private val logger = Logger[DownloadManager]
@@ -44,14 +47,7 @@ final class DownloadManager(
   )
   private val entries = ConcurrentHashMap[String, Entry]()
 
-  private val executor = Executors.newFixedThreadPool(
-    concurrency,
-    runnable => {
-      val thread = Thread(runnable, "drift-download")
-      thread.setDaemon(true)
-      thread
-    }
-  )
+  private val downloads = WorkQueue(background, "drift-download", concurrency)
 
   def list: List[DownloadJob] =
     entries.values.asScala.map(_.job).toList.sortBy(_.modelId)
@@ -114,72 +110,69 @@ final class DownloadManager(
               case source =>
                 val entry = Entry(DownloadJob(modelId, DownloadState.Queued))
                 entries.put(modelId, entry)
-                executor.submit(runnable(model, source, entry))
+                downloads.submit(download(model, source, entry))
                 entry.job
             }
         }
     }
 
-  private def runnable(model: Model, source: ModelSource, entry: Entry) =
-    new Runnable {
-      def run(): Unit =
-        try {
-          if (entry.cancelled.get()) return
-          entry.job = entry.job.copy(
-            state = DownloadState.Downloading,
-            startedAt = Some(System.currentTimeMillis())
+  private def download(model: Model, source: ModelSource, entry: Entry): Unit =
+    try {
+      if (entry.cancelled.get()) return
+      entry.job = entry.job.copy(
+        state = DownloadState.Downloading,
+        startedAt = Some(System.currentTimeMillis())
+      )
+      val onProgress: (Long, Option[Long]) => Unit = (done, total) =>
+        entry.job = entry.job.copy(
+          downloadedBytes = done,
+          totalBytes = total.orElse(entry.job.totalBytes)
+        )
+      val outcome = source match {
+        case huggingFaceSource: HuggingFace =>
+          huggingFace.download(
+            huggingFaceSource,
+            () => entry.cancelled.get(),
+            onProgress
           )
-          val onProgress: (Long, Option[Long]) => Unit = (done, total) =>
-            entry.job = entry.job.copy(
-              downloadedBytes = done,
-              totalBytes = total.orElse(entry.job.totalBytes)
-            )
-          val outcome = source match {
-            case huggingFaceSource: HuggingFace =>
-              huggingFace.download(
-                huggingFaceSource,
-                () => entry.cancelled.get(),
-                onProgress
-              )
-            case modelScopeSource: ModelScope =>
-              modelScope.download(
-                modelScopeSource,
-                () => entry.cancelled.get(),
-                onProgress
-              )
-            case civitaiSource: Civitai =>
-              downloadCivitai(model, civitaiSource, entry, onProgress)
-            case Local(_) => DownloadOutcome.Failed("local source")
-          }
-          val now = Some(System.currentTimeMillis())
-          entry.job = outcome match {
-            case DownloadOutcome.Completed(_, bytes) =>
-              entry.job.copy(
-                state = DownloadState.Completed,
-                downloadedBytes = bytes,
-                totalBytes = entry.job.totalBytes.orElse(Some(bytes)),
-                completedAt = now
-              )
-            case DownloadOutcome.Cancelled =>
-              entry.job
-                .copy(state = DownloadState.Cancelled, completedAt = now)
-            case DownloadOutcome.Failed(reason) =>
-              logger.warn(s"Download of ${model.id} failed: $reason")
-              entry.job.copy(
-                state = DownloadState.Failed,
-                error = Some(reason),
-                completedAt = now
-              )
-          }
-        } catch {
-          case NonFatal(err) =>
-            logger.warn(s"Download of ${model.id} blew up", err)
-            entry.job = entry.job.copy(
-              state = DownloadState.Failed,
-              error = Some(Option(err.getMessage).getOrElse(err.toString)),
-              completedAt = Some(System.currentTimeMillis())
-            )
-        }
+        case modelScopeSource: ModelScope =>
+          modelScope.download(
+            modelScopeSource,
+            () => entry.cancelled.get(),
+            onProgress
+          )
+        case civitaiSource: Civitai =>
+          downloadCivitai(model, civitaiSource, entry, onProgress)
+        case Local(_) => DownloadOutcome.Failed("local source")
+      }
+      val now = Some(System.currentTimeMillis())
+      entry.job = outcome match {
+        case DownloadOutcome.Completed(_, bytes) =>
+          entry.job.copy(
+            state = DownloadState.Completed,
+            downloadedBytes = bytes,
+            totalBytes = entry.job.totalBytes.orElse(Some(bytes)),
+            completedAt = now
+          )
+        case DownloadOutcome.Cancelled =>
+          entry.job
+            .copy(state = DownloadState.Cancelled, completedAt = now)
+        case DownloadOutcome.Failed(reason) =>
+          logger.warn(s"Download of ${model.id} failed: $reason")
+          entry.job.copy(
+            state = DownloadState.Failed,
+            error = Some(reason),
+            completedAt = now
+          )
+      }
+    } catch {
+      case NonFatal(err) =>
+        logger.warn(s"Download of ${model.id} blew up", err)
+        entry.job = entry.job.copy(
+          state = DownloadState.Failed,
+          error = Some(Option(err.getMessage).getOrElse(err.toString)),
+          completedAt = Some(System.currentTimeMillis())
+        )
     }
 
   private def downloadCivitai(

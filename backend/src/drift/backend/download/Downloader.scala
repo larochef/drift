@@ -68,6 +68,8 @@ private object ChunkState {
   */
 final class Downloader(
     client: HttpClient,
+    /** What interrupts a transfer gone silent. */
+    watches: StallWatches,
     /** Silence before a transfer is dropped (`StallWatch`); tests shorten it.
       */
     stallMillis: Long = Downloader.StallMillis
@@ -169,7 +171,7 @@ final class Downloader(
       isCancelled: () => Boolean
   ): Option[Long] = {
     // Only to cut the wait short on a cancel; the timeout below bounds it.
-    val watch = StallWatch(isCancelled, Long.MaxValue)
+    val watch = watches.watch(isCancelled, Long.MaxValue)
     try {
       val response = client.send(
         request(url, headers)
@@ -345,7 +347,7 @@ final class Downloader(
   ): Unit = {
     val start = chunk.toLong * chunkBytes
     val endInclusive = math.min(start + chunkBytes, totalBytes) - 1
-    val watch = StallWatch(isCancelled, stallMillis)
+    val watch = watches.watch(isCancelled, stallMillis)
     try
       downloadRange(
         url,
@@ -505,7 +507,7 @@ final class Downloader(
     val digest = MessageDigest.getInstance("SHA-256")
     var alreadyDownloaded = primeDigest(digest, partFile)
 
-    val watch = StallWatch(isCancelled, stallMillis)
+    val watch = watches.watch(isCancelled, stallMillis)
     var downloaded = 0L
     val totalBytes =
       try {

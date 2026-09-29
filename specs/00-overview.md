@@ -100,6 +100,11 @@ See [`16`](16-parameter-resolution.md).
   `session`, `sdserver`, `postprocess`, `projects`, `assistant`, `conversion`, …).
   Persistence is one JSON file per entity at `~/.config/drift/<type>/<id>.json`;
   no database. Reference data seeds from `backend/resources/reference/`.
+  Concurrency is ox: `main` is one `supervised` scope, and background work
+  (jobs, downloads, monitors, output readers) runs as unsupervised forks of it
+  through `Background` — a failure ends that work, never drift — with
+  `WorkQueue` (a channel and a fixed number of workers) where work waits its
+  turn. No JDK executors or threads of drift's own.
 - `frontend/` — Laminar SPA. Services own an `EventBus` of commands and a `Var` of
   state; status (sessions, downloads, generations, jobs) arrives over one WebSocket
   ([`11`](11-status-websocket.md)). Components are plain classes with a `lazy val

@@ -36,7 +36,7 @@ life: spawn, readiness, crash detection, stop, and cleanup when drift exits.
   `DELETE /api/sessions/{id}`.
 - `backend/.../session/`: `SessionManager` (facade), `LaunchArguments`
   (argv through `CommandLine.resolve`, see 16), `ServerProcesses` (spawn,
-  monitor thread, reaping), `SessionOutput` + `SessionLog` (the log reader
+  monitor fork, reaping), `SessionOutput` + `SessionLog` (the log reader
   and ring buffer, see 13), `JobServers` (a server started for one
   post-process job, not a session, see 26), `SessionSettings`.
 - Settings file `~/.config/drift/settings/sessions.json`:
@@ -58,7 +58,7 @@ life: spawn, readiness, crash detection, stop, and cleanup when drift exits.
   passes, and falls back to source references for weights not on disk.
 - Ports promised to still-starting sessions are excluded from allocation: the
   server has not bound them yet, so a bind test alone hands a port out twice.
-- The process's stdout and stderr are drained by a reader thread that mirrors
+- The process's stdout and stderr are drained by a reader fork that mirrors
   them to the log file (13); leaving the pipe unread stalls sd-server.
 - A running session keeps the argv it started with when its configuration is
   edited; silently restarting would throw away a warm multi-gigabyte load.

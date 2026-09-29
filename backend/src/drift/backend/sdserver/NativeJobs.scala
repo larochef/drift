@@ -5,11 +5,13 @@ import drift.shared.*
 import java.net.URI
 import java.net.http.*
 import java.util.Base64
+import scala.concurrent.duration.DurationInt
 import scala.util.control.NonFatal
 
 import com.github.plokhotnyuk.jsoniter_scala.core.*
 import com.github.plokhotnyuk.jsoniter_scala.macros.*
 import com.typesafe.scalalogging.Logger
+import ox.sleep
 
 /** The native sdcpp job document, as `GET /sdcpp/v1/jobs/{id}` answers it.
   * Timestamps are unix seconds; drift converts to millis at the boundary.
@@ -199,7 +201,7 @@ object NativeJobs {
     var failures = 0
     var outcome: Option[Either[String, Array[Byte]]] = None
     while (outcome.isEmpty) {
-      Thread.sleep(1000)
+      sleep(1.second)
       serverExit().foreach(code => outcome = Some(Left(exited(code))))
       if (outcome.isEmpty) try {
         val response = get(port, s"/sdcpp/v1/jobs/$jobId", 10)

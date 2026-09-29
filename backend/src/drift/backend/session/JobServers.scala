@@ -1,5 +1,6 @@
 package drift.backend.session
 
+import drift.backend.Background
 import drift.backend.process.ProcessOutput
 import drift.backend.runtime.RuntimeManager
 import drift.backend.storage.StorageService
@@ -7,9 +8,11 @@ import drift.shared.*
 
 import java.nio.file.*
 import java.util.concurrent.ConcurrentHashMap
+import scala.concurrent.duration.DurationInt
 import scala.jdk.CollectionConverters.*
 
 import com.typesafe.scalalogging.Logger
+import ox.sleep
 
 /** A job server that serves: its port, the way to stop it, and its exit code
   * once it has died — what a job waiting on it names when it fails.
@@ -34,7 +37,9 @@ final private[session] class JobServers(
     /** The session manager's lock, so a launch and a job server never take the
       * same port.
       */
-    lock: AnyRef
+    lock: AnyRef,
+    /** Where each server's output is drained. */
+    background: Background
 ) {
   private val logger = Logger[JobServers]
   private val servers = ConcurrentHashMap[Int, Process]()
@@ -105,9 +110,12 @@ final private[session] class JobServers(
         // Drained here rather than redirected by the OS: the file is written
         // just the same, and the lines pass by on their way to it. A pipe
         // nobody reads would block the server mid-load.
-        ProcessOutput.capture(s"job-server-$port", process, logFile)(onLine)(
-          () => ()
-        )
+        ProcessOutput.capture(
+          s"job-server-$port",
+          process,
+          logFile,
+          background
+        )(onLine)(() => ())
         servers.put(port, process)
         logger.info(
           s"Job server for '$runConfigurationId': pid ${process.pid()} on port $port"
@@ -126,7 +134,7 @@ final private[session] class JobServers(
         process.isAlive &&
         !ServerProcesses.answersProbe(port, RuntimeTool.SdCpp) &&
         System.currentTimeMillis() < deadline
-      ) Thread.sleep(1000)
+      ) sleep(1.second)
       if (
         process.isAlive && ServerProcesses.answersProbe(port, RuntimeTool.SdCpp)
       )

@@ -3,11 +3,12 @@ package drift.backend.upscale
 import drift.backend.download.{DownloadOutcome, Downloader}
 import drift.backend.routes.CivitaiClient
 import drift.backend.storage.StorageService
+import drift.backend.{Background, WorkQueue}
 import drift.shared.*
 
 import java.net.URI
 import java.nio.file.*
-import java.util.concurrent.{ConcurrentHashMap, Executors}
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
@@ -34,7 +35,9 @@ final class UpscalerManager(
       * restart.
       */
     civitaiToken: () => Option[String],
-    val upscaleRoot: Path
+    val upscaleRoot: Path,
+    /** Where its downloads run. */
+    background: Background
 ) {
   private val logger = Logger[UpscalerManager]
 
@@ -44,14 +47,7 @@ final class UpscalerManager(
   )
   private val jobs = ConcurrentHashMap[String, Entry]()
 
-  private val executor = Executors.newFixedThreadPool(
-    2,
-    runnable => {
-      val thread = Thread(runnable, "drift-upscaler-download")
-      thread.setDaemon(true)
-      thread
-    }
-  )
+  private val downloads = WorkQueue(background, "drift-upscaler-download", 2)
 
   def list: List[Upscaler] =
     storage.list[Upscaler]("upscalers").sortBy(_.label)
@@ -235,53 +231,52 @@ final class UpscalerManager(
         val entry =
           Entry(UpscalerDownloadJob(upscaler.id, DownloadState.Queued))
         jobs.put(upscaler.id, entry)
-        executor.submit(new Runnable {
-          def run(): Unit =
-            if (entry.cancelled.get()) ()
-            else
-              try {
-                entry.job = entry.job.copy(state = DownloadState.Downloading)
-                Files.createDirectories(upscaleRoot)
-                val outcome = downloader.fetch(
-                  url = upscaler.downloadUrl,
-                  partFile = target.resolveSibling(
-                    target.getFileName.toString + ".part"
-                  ),
-                  finalFile = target,
-                  expectedSha256 = upscaler.sha256,
-                  headers = authHeaders(upscaler.downloadUrl),
-                  isCancelled = () => entry.cancelled.get(),
-                  onProgress = (done, total) =>
-                    entry.job = entry.job.copy(
-                      downloadedBytes = done,
-                      totalBytes = total.orElse(entry.job.totalBytes)
-                    )
-                )
-                entry.job = outcome match {
-                  case DownloadOutcome.Completed(_, bytes) =>
-                    entry.job.copy(
-                      state = DownloadState.Completed,
-                      downloadedBytes = bytes,
-                      totalBytes = entry.job.totalBytes.orElse(Some(bytes))
-                    )
-                  case DownloadOutcome.Cancelled =>
-                    entry.job.copy(state = DownloadState.Cancelled)
-                  case DownloadOutcome.Failed(reason) =>
-                    entry.job
-                      .copy(state = DownloadState.Failed, error = Some(reason))
-                }
-              } catch {
-                case NonFatal(err) =>
-                  logger.warn(
-                    s"Upscaler download ${upscaler.id} blew up",
-                    err
-                  )
+        downloads.submit {
+          if (entry.cancelled.get()) ()
+          else
+            try {
+              entry.job = entry.job.copy(state = DownloadState.Downloading)
+              Files.createDirectories(upscaleRoot)
+              val outcome = downloader.fetch(
+                url = upscaler.downloadUrl,
+                partFile = target.resolveSibling(
+                  target.getFileName.toString + ".part"
+                ),
+                finalFile = target,
+                expectedSha256 = upscaler.sha256,
+                headers = authHeaders(upscaler.downloadUrl),
+                isCancelled = () => entry.cancelled.get(),
+                onProgress = (done, total) =>
                   entry.job = entry.job.copy(
-                    state = DownloadState.Failed,
-                    error = Some(Option(err.getMessage).getOrElse(err.toString))
+                    downloadedBytes = done,
+                    totalBytes = total.orElse(entry.job.totalBytes)
                   )
+              )
+              entry.job = outcome match {
+                case DownloadOutcome.Completed(_, bytes) =>
+                  entry.job.copy(
+                    state = DownloadState.Completed,
+                    downloadedBytes = bytes,
+                    totalBytes = entry.job.totalBytes.orElse(Some(bytes))
+                  )
+                case DownloadOutcome.Cancelled =>
+                  entry.job.copy(state = DownloadState.Cancelled)
+                case DownloadOutcome.Failed(reason) =>
+                  entry.job
+                    .copy(state = DownloadState.Failed, error = Some(reason))
               }
-        })
+            } catch {
+              case NonFatal(err) =>
+                logger.warn(
+                  s"Upscaler download ${upscaler.id} blew up",
+                  err
+                )
+                entry.job = entry.job.copy(
+                  state = DownloadState.Failed,
+                  error = Some(Option(err.getMessage).getOrElse(err.toString))
+                )
+            }
+}
     }
   }
 

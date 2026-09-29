@@ -6,7 +6,10 @@ import drift.shared.*
 import java.nio.charset.StandardCharsets
 import java.nio.file.Paths
 import java.util.concurrent.TimeUnit
+import scala.concurrent.duration.DurationInt
 import scala.util.control.NonFatal
+
+import ox.*
 
 /** Validates a runtime by running its executable (`sd-server --help`,
   * `llama-server --version`) with the runtime's own `LD_LIBRARY_PATH`, and
@@ -111,30 +114,34 @@ final private[runtime] class RuntimeValidation(
               RuntimeManager.libraryPath(runtime, executable)
             )
           val process = builder.start()
-          // Read on a separate thread: --help is bigger than nothing, and a
+          // Read on a fork of its own: --help is bigger than nothing, and a
           // full pipe would deadlock a read-after-wait.
-          val output = StringBuilder()
-          val reader = Thread(new Runnable {
-            def run(): Unit =
-              try {
-                val text = String(
+          supervised {
+            val output = fork(
+              try
+                String(
                   process.getInputStream.readNBytes(64 * 1024),
                   StandardCharsets.UTF_8
                 )
-                output.synchronized(output.append(text))
-              } catch { case NonFatal(_) => () }
-          })
-          reader.start()
-          val finished = process.waitFor(30, TimeUnit.SECONDS)
-          if (!finished) {
-            process.destroyForcibly()
-            Left(s"$executableName $flag did not finish within 30s")
-          } else {
-            reader.join(5000)
-            val text = output.synchronized(output.toString)
-            if (process.exitValue() == 0) Right(text)
-            else
-              Left(s"exit code ${process.exitValue()}: ${text.trim.take(300)}")
+              catch { case NonFatal(_) => "" }
+            )
+            val finished = process.waitFor(30, TimeUnit.SECONDS)
+            if (!finished) {
+              process.destroyForcibly()
+              Left(s"$executableName $flag did not finish within 30s")
+            } else {
+              val text = timeoutOption(5.seconds)(output.join()).getOrElse {
+                // A pipe a child still holds open: closing it ends the read,
+                // so the scope around it can end.
+                process.getInputStream.close()
+                ""
+              }
+              if (process.exitValue() == 0) Right(text)
+              else
+                Left(
+                  s"exit code ${process.exitValue()}: ${text.trim.take(300)}"
+                )
+            }
           }
         } catch {
           case NonFatal(err) =>

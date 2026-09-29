@@ -2,10 +2,11 @@ package drift.backend.lora
 
 import drift.backend.download.*
 import drift.backend.storage.StorageService
+import drift.backend.{Background, WorkQueue}
 import drift.shared.*
 
 import java.nio.file.*
-import java.util.concurrent.{ConcurrentHashMap, Executors}
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
@@ -27,7 +28,8 @@ final private[lora] class LoraDownloads(
     modelScope: drift.backend.modelscope.ModelScopeDownloads,
     downloader: Downloader,
     civitaiToken: () => Option[String],
-    lorasRoot: Path
+    lorasRoot: Path,
+    background: Background
 ) {
 
   private val logger = Logger[LoraDownloads]
@@ -38,14 +40,7 @@ final private[lora] class LoraDownloads(
   )
   private val jobs = ConcurrentHashMap[String, Entry]()
 
-  private val executor = Executors.newFixedThreadPool(
-    2,
-    runnable => {
-      val thread = Thread(runnable, "drift-lora-download")
-      thread.setDaemon(true)
-      thread
-    }
-  )
+  private val downloads = WorkQueue(background, "drift-lora-download", 2)
 
   def listJobs: List[LoraDownloadJob] =
     jobs.values.asScala.map(_.job).toList.sortBy(j => (j.loraId, j.fileName))
@@ -113,45 +108,44 @@ final private[lora] class LoraDownloads(
           )
         )
         jobs.put(key, entry)
-        executor.submit(new Runnable {
-          def run(): Unit =
-            if (entry.cancelled.get()) ()
-            else
-              try {
-                entry.job = entry.job.copy(state = DownloadState.Downloading)
-                Files.createDirectories(target.getParent)
-                val outcome = fetch(
-                  file,
-                  target,
-                  () => entry.cancelled.get(),
-                  (done, total) =>
-                    entry.job = entry.job.copy(
-                      downloadedBytes = done,
-                      totalBytes = total.orElse(entry.job.totalBytes)
-                    )
-                )
-                entry.job = outcome match {
-                  case DownloadOutcome.Completed(_, bytes) =>
-                    entry.job.copy(
-                      state = DownloadState.Completed,
-                      downloadedBytes = bytes,
-                      totalBytes = entry.job.totalBytes.orElse(Some(bytes))
-                    )
-                  case DownloadOutcome.Cancelled =>
-                    entry.job.copy(state = DownloadState.Cancelled)
-                  case DownloadOutcome.Failed(reason) =>
-                    entry.job
-                      .copy(state = DownloadState.Failed, error = Some(reason))
-                }
-              } catch {
-                case NonFatal(err) =>
-                  logger.warn(s"LoRA download $key blew up", err)
+        downloads.submit {
+          if (entry.cancelled.get()) ()
+          else
+            try {
+              entry.job = entry.job.copy(state = DownloadState.Downloading)
+              Files.createDirectories(target.getParent)
+              val outcome = fetch(
+                file,
+                target,
+                () => entry.cancelled.get(),
+                (done, total) =>
                   entry.job = entry.job.copy(
-                    state = DownloadState.Failed,
-                    error = Some(Option(err.getMessage).getOrElse(err.toString))
+                    downloadedBytes = done,
+                    totalBytes = total.orElse(entry.job.totalBytes)
                   )
+              )
+              entry.job = outcome match {
+                case DownloadOutcome.Completed(_, bytes) =>
+                  entry.job.copy(
+                    state = DownloadState.Completed,
+                    downloadedBytes = bytes,
+                    totalBytes = entry.job.totalBytes.orElse(Some(bytes))
+                  )
+                case DownloadOutcome.Cancelled =>
+                  entry.job.copy(state = DownloadState.Cancelled)
+                case DownloadOutcome.Failed(reason) =>
+                  entry.job
+                    .copy(state = DownloadState.Failed, error = Some(reason))
               }
-        })
+            } catch {
+              case NonFatal(err) =>
+                logger.warn(s"LoRA download $key blew up", err)
+                entry.job = entry.job.copy(
+                  state = DownloadState.Failed,
+                  error = Some(Option(err.getMessage).getOrElse(err.toString))
+                )
+            }
+}
     }
   }
 

@@ -1,5 +1,6 @@
 package drift.backend.lora
 
+import drift.backend.Background
 import drift.backend.cache.ModelCache
 import drift.backend.download.*
 import drift.backend.routes.CivitaiClient
@@ -40,7 +41,9 @@ final class LoraManager(
     civitaiToken: () => Option[String],
     /** The LoRAs drift offers to install, read once at start. */
     val catalog: List[Lora],
-    val lorasRoot: Path
+    val lorasRoot: Path,
+    /** Where its downloads run. */
+    background: Background
 ) {
   private val logger = Logger[LoraManager]
 
@@ -72,7 +75,8 @@ final class LoraManager(
     modelScope,
     downloader,
     civitaiToken,
-    lorasRoot
+    lorasRoot,
+    background
   )
 
   def listJobs: List[LoraDownloadJob] = downloads.listJobs

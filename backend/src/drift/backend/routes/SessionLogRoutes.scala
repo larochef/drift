@@ -4,7 +4,6 @@ import drift.backend.session.SessionManager
 import drift.shared.*
 
 import java.nio.charset.StandardCharsets
-import java.util.concurrent.TimeUnit
 
 import com.github.plokhotnyuk.jsoniter_scala.core.writeToString
 import ox.Chunk
@@ -43,23 +42,13 @@ def sessionLogEndpoint(
       manager.logOf(sessionId) match {
         case None      => Left(())
         case Some(log) =>
-          val (subscriberId, queue) = log.subscribe()
+          val (subscriberId, following) = log.subscribe()
           val replay = log.snapshot
+          // Ends with the session (its log closes the source), or with the
+          // client going away.
           Right(
-            Flow
-              .usingEmit[LogLine] { emit =>
-                try {
-                  replay.foreach(emit.apply)
-                  var running = true
-                  while (running) {
-                    // A poll rather than a take: the loop has to notice the
-                    // client going away, and a session that has stopped
-                    // printing must not hold a thread on a blocked read.
-                    Option(queue.poll(2, TimeUnit.SECONDS)).foreach(emit.apply)
-                    running = manager.logOf(sessionId).isDefined
-                  }
-                } finally log.unsubscribe(subscriberId)
-              }
+            (Flow.fromIterable(replay) ++ Flow.fromSource(following))
+              .onComplete(log.unsubscribe(subscriberId))
               .map(line =>
                 Chunk.fromArray(
                   (writeToString(line) + "\n").getBytes(StandardCharsets.UTF_8)

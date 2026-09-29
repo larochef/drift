@@ -1,5 +1,6 @@
 package drift.backend.runtime
 
+import drift.backend.Background
 import drift.backend.download.Downloader
 import drift.backend.storage.StorageService
 import drift.shared.*
@@ -46,7 +47,9 @@ final class RuntimeManager(
     storage: StorageService,
     downloader: Downloader,
     catalog: RuntimeCatalog,
-    val runtimesRoot: Path
+    val runtimesRoot: Path,
+    /** Where its installs run. */
+    background: Background
 ) {
   private val selections = RuntimeSelections(storage)
   private val validation = RuntimeValidation(storage, selections)
@@ -61,7 +64,8 @@ final class RuntimeManager(
     validation,
     cleanup,
     RuntimeArchives(downloader, runtimesRoot),
-    runnerFiles
+    runnerFiles,
+    background
   )
 
   private val resolution = RuntimeInstallResolution(storage, installs)

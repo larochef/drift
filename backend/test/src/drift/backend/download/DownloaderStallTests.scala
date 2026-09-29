@@ -1,12 +1,16 @@
 package drift.backend.download
 
+import drift.backend.Background
+
 import java.net.InetSocketAddress
 import java.net.http.HttpClient
 import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
+import scala.concurrent.duration.DurationInt
 
 import com.sun.net.httpserver.HttpServer
+import ox.*
 import utest.*
 
 /** A connection that goes silent must not hold a download forever, and a cancel
@@ -36,9 +40,13 @@ object DownloaderStallTests extends TestSuite {
   private def fetch(
       server: HttpServer,
       isCancelled: () => Boolean
-  ): (DownloadOutcome, Long) = {
+  ): (DownloadOutcome, Long) = supervised {
     val dir = Files.createTempDirectory("stall")
-    val downloader = Downloader(HttpClient.newHttpClient(), stallMillis = 2000)
+    val downloader = Downloader(
+      HttpClient.newHttpClient(),
+      StallWatches(Background()),
+      stallMillis = 2000
+    )
     val started = System.currentTimeMillis()
     val outcome = downloader.fetch(
       url = s"http://127.0.0.1:${server.getAddress.getPort}/file",
@@ -63,8 +71,8 @@ object DownloaderStallTests extends TestSuite {
       val release = CountDownLatch(1)
       val server = silentServer(release)
       val cancelled = AtomicBoolean(false)
-      Thread(() => { Thread.sleep(500); cancelled.set(true) }).start()
-      try {
+      try supervised {
+        forkDiscard { sleep(500.millis); cancelled.set(true) }
         val (outcome, took) = fetch(server, () => cancelled.get())
         assert(outcome == DownloadOutcome.Cancelled, took < 5000)
       } finally { release.countDown(); server.stop(0) }

@@ -47,7 +47,7 @@ built from what the loaded model reports it supports, not from hardcoded lists.
   and launching the same configuration again is what stopping costs, and it
   beats killing drift, which was the only other way out. On yes the generation
   is marked cancelled and `SessionManager.restart` takes the server down and
-  brings it back on a thread of its own, waiting for the old process so the
+  brings it back on a fork of its own, waiting for the old process so the
   port is free. The queue dies with the server, so every active generation of
   that session is marked cancelled there and then — "dropped when sd-cpp was
   restarted" — rather than surfacing as failed polls a second later; the

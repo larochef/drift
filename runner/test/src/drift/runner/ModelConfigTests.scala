@@ -37,12 +37,12 @@ object ModelConfigTests extends TestSuite {
     }
     test("a null counts as absent") {
       assert(!config.text.has("pad_token_id"))
-      val error = intercept[FormatException](config.text.int("pad_token_id"))
+      val error = assertThrows[FormatException](config.text.int("pad_token_id"))
       assert(error.getMessage == "config.json/text_config has no pad_token_id")
     }
     test("a fraction is not an integer") {
       val error =
-        intercept[FormatException](config.text.int("partial_rotary_factor"))
+        assertThrows[FormatException](config.text.int("partial_rotary_factor"))
       assert(error.getMessage.contains("not an integer"))
     }
   }

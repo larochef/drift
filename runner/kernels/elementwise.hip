@@ -64,6 +64,15 @@ extern "C" __global__ void convert(const void* in, void* out, long long n, int k
       case 0: reinterpret_cast<__half*>(out)[i] = __float2half(reinterpret_cast<const float*>(in)[i]); break;
       case 1: reinterpret_cast<__hip_bfloat16*>(out)[i] = __float2bfloat16(reinterpret_cast<const float*>(in)[i]); break;
       case 2: reinterpret_cast<float*>(out)[i] = __half2float(reinterpret_cast<const __half*>(in)[i]); break;
+      case 4: {  // fp8 E4M3 "fn": bias 7, no infinities, NaN at S.1111.111
+        const unsigned char code = reinterpret_cast<const unsigned char*>(in)[i];
+        const int exponent = (code >> 3) & 0xf, mantissa = code & 0x7;
+        const float magnitude = exponent == 0xf && mantissa == 0x7 ? __builtin_nanf("")
+                                : exponent == 0 ? ldexpf((float)mantissa, -9)
+                                                : ldexpf((float)(8 + mantissa), exponent - 10);
+        reinterpret_cast<float*>(out)[i] = (code & 0x80) ? -magnitude : magnitude;
+        break;
+      }
       default: reinterpret_cast<float*>(out)[i] = __bfloat162float(reinterpret_cast<const __hip_bfloat16*>(in)[i]); break;
     }
   }

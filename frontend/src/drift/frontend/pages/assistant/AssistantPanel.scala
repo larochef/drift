@@ -24,14 +24,19 @@ class AssistantPanel(
       * beside the chat; on the Assistant page it is handed to the next panel
       * and Inference opens.
       */
-    onApplyProposal: Option[PromptProposal => Unit] = None,
+    proposalTarget: Option[AssistantTurns.ProposalTarget] = None,
     /** Free play (`specs/22-free-play-and-scratch-generations.md`): the
       * Assistant page is a configuration page that happens to run a model, so
       * it starts with **no** system prompt — what answers is the raw model,
       * which is the question being asked of it. A workspace starts at the
       * default plus the project's brief. The toggle stays either way.
       */
-    freePlay: Boolean = false
+    freePlay: Boolean = false,
+    /** The model's name, status, facts and Stop above the chat. A workspace
+      * shows them in its model bar instead, beside the image model's own
+      * controls, and leaves the chat its room.
+      */
+    showHeader: Boolean = true
 ) extends Component {
   private val showSystemPrompt = Var(false)
   private val showArchive = Var(false)
@@ -78,23 +83,7 @@ class AssistantPanel(
           // The status alone: the session changes with every progress tick.
           child <-- sessionSignal.map(_.map(_.status)).distinct.map(statusTag)
         ),
-        p(
-          cls := "text-secondary is-size-7",
-          child <-- service.properties
-            .combineWith(service.propertiesError)
-            .map {
-              case (Some(properties), _) =>
-                span(
-                  s"context ${properties.contextSize} tokens · ",
-                  if (properties.vision)
-                    span(cls := "tag is-link is-small", "vision")
-                  else span(cls := "tag is-small", "text only")
-                )
-              case (None, Some(error)) =>
-                span(cls := "has-text-danger", error)
-              case _ => span("reading what the server applied…")
-            }
-        )
+        p(AssistantSessionFacts(service).element)
       )
     ),
     div(
@@ -284,7 +273,7 @@ class AssistantPanel(
       if (ready) service.loadProperties(sessionId)
       else service.clearProperties()
     },
-    header,
+    Option.when(showHeader)(header),
     // A text project talks to the raw model (`specs/41-text-projects.md`):
     // no template to pick, none to switch to.
     child <-- showSystemPrompt.signal
@@ -322,7 +311,7 @@ class AssistantPanel(
       sessionId,
       service,
       generationService,
-      onApplyProposal
+      proposalTarget
     ).element
   )
 }

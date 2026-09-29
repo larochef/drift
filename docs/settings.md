@@ -79,9 +79,10 @@ answers follow the exact maths more closely than llama.cpp's: the model's
 inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
 8-bit inputs as in the fork that made the format.
 
-- **Images: Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1 and PiD.** A
-  second runtime, **drift runner, images (gfx1151)**, runs Krea 2, FLUX.2
-  [klein] 9B, FLUX.2 [dev], Qwen Image 2.1 and PiD 1.5 configurations in
+- **Images: Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, HiDream O1 and
+  PiD.** A second runtime, **drift runner, images (gfx1151)**, runs Krea 2,
+  FLUX.2 [klein] 9B, FLUX.2 [dev], Qwen Image 2.1, HiDream O1 and PiD 1.5
+  configurations in
   place of sd-cpp: pick
   it in the launch control. It tells them apart by the checkpoint, and reads
   the checkpoints the way sd-cpp does: bare or with ComfyUI's
@@ -113,6 +114,17 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     read by the text encoder and placed before the image being made. It
     ignores `--flow-shift`: the shift follows the image's size, as in the
     official pipeline.
+  - **HiDream O1** does text to image and img2img, from its one file and its
+    `tokenizer.json`. The Dev checkpoint samples as HiDream's own code does
+    (its distilled timesteps, fresh noise each step), which is why its
+    images come out finished where sd-cpp's look undercooked; a 2048² image
+    in 28 steps takes about 2 minutes, 40% less than sd-cpp. The full
+    checkpoint runs with guidance (CFG 5) on Euler steps, where HiDream's
+    code uses UniPC. LoRAs work (kohya's `lora_A`/`lora_B` over the
+    checkpoint's names, as Civitai's O1 LoRAs come). A LoRA trained on the full
+    checkpoint (ai-toolkit's, most of Civitai's) belongs on the full one: on Dev
+    its images come out washed out, soft and faintly gridded, worse the
+    stronger it is. It doesn't do reference images yet.
   - **PiD** upscales 1024 → 4096 in one pass, about 5 minutes, where sd-cpp
     needs nine tiles (its single pass comes out black). All three variants
     run: FLUX.2, FLUX.1 and Qwen Image, each with its own VAE (FLUX.1's takes

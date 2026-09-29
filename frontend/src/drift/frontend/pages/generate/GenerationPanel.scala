@@ -139,6 +139,13 @@ class GenerationPanel(
     lastProposal.set(Some(proposal))
   }
 
+  /** A proposal applied and run at once — the workspace chat's "Apply and run".
+    */
+  def applyProposalAndRun(proposal: PromptProposal): Unit = {
+    applyProposal(proposal)
+    handleSubmit()
+  }
+
   /** `W:H` onto the form (`specs/32`): the longer side stays, the other follows
     * the ratio, both on multiples of 16.
     */
@@ -283,6 +290,41 @@ class GenerationPanel(
       seeding.seedModeFields(capabilities, newMode)
     }
 
+  /** The session's Log, Restart and Stop buttons. */
+  private def controls(small: Boolean): Seq[HtmlElement] = {
+    val size = if (small) " is-small" else ""
+    Seq(
+      button(
+        cls := s"button mr-2$size",
+        child.text <-- showLog.signal.map(open =>
+          if (open) "▼ Log" else "▶ Log"
+        ),
+        onClick --> { _ =>
+          val opening = !showLog.now()
+          showLog.set(opening)
+          if (opening) logService.follow(sessionId) else logService.stop()
+        }
+      ),
+      button(
+        cls := s"button mr-2$size",
+        "↻ Restart",
+        title := "Stop the model and start it again on the same runtime, " +
+          "keeping this form: it picks up LoRAs installed since it " +
+          "started, and starts afresh if it misbehaves",
+        onClick --> (_ => restart())
+      ),
+      button(
+        cls := s"button is-warning$size",
+        "⏹ Stop session",
+        onClick --> (_ => onStop())
+      )
+    )
+  }
+
+  /** The controls a workspace places in its model bar. */
+  lazy val sessionControls: HtmlElement =
+    div(cls := "control is-flex", controls(small = true))
+
   private def handleSubmit(): Unit =
     service.capabilitiesOf(sessionId).foreach(submission.submit)
 
@@ -308,8 +350,8 @@ class GenerationPanel(
       div(
         cls := "notification is-warning is-light py-2 px-3 is-size-7 mb-3",
         span(
-          "Free play — nothing here is saved. Keep a result to put it in the " +
-            "gallery; everything else goes when the session stops."
+          "Sandbox — nothing here is saved. Save a result to put it in the " +
+            "gallery or a project; everything else goes when you leave."
         ),
         button(
           cls := "button is-small ml-2",
@@ -412,57 +454,31 @@ class GenerationPanel(
       } --> Observer[Unit](_ =>
       service.push(GenerationService.Command.LoadCapabilities(sessionId))
     ),
-    // Only in free play: inside a workspace the page already mounts these,
-    // and a second mount subscribes every stream twice.
-    if (scratch) projectService.effects else emptyMod,
     onMountCallback { _ =>
       service.push(GenerationService.Command.LoadCapabilities(sessionId))
       service.push(GenerationService.Command.LoadGenerations(sessionId))
       loraService.push(LoraService.Command.Load)
-      if (scratch) projectService.push(ProjectService.Command.Load)
     },
-    div(
-      cls := "level panel-header",
+    // Inside a workspace these controls sit in the model bar, beside the
+    // picker that names the model (François, 2026-09-29).
+    Option.when(scratch)(
       div(
-        cls := "level-left",
-        h1(
-          cls := "title text-primary",
-          child.text <-- configurationLabel
-        ),
-        child <-- sessionSignal.map {
-          case Some(session) => statusTag(session)
-          case None          => emptyNode
-        }
-      ),
-      div(
-        cls := "level-right",
-        button(
-          cls := "button mr-2",
-          child.text <-- showLog.signal.map(open =>
-            if (open) "▼ Log" else "▶ Log"
+        cls := "level panel-header",
+        div(
+          cls := "level-left",
+          h1(
+            cls := "title text-primary",
+            child.text <-- configurationLabel
           ),
-          onClick --> { _ =>
-            val opening = !showLog.now()
-            showLog.set(opening)
-            if (opening) logService.follow(sessionId) else logService.stop()
+          child <-- sessionSignal.map {
+            case Some(session) => statusTag(session)
+            case None          => emptyNode
           }
         ),
-        button(
-          cls := "button mr-2",
-          "↻ Restart",
-          title := "Stop the model and start it again on the same runtime, " +
-            "keeping this form: it picks up LoRAs installed since it " +
-            "started, and starts afresh if it misbehaves",
-          onClick --> (_ => restart())
-        ),
-        button(
-          cls := "button is-warning",
-          "⏹ Stop session",
-          onClick --> (_ => onStop())
-        )
+        div(cls := "level-right", controls(small = false))
       )
     ),
-    hr(),
+    Option.when(scratch)(hr()),
     onUnmountCallback(_ => logService.stop()),
     child <-- showLog.signal.map {
       case true =>
@@ -548,7 +564,8 @@ class GenerationPanel(
                       keepProjectVar,
                       onOpenOutput
                     ).element
-                }
+                },
+              project.map(_.history)
             )
           )
         case _ => emptyNode
@@ -586,6 +603,8 @@ object GenerationPanel {
         * them by default (François, 2026-09-08); the checkbox still lets the
         * user look.
         */
-      nsfw: Signal[Boolean]
+      nsfw: Signal[Boolean],
+      /** The project's versions and what they made, under the result. */
+      history: HtmlElement
   )
 }

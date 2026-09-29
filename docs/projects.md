@@ -29,10 +29,21 @@ its images only if you say so.
 
 ## The workspace
 
-Open a project to get its workspace, in three columns.
+Open a project to get its workspace. What it shows depends on what is
+loaded:
 
-- **Header**: the name and brief, editable in place; the NSFW flag; the kind;
-  and two pickers. The **Image model** (or Video model) picker lists your run
+- **A new project with no model loaded**: the two pickers, in the middle of
+  the page. Pick an image model to start.
+- **A project with versions and no image model loaded**: the pickers at the
+  top, and the whole page for the version history, with large thumbnails.
+- **An image model loaded**: the pickers at the top, the generation form on
+  the left, the result on the right, and the version history under the
+  result, with smaller thumbnails.
+
+The parts:
+
+- **Header**: the name and brief, editable in place; the NSFW flag; the kind.
+- **Model bar**: two pickers. The **Image model** (or Video model) picker lists your run
   configurations of that kind and launches the one you pick, stopping the
   current one if needed. The **Assistant** picker does the same for chat
   models (see [assistant.md](assistant.md)). A model that is live but of the
@@ -43,17 +54,23 @@ Open a project to get its workspace, in three columns.
   assistant). Once created it is picked, as if chosen in the list: it
   launches, or its weights start downloading and it launches when they are
   on disk.
-- **Versions**, on the left, newest first. Each card is the version number
-  plus thumbnails of what it made; hover for its note, origin, model and
-  prompts. Click a version to load its recipe into the form. **compare**
-  shows the prompts of any two versions side by side as a word diff.
-- **Generation panel**, in the middle: the same form as everywhere else (see
-  [generating.md](generating.md)). Under it, the project's results grouped by
-  version. Each result has three buttons: 🤖 **Ask** sends it to the
-  assistant, 🖼 makes it the project's cover (click again to clear), 🗑
-  deletes the whole generation. Click a result to open its full detail view,
-  with upscaling and redraw.
-- **Assistant**, on the right: the project's conversation.
+  While a model runs, **Log**, **Restart** and **Stop session** sit beside
+  its picker. Beside the assistant's (or a text project's chat model):
+  **Show chat** / **Hide chat**, **Stop session**, the context size the
+  server applied and whether it has **vision** — the chat itself keeps its
+  room.
+- **Generation panel**: the same form as everywhere else (see
+  [generating.md](generating.md)).
+- **Versions**, newest first. Each version is a line (its number, what
+  changed, the model) and what it made. **use this recipe** loads its recipe
+  into the form, now or when an image model is loaded; the version in use is
+  marked **selected**. Hover the line for the prompts. **compare** shows the
+  prompts of any two versions side by side as a word diff. Each result has
+  three buttons: 🤖 **Ask** sends it to the assistant, 🖼 makes it the
+  project's cover (click again to clear), 🗑 deletes the whole generation.
+  Click a result to open its full detail view, with upscaling and redraw.
+- **Assistant**: the project's conversation, in a drawer on the right that
+  opens when the assistant is loaded. The page narrows to make room for it.
 
 ## Versions
 

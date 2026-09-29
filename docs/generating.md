@@ -1,8 +1,9 @@
 # Generating images and videos
 
 Generation happens inside a **session**: a model server drift launches from a
-run configuration. You start one from the Models page (free play) or from a
-project's workspace (see [projects.md](projects.md)).
+run configuration. You start one from the **Sandbox** or from a project's
+workspace (see [projects.md](projects.md)); **Launch** on a Models page card
+opens the Sandbox on it.
 
 ## Starting a session
 
@@ -85,13 +86,19 @@ something (an image attached, hires on, a non-default sampler):
 - **🤖 Ask the assistant** on a result sends the image and its parameters to
   the assistant. See [assistant.md](assistant.md).
 
-## Free play or project
+## Sandbox or project
 
-- From the **Models** page you are in free play: nothing is saved. Results
-  show their duration and a **Keep into** row: keep "the gallery only" or an
-  existing project. Kept images become gallery entries (and a version of the
-  project, if one is picked). **Clear results** or stopping the session throws
-  the rest away.
+- The **Sandbox** (sidebar) is for trying a model: nothing is saved. Tabs pick
+  **Image**, **Video** or **Text**, each with its model picker; Text is a chat
+  with the raw model. Results show their duration and a **Save into** row:
+  "the gallery only" or an existing project. Saved images become gallery
+  entries (and a version of the project, if one is picked).
+- Everything not saved goes when you leave the page (drift asks first), when
+  you switch tabs (which also stops the image or video model and clears the
+  chat, after asking), when the session stops, or with **Clear results**.
+- A model a project already runs is shared rather than loaded twice: the
+  Sandbox says *Running for* that project. Picking another model of the same
+  kind asks before stopping the project's.
 - From a project workspace every generation is recorded, becomes a version of
   the project and appears in the gallery. See [projects.md](projects.md) and
   [gallery.md](gallery.md).

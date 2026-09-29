@@ -29,10 +29,19 @@ them.
   the Krea 2 Turbo starter at 1024² and shipped as 640px WebP (~250 KB) in
   `frontend/public/assets/showcase/`: the only static path the backend serves.
 - **Workspace** `/projects/{id}`:
-  - Header: name and brief editable in place, the NSFW flag, the kind, and
-    two pickers — the image (or video) model and the assistant — listing that
-    tool's configurations with the live one marked; picking another stops the
-    live session and launches the pick.
+  - Laid out by what is loaded: no image model and no version → the model
+    bar alone, prominent, in the middle of the page; versions and no image
+    model → the bar on top, the version history at `Size.Large` as the
+    page; an image model live → the bar on top, the generation panel, the
+    history at `Size.Small` under its result (`ProjectBinding.history`).
+    Until the project has loaded it is not taken for an empty one.
+  - Header: name and brief editable in place, the NSFW flag, the kind.
+  - Model bar: two pickers — the image (or video) model and the assistant —
+    listing that tool's configurations with the live one marked; picking
+    another stops the live session and launches the pick. The live image
+    session's Log/Restart/Stop (`GenerationPanel.sessionControls`) sit beside
+    its picker, the panel drawing no header of its own in a project; the
+    chat drawer's toggle beside the assistant's.
   - **+ New** beside each picker opens `NewRunConfigurationModal` (the run
     configurations page's own), its architectures narrowed to the picker's
     tool and the project's kind. The created configuration is picked as a
@@ -40,17 +49,19 @@ them.
     `LaunchPrerequisites.unsettled` no longer lists it: a model registered
     with it has no cache state yet, which would otherwise read as nothing
     missing.
-  - Versions column on the left, newest first: number plus thumbnails of what
-    the version made; origin, note, configuration and prompts in the tooltip.
-    Clicking a version seeds the generation panel from its recipe. A
-    **compare** link diffs any two versions' prompts.
-  - The generation panel in the middle, bound to the project. Under it, the
-    project's results grouped by version, each with **Ask** (stages it for
-    the assistant), **🖼** (make it the cover; lit on the cover, click again
-    to clear), and **🗑** (deletes the whole generation, naming the batch
-    size). Clicking a result opens the gallery's full detail view.
-  - The assistant column on the right; its proposal card's **Apply to form**
-    fills the panel's prompts in place.
+  - `VersionHistory`, one component at two sizes: newest first, a row per
+    version — number, note, configuration, **use this recipe** (or
+    *selected*), prompts in the tooltip — then its results, each with
+    **Ask** (stages it for the assistant), **🖼** (make it the cover; lit on
+    the cover, click again to clear), and **🗑** (deletes the whole
+    generation, naming the batch size). Clicking a result opens the
+    gallery's full detail view. **use this recipe** selects the version, and
+    seeds a live panel. A **compare** link diffs any two versions' prompts.
+  - The assistant is a drawer on the right, shrinking the body rather than
+    covering it, kept mounted while closed; it opens when an assistant
+    launches. Its proposal card's **Apply to form** fills the panel's prompts
+    in place; **Apply and run** also submits, and is disabled until an image
+    session is ready.
 - **Every generation creates a version.** A submission whose recipe equals
   the selected version's (same configuration; seed and input images aside)
   belongs to it; anything else appends v(N+1) with the selected version as
@@ -93,11 +104,11 @@ them.
   newest day first, memoised against the newest day directory; a chosen cover
   is used while its file exists and is of the project's kind.
 - Frontend: `pages/projects/{ProjectsPage, ProjectWorkspacePage,
-  WorkspaceHeader, VersionsColumn, ProjectResults, WorkspaceSessions}`,
+  WorkspaceHeader, VersionHistory, WorkspaceSessions}`,
   `services/ProjectService` (folds the status socket's completions, reloads
   projects when a pushed generation names an unknown version).
-  `GenerationPanel` takes a `ProjectBinding` and exposes `applyVersion` and
-  `applyProposal`; `pages/gallery/GenerationDetailHost` serves both the
+  `GenerationPanel` takes a `ProjectBinding` and exposes `applyVersion`,
+  `applyProposal`, `applyProposalAndRun` and `sessionControls`; `pages/gallery/GenerationDetailHost` serves both the
   gallery and the workspace, parameterized by the pool it resolves in.
 
 ## Notes

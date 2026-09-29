@@ -6,6 +6,7 @@ import drift.frontend.pages.cache.ModelCachePage
 import drift.frontend.pages.gallery.GalleryPage
 import drift.frontend.pages.models.ModelsPage
 import drift.frontend.pages.projects.{ProjectWorkspacePage, ProjectsPage}
+import drift.frontend.pages.sandbox.SandboxPage
 import drift.frontend.pages.settings.SettingsPage
 import drift.frontend.services.*
 
@@ -150,6 +151,26 @@ class AppShell(
             ).element
           }
         },
+        // Trying a model, nothing kept (`specs/47-sandbox.md`); the rest of
+        // the path names the kind, and the page is built once so switching
+        // it keeps what is on screen until the switch clears it.
+        pathPrefix("sandbox") {
+          extractUnmatchedPath.signal { section =>
+            new SandboxPage(
+              runConfigurationService,
+              sessionService,
+              generationService,
+              assistantService,
+              loraService,
+              projectService,
+              runtimeService,
+              logService,
+              prerequisites,
+              section,
+              browsers
+            ).element
+          }
+        },
         // One page for the models and how they are run. The rest of the path
         // names its tab, and arrives as a signal: the page is built once and
         // only the tab follows the URL, so switching keeps a half-filled form.
@@ -163,11 +184,9 @@ class AppShell(
               downloadService,
               sessionService,
               runtimeService,
-              generationService,
               assistantService,
               loraService,
               projectService,
-              logService,
               browsers,
               section
             ).element

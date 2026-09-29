@@ -1,6 +1,5 @@
 package drift.frontend.pages.generate
 
-import drift.frontend.Page
 import drift.frontend.components.{Component, LogProgressView}
 import drift.frontend.services.*
 import drift.shared.*
@@ -45,15 +44,19 @@ class GenerationResult(
     EventStream.periodic(1000).startWith(0)
 
   /** The seed the request carried — always concrete now, so a result can be
-    * reproduced from what is on screen.
+    * reproduced from what is on screen. A batch spans one seed per image.
     */
-  private def seedText: String =
-    generation.imageParameters
-      .map(_.seed)
-      .orElse(generation.videoParameters.map(_.seed))
-      .filter(_ >= 0)
-      .map(seed => s" · seed $seed")
+  private def seedText: String = {
+    val count = generation.imageParameters.map(_.batchCount).getOrElse(1)
+    generation
+      .seedOf(0)
+      .orElse(generation.videoParameters.map(_.seed).filter(_ >= 0))
+      .map(seed =>
+        if (count > 1) s" · seeds $seed–${seed + count - 1}"
+        else s" · seed $seed"
+      )
       .getOrElse("")
+  }
 
   private def elapsedSeconds(from: Long, until: Option[Long]): Long =
     ((until.getOrElse(System.currentTimeMillis()) - from) / 1000).max(0)
@@ -84,13 +87,12 @@ class GenerationResult(
     * assistant (`specs/21-assistant-page.md`). Images only: nothing sends a
     * video to a vision model yet.
     *
-    * Only free play then goes anywhere: in a workspace the assistant is the
-    * column beside this one, so staging the image is the whole action — leaving
-    * for the Models page threw away the project the user was in (François,
-    * 2026-09-10).
+    * In a workspace the assistant is the column beside this one, so staging the
+    * image is the whole action. The Sandbox has no chat beside its images
+    * (`specs/47-sandbox.md`), so a scratch result does not offer it.
     */
   private def askAssistantButton(output: GenerationOutput): Node =
-    if (!output.mimeType.startsWith("image/")) emptyNode
+    if (!output.mimeType.startsWith("image/") || scratch) emptyNode
     else
       button(
         cls := "button is-small mt-1",
@@ -101,7 +103,6 @@ class GenerationResult(
             AssistantService
               .outputAttachment(generation, output, configurationLabel())
           )
-          if (scratch) Page.Models.navigate()
         }
       )
 
@@ -115,14 +116,14 @@ class GenerationResult(
     else if (!generation.scratch)
       p(
         cls := "text-secondary is-size-7 mt-2",
-        "✓ Kept — it is in the gallery now."
+        "✓ Saved — it is in the gallery now."
       )
     else
       div(
         cls := "field has-addons mt-2 mb-0",
         div(
           cls := "control",
-          span(cls := "button is-small is-static", "Keep into")
+          span(cls := "button is-small is-static", "Save into")
         ),
         div(
           cls := "control",
@@ -147,7 +148,7 @@ class GenerationResult(
           cls := "control",
           button(
             cls := "button is-small is-primary",
-            "💾 Keep",
+            "💾 Save",
             onClick --> (_ =>
               service.push(
                 GenerationService.Command.Keep(

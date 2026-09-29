@@ -923,6 +923,19 @@
     "builtIn": true
   },
   {
+    "id": "hidream-o1-tokenizer",
+    "familyId": "hidream-o1-tokenizer",
+    "label": "HiDream-O1-Image tokenizer.json",
+    "source": {
+      "type": "huggingface",
+      "repo": "HiDream-ai/HiDream-O1-Image-Dev",
+      "filename": "tokenizer.json"
+    },
+    "format": "json",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
     "id": "hidream-o1-image-dev-fp8-scaled",
     "familyId": "hidream-o1-diffusion",
     "label": "HiDream-O1-Image Dev fp8 (scaled)",

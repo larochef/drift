@@ -10,8 +10,14 @@ object SessionService {
   enum Command {
     case Load
 
-    /** `runtimeId` empty launches on the default runtime. */
-    case Launch(runConfigurationId: String, runtimeId: Option[String])
+    /** `runtimeId` empty launches on the default runtime; `projectId` is the
+      * workspace launching it, none from the Sandbox (`specs/47`).
+      */
+    case Launch(
+        runConfigurationId: String,
+        runtimeId: Option[String],
+        projectId: Option[String]
+    )
     case Stop(sessionId: String)
 
     /** Stop and launch again on the same runtime (`restartSession`). */
@@ -60,11 +66,12 @@ class SessionService(statusSocket: StatusSocketService) extends ServiceErrors {
         case Failure(err) => reportFailure("Listing sessions", err)
       },
     cmdBus.events
-      .collect { case Command.Launch(runConfigurationId, runtimeId) =>
-        (runConfigurationId, runtimeId)
+      .collect {
+        case Command.Launch(runConfigurationId, runtimeId, projectId) =>
+          (runConfigurationId, runtimeId, projectId)
       }
-      .flatMapMerge((id, runtimeId) =>
-        launchFn(LaunchSessionRequest(id, runtimeId)).recoverToTry
+      .flatMapMerge((id, runtimeId, projectId) =>
+        launchFn(LaunchSessionRequest(id, runtimeId, projectId)).recoverToTry
       ) --> Observer[Try[Session]] {
       case Success(session) =>
         clearError()

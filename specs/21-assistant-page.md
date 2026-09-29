@@ -23,7 +23,10 @@ on the Models page and the project workspace ([`19`](19-projects-and-prompt-vers
   Stop session and a fold for the system prompt (an editable textarea; the
   default asks for fenced `prompt` and `negative` blocks) and the
   conversation actions (Compact, Restart in a workspace; Clear chat in free
-  play).
+  play). In a workspace there is no header: the model bar carries the
+  picker, status, Stop session and the applied facts
+  (`AssistantSessionFacts`) beside the assistant, as it does the image
+  model's controls.
 - **Turns**, composer on top, newest first: the reply being written appears
   right under the input. User turns show their images and text; assistant
   turns stream, reasoning folded into "thinking… (n characters)". Under a

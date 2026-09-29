@@ -84,7 +84,7 @@ object DTypeTests extends TestSuite {
       assert(RocmFp4.Dual.byteSize(64) == 36)
       assert(RocmFp4.Fast.byteSize(64) == 34)
       val error =
-        intercept[IllegalArgumentException](GgmlQuants.Q8_0.byteSize(33))
+        assertThrows[IllegalArgumentException](GgmlQuants.Q8_0.byteSize(33))
       assert(error.getMessage.contains("not whole Q8_0 blocks"))
     }
     test("type lookups") {

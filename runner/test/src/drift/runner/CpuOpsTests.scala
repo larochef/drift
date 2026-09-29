@@ -58,7 +58,7 @@ object CpuOpsTests extends TestSuite {
     test("mismatched shapes are refused") {
       val ops = new CpuOps
       try {
-        val error = intercept[IllegalArgumentException] {
+        val error = assertThrows[IllegalArgumentException] {
           ops.add(
             ops.fromFloats(Shape.of(2), Array(1f, 2f)),
             ops.fromFloats(Shape.of(3), Array(1f, 2f, 3f)),

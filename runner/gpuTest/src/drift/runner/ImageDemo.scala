@@ -12,7 +12,10 @@ import drift.runner.ops.{HipOps, MatVecInputs}
   * distilled guidance, 3.5 by default, for the models that embed one), and
   * where the family takes them `--init FILE`, `--strength S`,
   * `--reference FILE` (repeated) and `--llm-vision FILE` (the text encoder's
-  * mmproj, which Qwen Image 2.1 edits with).
+  * mmproj, which Qwen Image 2.1 edits with), `--tokenizer FILE` (PiD's and
+  * HiDream O1's `tokenizer.json`) and `--shift S` (the flow shift, 1.15 by
+  * default). `-` for the VAE and the text encoder when the model holds its own
+  * (HiDream O1).
   *
   * `./mill runner.gpuTest.runMain drift.runner.ImageDemo <diffusion> <vae> <llm> <out.png> "<prompt>" [steps] [size] [seed] [--lora FILE[:M]]… [--cfg S] [--negative TEXT] [--init FILE] [--strength S] [--reference FILE]…`
   */
@@ -51,8 +54,8 @@ object ImageDemo {
     val pipeline = ImagePipeline.open(
       ops,
       Paths.get(diffusion),
-      Paths.get(vae),
-      Paths.get(llm),
+      Option.when(vae != "-")(Paths.get(vae)),
+      Option.when(llm != "-")(Paths.get(llm)),
       options.collectFirst { case ("--tokenizer", path) => Paths.get(path) },
       options.collectFirst { case ("--llm-vision", path) => Paths.get(path) }
     )
@@ -72,7 +75,7 @@ object ImageDemo {
           cfg,
           guidance,
           seed,
-          1.15,
+          options.collectFirst { case ("--shift", s) => s.toDouble }.getOrElse(1.15),
           loras,
           init.map(Images.resized(_, size, size)),
           strength,

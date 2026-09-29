@@ -105,13 +105,14 @@ final class SessionManager(
     */
   def launch(
       runConfigurationId: String,
-      runtimeId: Option[String] = None
+      runtimeId: Option[String],
+      projectId: Option[String]
   ): Session = synchronized {
     Option(entries.get(runConfigurationId))
       .map(_.session)
       .filter(_.status.isActive) match {
       case Some(alive) => alive
-      case None        => attemptLaunch(runConfigurationId, runtimeId)
+      case None => attemptLaunch(runConfigurationId, runtimeId, projectId)
     }
   }
 
@@ -133,6 +134,7 @@ final class SessionManager(
       pid = None,
       status = SessionStatus.Failed,
       startedAt = startedAt,
+      projectId = None,
       error = Some(reason)
     )
     entries.put(runConfigurationId, Entry(session, None))
@@ -157,7 +159,8 @@ final class SessionManager(
 
   private def attemptLaunch(
       runConfigurationId: String,
-      runtimeId: Option[String]
+      runtimeId: Option[String],
+      projectId: Option[String]
   ): Session = {
     val current = settings
     storage.get[RunConfiguration](
@@ -258,7 +261,8 @@ final class SessionManager(
                       port,
                       argv,
                       current,
-                      notes.map(_.message)
+                      notes.map(_.message),
+                      projectId
                     )
                 }
             }
@@ -330,7 +334,8 @@ final class SessionManager(
       port: Int,
       argv: List[String],
       current: SessionSettings,
-      parameterNotes: List[String]
+      parameterNotes: List[String],
+      projectId: Option[String]
   ): Session = {
     val startedAt = System.currentTimeMillis()
     val sessionId = s"${configuration.id}-$startedAt"
@@ -386,6 +391,7 @@ final class SessionManager(
         pid = Some(process.pid()),
         status = SessionStatus.Starting,
         startedAt = startedAt,
+        projectId = projectId,
         parameterNotes = parameterNotes
       )
       val entry = Entry(session, Some(process))
@@ -535,6 +541,7 @@ final class SessionManager(
     entries.asScala.values.find(_.session.id == sessionId).map { entry =>
       val configurationId = entry.session.runConfigurationId
       val runtimeId = entry.session.runtimeId
+      val projectId = entry.session.projectId
       val dying = entry.process
       val stopped = stop(sessionId).getOrElse(entry.session)
       val thread = Thread(
@@ -545,7 +552,7 @@ final class SessionManager(
           logger.info(
             s"Session $sessionId: restarting '$configurationId'"
           )
-          launch(configurationId, runtimeId)
+          launch(configurationId, runtimeId, projectId)
           ()
         },
         s"drift-session-restart-$sessionId"

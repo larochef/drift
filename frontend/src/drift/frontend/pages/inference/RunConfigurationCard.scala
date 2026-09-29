@@ -31,7 +31,13 @@ class RunConfigurationCard(
     missing: Signal[Option[LaunchPrerequisites.Missing]],
     prerequisites: LaunchPrerequisites,
     onLaunch: String => Unit,
-    onStop: String => Unit
+    onStop: String => Unit,
+    /** Where the live session runs — the Sandbox or its project's name
+      * (`specs/47-sandbox.md`).
+      */
+    runningIn: Option[String],
+    /** Opens the page the live session runs in. */
+    onOpen: Session => Unit
 ) extends Component {
   private val showCommand = Var(false)
   private val ready = blockers.isEmpty
@@ -76,11 +82,22 @@ class RunConfigurationCard(
 
   private def launchOrStopControls: Seq[HtmlElement] =
     if (live)
-      session.toSeq.map(s =>
-        button(
-          cls := "button is-warning is-small",
-          "⏹ Stop",
-          onClick --> (_ => onStop(s.id))
+      session.toSeq.flatMap(s =>
+        Seq(
+          span(
+            cls := "text-secondary is-size-7 mr-2",
+            s"Running in ${runningIn.getOrElse("the Sandbox")}"
+          ),
+          button(
+            cls := "button is-link is-small mr-2",
+            "Open",
+            onClick --> (_ => onOpen(s))
+          ),
+          button(
+            cls := "button is-warning is-small",
+            "⏹ Stop",
+            onClick --> (_ => onStop(s.id))
+          )
         )
       )
     // A missing runtime or missing weights take the launch's place

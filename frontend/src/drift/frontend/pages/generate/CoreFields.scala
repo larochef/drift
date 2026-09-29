@@ -18,6 +18,43 @@ class CoreFields(
   import state.*
   import FormFields.{field, numberField}
 
+  /** The seed, with the tick that has drift roll a fresh one each run. */
+  private def seedField: HtmlElement =
+    div(
+      cls := "field",
+      label(cls := "label text-primary is-small", "Seed"),
+      div(
+        cls := "field has-addons mb-0",
+        div(
+          cls := "control",
+          input(
+            // A random seed runs to ten digits.
+            cls := "input is-small is-digits",
+            styleAttr := "--digits: 11;",
+            typ := "number",
+            disabled <-- randomSeedVar.signal,
+            placeholder := "random",
+            value <-- seedVar.signal,
+            onInput.mapToValue --> seedVar
+          )
+        ),
+        div(
+          cls := "control",
+          label(
+            cls := "button is-small checkbox text-primary",
+            input(
+              typ := "checkbox",
+              checked <-- randomSeedVar.signal,
+              onChange.mapToChecked --> randomSeedVar
+            ),
+            " Random",
+            title := "drift picks a fresh seed for each generation and " +
+              "shows it here; untick to keep the last one"
+          )
+        )
+      )
+    )
+
   lazy val element: HtmlElement = {
     val limits = capabilities.limits
     div(
@@ -67,31 +104,29 @@ class CoreFields(
           onClick --> (_ => onGenerate())
         )
       ),
+      // Size, steps, CFG and seed each as wide as what they hold, side by
+      // side and wrapping, instead of two per row across the whole form
+      // (François, 2026-09-29).
       div(
-        cls := "columns is-mobile",
-        div(
-          cls := "column",
-          numberField(
-            "Width",
-            widthVar,
-            Some(limits.minWidth),
-            Some(limits.maxWidth)
-          )
+        cls := "form-compact-row",
+        numberField(
+          "Width",
+          widthVar,
+          Some(limits.minWidth),
+          Some(limits.maxWidth),
+          digits = Some(4)
         ),
-        div(
-          cls := "column",
-          numberField(
-            "Height",
-            heightVar,
-            Some(limits.minHeight),
-            Some(limits.maxHeight)
-          )
-        )
-      ),
-      div(
-        cls := "columns is-mobile",
-        div(cls := "column", numberField("Steps", stepsVar, Some(1))),
-        div(cls := "column", numberField("CFG", cfgVar))
+        numberField(
+          "Height",
+          heightVar,
+          Some(limits.minHeight),
+          Some(limits.maxHeight),
+          digits = Some(4)
+        ),
+        numberField("Steps", stepsVar, Some(1), digits = Some(3)),
+        // Two digits and a decimal: 7.5, 3.5.
+        numberField("CFG", cfgVar, digits = Some(4)),
+        seedField
       ),
       // The high-noise expert's own steps and CFG sit directly under the
       // low-noise pair they mirror (François, 2026-09-11): on wan 2.2 both
@@ -109,64 +144,26 @@ class CoreFields(
           case None    => emptyNode
           case Some(_) =>
             div(
-              cls := "columns is-mobile",
-              div(
-                cls := "column",
-                numberField("High-noise steps", highNoiseStepsVar, Some(1))
+              cls := "form-compact-row",
+              numberField(
+                "High-noise steps",
+                highNoiseStepsVar,
+                Some(1),
+                digits = Some(3)
               ),
-              div(
-                cls := "column",
-                numberField("High-noise CFG", highNoiseCfgVar)
-              )
+              numberField("High-noise CFG", highNoiseCfgVar, digits = Some(4))
             )
         }
       },
       child <-- mode.signal.map {
         case "vid_gen" =>
           div(
-            cls := "columns is-mobile",
-            div(
-              cls := "column",
-              numberField("Frames", videoFramesVar, Some(1))
-            ),
-            div(cls := "column", numberField("FPS", fpsVar, Some(1)))
+            cls := "form-compact-row",
+            numberField("Frames", videoFramesVar, Some(1), digits = Some(4)),
+            numberField("FPS", fpsVar, Some(1), digits = Some(3))
           )
         case _ => emptyNode
-      },
-      div(
-        // The last field here, which Bulma leaves without a bottom margin: the
-        // LoRAs box beneath would touch it (François, 2026-09-15).
-        cls := "field mb-3",
-        label(cls := "label text-primary is-small", "Seed"),
-        div(
-          cls := "field has-addons mb-0",
-          div(
-            cls := "control is-expanded",
-            input(
-              cls := "input is-small",
-              typ := "number",
-              disabled <-- randomSeedVar.signal,
-              placeholder := "random",
-              value <-- seedVar.signal,
-              onInput.mapToValue --> seedVar
-            )
-          ),
-          div(
-            cls := "control",
-            label(
-              cls := "button is-small checkbox text-primary",
-              input(
-                typ := "checkbox",
-                checked <-- randomSeedVar.signal,
-                onChange.mapToChecked --> randomSeedVar
-              ),
-              " Random",
-              title := "drift picks a fresh seed for each generation and " +
-                "shows it here; untick to keep the last one"
-            )
-          )
-        )
-      )
+      }
     )
   }
 }

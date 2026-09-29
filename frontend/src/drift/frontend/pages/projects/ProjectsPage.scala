@@ -194,7 +194,7 @@ class ProjectsPage(service: ProjectService) extends Component {
                 "create one there — and generate."
             ),
             () => showForm.set(true),
-            Some("Just try a model" -> (() => Page.Models.navigate()))
+            Some("Just try a model" -> (() => Page.Sandbox.navigate()))
           )
         case _ => emptyNode
       },

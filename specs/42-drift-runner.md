@@ -1,6 +1,6 @@
 # 42 — drift runner: an inference engine for Strix Halo
 
-**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; groom each later step before building it
+**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1 draws; groom each later step before building it
 **Depends on:** 06 (runtimes, TheRock), 07 (launch and supervision), 16 (parameter resolution), 17 and 18 (the chat runtime and its sessions), 41 (text projects)
 
 drift's own runner replaces sd-cpp and llama.cpp for one machine: Strix Halo
@@ -1773,6 +1773,72 @@ on the old tool.
       - **Fixed with it:** the text encoder read the residual stream after
         the second-to-last layer; diffusers and sd-cpp read it after the
         last.
+    - **Done 2026-09-29: HiDream O1 Image** (Dev and full), txt2img and
+      img2img (`models/HiDreamO1`, `diffusion/HiDreamO1Pipeline`).
+      - **Reference.** HiDream-ai's own code (`HiDream-O1-Image`, main:
+        `models/pipeline.py`, `flash_scheduler.py`,
+        `qwen3_vl_transformers.py`); sd-cpp's `hidream_o1.hpp` is the tool to
+        beat.
+      - **Model.** Qwen3-VL-8B's text model is the transformer (a
+        `DenseDecoder` under `model.language_model.`, mRoPE interleaved
+        24/20/20, θ 5·10⁶). The prompt is Qwen's user turn, then
+        `<|boi_token|><|tms_token|>` after the open assistant turn; the
+        timestep token's embedding is the timestep's (`1000 t`'s sinusoid
+        through an MLP, t = 1 − σ). The image is 32 × 32 pixel patches, each
+        channel-major (3072 values): in through `x_embedder` (3072 → 1024 →
+        4096), out after the final norm through `final_layer2` as x̂, the
+        clean image. No VAE, no separate text encoder; the tokenizer is
+        HiDream's `tokenizer.json` (`--tokenizer`).
+      - **Attention.** The prompt causal among itself; the timestep token and
+        the patches see everything, both ways. The prompt never depends on
+        the step, so it runs once into the sequence (`DenseDecoder.prefill`),
+        and each step runs the generated tokens alone over it
+        (`attendAll`). Patches sit at (4096, 4096 + row, 4096 + column).
+      - **Sampling.** Unguided (CFG 1, the Dev checkpoint) as the official
+        flash scheduler: the 28 distilled timesteps (other step counts
+        resample their curve), then `z = (1 − σ_next) x̂ + σ_next · 7.5 ·
+        noise`, fresh noise each step clipped to 2.5 of its deviation;
+        starting noise of deviation 7.5. Guided (the full checkpoint): Euler
+        on `(x̂ − z) / σ` over sd-cpp's flow-shifted schedule, CFG on x̂,
+        noise 8, the unconditional prompt a space unless a negative prompt is
+        given. The official full pipeline runs UniPC there, not yet here.
+        sd-cpp runs Euler for both, with noise × 8.
+      - **Weights.** ComfyUI's scaled fp8: every fp8 E4M3 safetensors weight
+        is dequantized to BF16 × its `weight_scale` on first load
+        (`WeightSource`, any model), then runs through BF16 GEMMs.
+      - **Tests.** The distilled schedule and the patch layout against the
+        official pipeline; no tiny golden model yet (the official model class
+        needs flash-attn and CUDA).
+      - **On the laptop** (Dev fp8, 28 steps, the same seed and prompt, a fox
+        holding a "drift runner" sign):
+
+        | | runner | sd-cpp |
+        | --- | --- | --- |
+        | 2048² | **113.5 s** (≈4.0 s/step) | 182.7 s (6.3 s/step) |
+        | 1024², 8 steps | 8.3 s (≈1 s/step) | |
+
+        The runner's picture is finished: the prompt followed, the sign's
+        text right, fur and snow sharp at full size. sd-cpp's, with the
+        same file and tokenizer, missed the prompt (a man on a bench) under a
+        speckle of noise.
+      - **drift.** Migration 008 reseeds the architecture: the drift runner
+        listed, HiDream's `tokenizer.json` a required checkpoint (sd-cpp takes
+        it too), 2048² by default (the sizes it was trained on are all about
+        2048²), sides of 32. The runner's image server takes `--model` for a
+        whole model in one file, `--vae` and `--llm` then absent.
+      - **LoRAs** at run time on every linear (`LoraUpdates`): the decoder's
+        seven per layer (`DenseDecoder.loraSites`, the prompt's prefill
+        included), the timestep MLP, the bottleneck and the pixel head. A
+        file's targets are the checkpoint's names less `model.` (Civitai's
+        O1 LoRAs: `diffusion_model.language_model.layers.N.…`, rank 32).
+        Live with Civitai's "Excellent Full Nude" (ai-toolkit, trained on the
+        full checkpoint at 1024²; ai-toolkit's noise ×8, t = 1 − σ and x₀
+        target match ours): on the full model at CFG 5 the image is clean
+        with the LoRA's effect; on Dev it is washed out, soft and faintly
+        gridded, less so at 0.5 — the LoRA does not transfer to the distilled
+        checkpoint.
+      - **Left:** reference images (the vision tower and the deepstack
+        mergers, which ComfyUI's file does not carry), UniPC.
 14. **Video and audio.** Wan 2.2 (cross-attention, two experts), LTX,
     HunyuanVideo, MiniMax; the causal 3-D VAE and the audio VAE.
 

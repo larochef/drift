@@ -1,5 +1,6 @@
 package drift.runner.models
 
+import drift.runner.diffusion.LoraUpdates
 import drift.runner.formats.*
 import drift.runner.ops.*
 import drift.runner.state.Sequence
@@ -282,12 +283,17 @@ private object DenseNames {
         case "down"           => "ffn_down"
       }) + ".weight"
   )
-  val HuggingFace: DenseNames = DenseNames(
-    "model.embed_tokens.weight",
-    "model.norm.weight",
+  val HuggingFace: DenseNames = huggingFace("model.")
+
+  /** transformers' names under `prefix` (`model.language_model.` in a
+    * Qwen3-VL's whole checkpoint).
+    */
+  def huggingFace(prefix: String): DenseNames = DenseNames(
+    s"${prefix}embed_tokens.weight",
+    s"${prefix}norm.weight",
     "lm_head.weight",
     (i, part) =>
-      s"model.layers.$i." + (part match {
+      s"${prefix}layers.$i." + (part match {
         case "attention_norm" => "input_layernorm"
         case "q"              => "self_attn.q_proj"
         case "k"              => "self_attn.k_proj"
@@ -327,17 +333,42 @@ private object DenseNames {
   )
 }
 
-/** A dense decoder (`DenseStyle`: Qwen 3, Gemma 2, Mistral). */
+/** A dense decoder (`DenseStyle`: Qwen 3, Gemma 2, Mistral). With `loras`,
+  * each layer's linears take the active updates of their weight's name (less
+  * `.weight`, as `loraSites` lists them) at run time.
+  */
 final class DenseDecoder private[models] (
     ops: Ops,
     source: WeightSource,
     val config: DenseConfig,
-    names: DenseNames
+    names: DenseNames,
+    loras: Option[LoraUpdates] = None
 ) extends CausalModel {
 
   private val style = config.style
 
   def vocabulary: Int = config.vocabulary
+
+  private val LinearParts = Seq("q", "k", "v", "o", "gate", "up", "down")
+
+  private def site(i: Int, part: String) =
+    names.layer(i, part).stripSuffix(".weight")
+
+  /** The names LoRA updates reach the layers' linears by. */
+  def loraSites: Set[String] =
+    (0 until config.layers).flatMap(i => LinearParts.map(site(i, _))).toSet
+
+  /** Layer `i`'s linear `part`, its LoRA updates added. */
+  private def linear(
+      x: Tensor,
+      i: Int,
+      part: String,
+      weight: Tensor,
+      out: Tensor
+  ): Unit = {
+    ops.linear(x, weight, out)
+    loras.foreach(_(x, site(i, part), out))
+  }
 
   def newSequence(context: Int, pageSize: Int): Sequence =
     new Sequence(
@@ -583,12 +614,54 @@ final class DenseDecoder private[models] (
     } finally sequence.close()
   }
 
+  /** A prompt's tokens into `sequence` from slot 0, causally, no logits: the
+    * prefix later rows attend to (`attendAll`).
+    */
+  def prefill(ids: Array[Int], sequence: Sequence): Unit = {
+    sequence.reserve(ids.length)
+    run(
+      ids,
+      0,
+      sequence,
+      workspaceFor(ids.length, allLogits = false),
+      config.layers,
+      ids.length,
+      _ => ()
+    )
+  }
+
+  /** Rows given as embeddings (`x`, `[tokens, hidden]`) at slots `start` on,
+    * each attending to every slot before `start + tokens` — the cached prefix
+    * and one another, both ways (HiDream O1's generated tokens) — then the
+    * final norm, into `out` (like `x`). The rows' keys stay in the sequence
+    * until the next call writes over them.
+    */
+  def attendAll(x: Tensor, start: Int, sequence: Sequence, out: Tensor): Unit = {
+    val tokens = x.shape.dimensions.head.toInt
+    sequence.reserve(start + tokens)
+    val w = workspaceFor(tokens, allLogits = false)
+    val hidden = run(
+      Array.emptyIntArray,
+      start,
+      sequence,
+      w,
+      config.layers,
+      tokens,
+      _ => (),
+      embedded = Some(x),
+      bidirectional = true
+    )
+    ops.rmsNorm(hidden, finalNorm, config.rmsEpsilon, style.normOffset, out)
+  }
+
   /** The embedding then the first `layers` layers, in place in `w.x`;
     * `after(k)` once layer `k` (1-based) is done, and `after(0)` before any.
     * Only the first `keys` tokens are cached and attend causally; the rest
     * attend to those alone. The tokens turn by the sequence's positions; the
     * `images`' rows replace their tokens' embeddings, and their deepstack rows
-    * join the first layers' outputs.
+    * join the first layers' outputs. `embedded` rows stand for the tokens'
+    * embeddings (`ids` then empty); `bidirectional` caches every token and has
+    * each attend to all the cached slots, none causally.
     */
   private def run(
       ids: Array[Int],
@@ -598,9 +671,11 @@ final class DenseDecoder private[models] (
       layers: Int,
       keys: Int,
       after: Int => Unit,
-      images: Option[SeenImages] = None
+      images: Option[SeenImages] = None,
+      embedded: Option[Tensor] = None,
+      bidirectional: Boolean = false
   ): Tensor = {
-    val tokens = ids.length
+    val tokens = embedded.fold(ids.length)(_.shape.dimensions.head.toInt)
     require(tokens > 0, "no tokens")
     require(keys > 0 && keys <= tokens, s"$keys keys of $tokens tokens")
     val (caches, pageTable) = (sequence.caches, sequence.pageTable)
@@ -611,7 +686,7 @@ final class DenseDecoder private[models] (
     val positions =
       if (axes == 1) w.positions.prefix(tokens)
       else w.positions.prefix(axes, tokens)
-    ops.writeInts(idsTensor, ids)
+    if (embedded.isEmpty) ops.writeInts(idsTensor, ids)
     ops.writeInts(
       positions.view(axes.toLong * tokens),
       sequence.positions(start, tokens, axes)
@@ -620,7 +695,10 @@ final class DenseDecoder private[models] (
       def rows(t: Tensor) = t.rows(0, tokens)
       val x = rows(w.x)
       val normed = rows(w.normed)
-      ops.embedding(embedding, idsTensor, x)
+      embedded match {
+        case Some(rows) => ops.copy(rows, x)
+        case None       => ops.embedding(embedding, idsTensor, x)
+      }
       images.foreach(
         _.rows.foreach(g => ops.copy(g.rows, x.rows(g.at, g.count)))
       )
@@ -637,9 +715,9 @@ final class DenseDecoder private[models] (
             normed
           )
           val (q, k, v) = (rows(w.queries), rows(w.keys), rows(w.values))
-          ops.linear(normed, layer.q, q)
-          ops.linear(normed, layer.k, k)
-          ops.linear(normed, layer.v, v)
+          linear(normed, index, "q", layer.q, q)
+          linear(normed, index, "k", layer.k, k)
+          linear(normed, index, "v", layer.v, v)
           // RMS norm per head, in place (each row is read whole before it is written)
           layer.qNorm.foreach(weight =>
             ops.rmsNorm(
@@ -663,24 +741,36 @@ final class DenseDecoder private[models] (
           val rotatedKeys = rows(w.rotatedKeys).view(tokens, kvHeads, d)
           ops.rope(q.view(tokens, heads, d), positions, rope, rotatedQueries)
           ops.rope(k.view(tokens, kvHeads, d), positions, rope, rotatedKeys)
+          val cached = if (bidirectional) tokens else keys
           ops.cacheWrite(
-            rotatedKeys.rows(0, keys),
-            v.view(tokens, kvHeads, d).rows(0, keys),
+            rotatedKeys.rows(0, cached),
+            v.view(tokens, kvHeads, d).rows(0, cached),
             cache,
             pageTable,
             start
           )
           val attended = rows(w.attended).view(tokens, heads, d)
-          ops.attention(
-            rotatedQueries.rows(0, keys),
-            cache,
-            pageTable,
-            start,
-            start + keys,
-            attention(index),
-            attended.rows(0, keys)
-          )
-          if (keys < tokens)
+          if (bidirectional)
+            ops.attention(
+              rotatedQueries,
+              cache,
+              pageTable,
+              start,
+              start + tokens,
+              attention(index).copy(causal = false, window = None),
+              attended
+            )
+          else
+            ops.attention(
+              rotatedQueries.rows(0, keys),
+              cache,
+              pageTable,
+              start,
+              start + keys,
+              attention(index),
+              attended.rows(0, keys)
+            )
+          if (!bidirectional && keys < tokens)
             ops.attention(
               rotatedQueries.rows(keys, tokens - keys),
               cache,
@@ -691,8 +781,10 @@ final class DenseDecoder private[models] (
               attended.rows(keys, tokens - keys)
             )
           val projected = rows(w.projected)
-          ops.linear(
+          linear(
             attended.view(tokens, heads.toLong * d),
+            index,
+            "o",
             layer.o,
             projected
           )
@@ -718,10 +810,10 @@ final class DenseDecoder private[models] (
             normed
           )
           val (gate, up) = (rows(w.gate), rows(w.up))
-          ops.linear(normed, layer.gate, gate)
-          ops.linear(normed, layer.up, up)
+          linear(normed, index, "gate", layer.gate, gate)
+          linear(normed, index, "up", layer.up, up)
           ops.gated(style.activation, gate, up, gate)
-          ops.linear(gate, layer.down, projected)
+          linear(gate, index, "down", layer.down, projected)
           residual(layer.postMlpNorm)
           for {
             seen <- images

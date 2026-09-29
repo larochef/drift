@@ -40,7 +40,7 @@ object AttentionReferenceTests extends TestSuite {
       assert(sequence.table.length == 3 && allocator.available == 1)
       sequence.truncate(17) // positions 0..16: two pages
       assert(sequence.table.length == 2 && allocator.available == 2)
-      intercept[IllegalStateException](sequence.reserve(16 * 5))
+      assertThrows[IllegalStateException](sequence.reserve(16 * 5))
       sequence.release()
       assert(allocator.available == 4)
     }

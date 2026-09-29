@@ -1,8 +1,8 @@
 package drift.frontend.pages.inference
 
+import drift.frontend.Page
 import drift.frontend.components.*
-import drift.frontend.pages.assistant.AssistantPanel
-import drift.frontend.pages.generate.GenerationPanel
+import drift.frontend.pages.sandbox.SandboxPage
 import drift.frontend.services.*
 import drift.frontend.services.RunConfigurationService.{Command, Event}
 import drift.shared.*
@@ -15,13 +15,10 @@ class RunConfigurationsPage(
     downloadService: DownloadService,
     sessionService: SessionService,
     runtimeService: RuntimeService,
-    generationService: GenerationService,
     assistantService: AssistantService,
     loraService: LoraService,
-    /** The projects a free-play result can be kept into (`specs/22-…`). */
+    /** Who each live session runs for (`specs/47-sandbox.md`). */
     projectService: ProjectService,
-    /** The session's own output (`specs/13-log-streaming.md`). */
-    logService: LogService,
     /** The Civitai browser, for installing LoRAs from a configuration's form.
       */
     browsers: BrowserServices,
@@ -34,9 +31,6 @@ class RunConfigurationsPage(
     tools: List[RuntimeTool]
 ) extends Component {
   private val showForm = Var(false)
-
-  /** Whether to show the list even though something is live. */
-  private val showList = Var(false)
 
   private val searchQuery = Var("")
   private val tag = Var(Option.empty[String])
@@ -74,6 +68,7 @@ class RunConfigurationsPage(
   // Mirror of service.architectures kept in sync below, so event handlers
   // (startEdit) can read the current value synchronously.
   private val archsNow = Var(List.empty[Architecture])
+  private val configurationsNow = Var(List.empty[RunConfiguration])
 
   private val viewData = Signal
     .combine(
@@ -93,7 +88,11 @@ class RunConfigurationsPage(
       runtimeService.runtimes.combineWith(runtimeService.rules),
       // Paired too: a chat configuration's preview names every installed
       // LoRA adapter of its architecture (`specs/35-assistant-loras.md`).
-      runtimeService.selection.combineWith(loraService.loras)
+      runtimeService.selection.combineWith(
+        loraService.loras,
+        // Who each live session runs for (`specs/47-sandbox.md`).
+        projectService.projects
+      )
     )
     .map {
       case (
@@ -104,7 +103,7 @@ class RunConfigurationsPage(
             cache,
             sessions,
             (runtimes, runtimeRules),
-            (selection, loras)
+            (selection, loras, projects)
           ) =>
         val needle = search.trim.toLowerCase
         val configurations = allConfigurations.filter { configuration =>
@@ -226,7 +225,15 @@ class RunConfigurationsPage(
             prerequisites.of(Val(rm.id)),
             prerequisites,
             handleLaunch,
-            id => sessionService.push(SessionService.Command.Stop(id))
+            id => sessionService.push(SessionService.Command.Stop(id)),
+            sessions
+              .get(rm.id)
+              .map(session =>
+                session.projectId.fold("the Sandbox")(id =>
+                  projects.find(_.id == id).map(_.label).getOrElse("a project")
+                )
+              ),
+            openSession
           ).element
         }
     }
@@ -244,11 +251,36 @@ class RunConfigurationsPage(
   /** An untouched select means "the default": no explicit pick is sent, so the
     * backend resolves whatever the default runtime is at spawn time.
     */
-  private def handleLaunch(configurationId: String): Unit =
+  private def handleLaunch(configurationId: String): Unit = {
     sessionService.push(
-      SessionService.Command
-        .Launch(configurationId, selectedRuntimeIds.now().get(configurationId))
+      SessionService.Command.Launch(
+        configurationId,
+        selectedRuntimeIds.now().get(configurationId),
+        None
+      )
     )
+    openSandbox(configurationId)
+  }
+
+  /** Where a configuration is tried (`specs/47-sandbox.md`): the Sandbox, on
+    * the kind its architecture makes.
+    */
+  private def openSandbox(configurationId: String): Unit =
+    Page.Sandbox.navigateTo(
+      configurationsNow
+        .now()
+        .find(_.id == configurationId)
+        .flatMap(c => archsNow.now().find(_.id == c.architectureId))
+        .map(SandboxPage.kindOf)
+        .getOrElse(ProjectKind.Image)
+    )
+
+  /** A live session opens where it runs: its project, or the Sandbox. */
+  private def openSession(session: Session): Unit =
+    session.projectId match {
+      case Some(projectId) => Page.ProjectWorkspace(projectId).navigate()
+      case None            => openSandbox(session.runConfigurationId)
+    }
 
   private def startEdit(rm: RunConfiguration): Unit = {
     val architecture = archsNow.now().find(_.id == rm.architectureId)
@@ -277,94 +309,6 @@ class RunConfigurationsPage(
     }
   }
 
-  /** The launched session, if any \u2014 the page swaps to the generation UI
-    * while one is live and back to the list when it stops. Keyed by session id,
-    * so the panel (and its form state) survives the status socket's session
-    * pushes and the `starting` \u2192 `ready` flip.
-    */
-  private val activeSessionKey: Signal[List[(String, String, RuntimeTool)]] =
-    sessionService.sessions
-      .map(
-        _.values
-          // Every live session this page covers, not just the first: with
-          // both runners on one page an image model and an assistant are
-          // routinely up together, and each wants its panel.
-          .filter(s => s.status.isActive && tools.contains(s.tool))
-          .toList
-          .sortBy(_.startedAt)
-          .map(session =>
-            (session.id, session.runConfigurationId, session.tool)
-          )
-      )
-      .distinct
-
-  private def generationElement(
-      sessionId: String,
-      configurationId: String
-  ): HtmlElement =
-    GenerationPanel(
-      sessionId = sessionId,
-      configurationId = configurationId,
-      configurationLabel = service.runConfigurations
-        .map(
-          _.find(_.id == configurationId)
-            .map(_.label)
-            .getOrElse(configurationId)
-        )
-        .distinct,
-      sessionSignal =
-        sessionService.sessions.map(_.get(configurationId)).distinct,
-      architectureId = service.runConfigurations
-        .map(_.find(_.id == configurationId).map(_.architectureId))
-        .distinct,
-      configurationLoras = service.runConfigurations
-        .map(_.find(_.id == configurationId).map(_.loras).getOrElse(Nil))
-        .distinct,
-      configurationAssistantTemplateId = service.runConfigurations
-        .map(_.find(_.id == configurationId).flatMap(_.assistantTemplateId))
-        .distinct,
-      targetArchitecture = service.runConfigurations
-        .combineWith(service.architectures)
-        .map { (configurations, architectures) =>
-          configurations
-            .find(_.id == configurationId)
-            .flatMap(c => architectures.find(_.id == c.architectureId))
-        }
-        .distinct,
-      service = generationService,
-      assistantService = assistantService,
-      loraService = loraService,
-      projectService = projectService,
-      logService = logService,
-      onStop =
-        () => sessionService.push(SessionService.Command.Stop(sessionId)),
-      onRestart =
-        () => sessionService.push(SessionService.Command.Restart(sessionId)),
-      browsers = browsers
-    ).element
-
-  private def assistantElement(
-      sessionId: String,
-      configurationId: String
-  ): HtmlElement =
-    AssistantPanel(
-      sessionId = sessionId,
-      configurationLabel = service.runConfigurations
-        .map(
-          _.find(_.id == configurationId)
-            .map(_.label)
-            .getOrElse(configurationId)
-        )
-        .distinct,
-      sessionSignal =
-        sessionService.sessions.map(_.get(configurationId)).distinct,
-      service = assistantService,
-      generationService = generationService,
-      onStop =
-        () => sessionService.push(SessionService.Command.Stop(sessionId)),
-      freePlay = true
-    ).element
-
   private def listElement: HtmlElement = div(
     div(
       cls := "level",
@@ -374,17 +318,6 @@ class RunConfigurationsPage(
       ),
       div(
         cls := "level-right",
-        // Only while something is live, and only when the list is what is
-        // being shown: the way back to a loaded model.
-        child <-- activeSessionKey.map {
-          case Nil      => emptyNode
-          case sessions =>
-            button(
-              cls := "button is-link mr-2",
-              s"↩ Back to ${sessions.size} running",
-              onClick --> (_ => showList.set(false))
-            )
-        },
         button(
           cls := "button is-primary",
           span(cls := "plus-icon", "+"),
@@ -446,14 +379,15 @@ class RunConfigurationsPage(
     sessionService.effects,
     runtimeService.effects,
     prerequisites.followInstalls,
-    generationService.effects,
     loraService.effects,
+    projectService.effects,
     downloadService.events --> Observer {
       case DownloadService.Event.Finished(_) =>
         cacheService.push(CacheService.Command.Load)
         downloadService.push(DownloadService.Command.Load)
     },
     service.architectures --> archsNow,
+    service.runConfigurations --> configurationsNow,
     service.events --> Observer {
       case Event.Updated(_) => cancelEdit()
       case _                => ()
@@ -474,6 +408,7 @@ class RunConfigurationsPage(
       // The default LoRAs pick from the collection; without this it stayed
       // empty until the Architectures page had loaded it.
       loraService.push(LoraService.Command.Load)
+      projectService.push(ProjectService.Command.Load)
     },
     ErrorBanner(service),
     ErrorBanner(service.modelService),
@@ -482,32 +417,7 @@ class RunConfigurationsPage(
     ErrorBanner(downloadService),
     ErrorBanner(sessionService),
     ErrorBanner(runtimeService),
-    ErrorBanner(generationService),
     ErrorBanner(loraService),
-    // Live sessions take the page, as they always have - but the list stays
-    // one click away rather than needing the session stopped to see it, and
-    // the page's other tabs are reachable throughout.
-    child <-- activeSessionKey.combineWith(showList.signal).map {
-      case (Nil, _)          => listElement
-      case (_, true)         => listElement
-      case (sessions, false) =>
-        div(
-          cls := "live-panels",
-          div(
-            cls := "mb-3",
-            button(
-              cls := "button is-small",
-              "← All configurations",
-              onClick --> (_ => showList.set(true))
-            )
-          ),
-          sessions.map {
-            case (sessionId, configurationId, RuntimeTool.SdCpp) =>
-              generationElement(sessionId, configurationId)
-            case (sessionId, configurationId, RuntimeTool.LlamaCpp) =>
-              assistantElement(sessionId, configurationId)
-          }
-        )
-    }
+    listElement
   )
 }

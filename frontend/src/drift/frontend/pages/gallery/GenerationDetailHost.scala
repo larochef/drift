@@ -41,6 +41,11 @@ class GenerationDetailHost(
       * that download until the weights are on disk (`specs/46`).
       */
     prerequisites: LaunchPrerequisites,
+    /** The project a launch from here is made for, recorded on its session: the
+      * workspace's; none from the gallery, whose launches land in the Sandbox
+      * (`specs/47-sandbox.md`).
+      */
+    launchingProject: Option[String],
     /** What to do once a reuse is staged: the gallery leaves for the inference
       * page, the workspace fills the panel it already shows.
       */
@@ -209,9 +214,11 @@ class GenerationDetailHost(
       .filterNot(_.id == generation.runConfigurationId)
       .map(rm => rm.id -> rm.label)
       .sortBy(_._2)
-    def launchOther(id: String): Unit = {
-      sessionService.push(SessionService.Command.Launch(id, None))
-      reuse(Reuse.Task(generation))
+    def launchOther(id: String, index: Int): Unit = {
+      sessionService.push(
+        SessionService.Command.Launch(id, None, launchingProject)
+      )
+      reuse(Reuse.Task(generation.ofOutput(index)))
     }
     live match {
       case Some(liveId) if liveId == generation.runConfigurationId =>
@@ -220,7 +227,7 @@ class GenerationDetailHost(
             ReuseAction(
               "↺ Reuse these parameters",
               "is-primary",
-              () => reuse(Reuse.Full(generation))
+              index => reuse(Reuse.Full(generation.ofOutput(index)))
             )
           ),
           None
@@ -232,7 +239,7 @@ class GenerationDetailHost(
             ReuseAction(
               s"↺ Try this task on $liveLabel",
               "is-link",
-              () => reuse(Reuse.Task(generation))
+              index => reuse(Reuse.Task(generation.ofOutput(index)))
             )
           ),
           Some(
@@ -263,12 +270,16 @@ class GenerationDetailHost(
             ReuseAction(
               s"▶ Launch $ownLabel and reuse these parameters",
               "is-primary",
-              () => {
+              index => {
                 sessionService.push(
                   SessionService.Command
-                    .Launch(generation.runConfigurationId, None)
+                    .Launch(
+                      generation.runConfigurationId,
+                      None,
+                      launchingProject
+                    )
                 )
-                reuse(Reuse.Full(generation))
+                reuse(Reuse.Full(generation.ofOutput(index)))
               }
             )
           ),

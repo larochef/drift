@@ -30,9 +30,11 @@ default LoRAs, applied to every reply (GGUF adapters only; see
 Launch a chat configuration from the Models page, or pick it in a project's
 **Assistant** picker (see [projects.md](projects.md)). The panel shows the
 context size the server applied and whether it has **vision** or is **text
-only**.
+only** — in a project, beside the picker, with **Stop session**.
 
 - The composer is at the top; replies appear right under it, newest first.
+  A reply comes in as plain text and is formatted (headings, lists, code,
+  tables) once it is finished.
   Ctrl+Enter sends. **Stop** cuts a reply short.
 - The model's thinking is folded away under "thinking…"; open it if you want.
 - Under each reply: how many tokens it read and wrote, and how fast.
@@ -60,7 +62,8 @@ negative prompt in fenced blocks. drift shows them as a card:
   so you can see exactly what was added or removed. If most words changed,
   the card opens on the plain text and lists the words that did not make it.
 - **Apply to form** fills the generation form's two prompt fields, and
-  nothing else. Generating stays your decision: adjust, then press Generate.
+  nothing else: adjust, then press Generate. In a project, **Apply and run**
+  fills them and generates at once; it needs an image model loaded.
 
 By default the assistant edits your prompt and keeps everything else as
 written. Ask for a rewrite when you want the whole prompt said another way;
@@ -100,10 +103,10 @@ Inside a project the conversation is kept and comes back when you reopen it.
   are untouched.
 - **Retry** appears on a reply that failed or was stopped.
 
-## Free play
+## Sandbox
 
-Launching a chat model from the Models page, outside any project, gives a
-scratch chat with no template by default: the raw model. Pick one from the
-System prompt select to change that. It lives only while
-the page is open; **Clear chat** empties it. Apply to generation form hands a
-proposal to the next image form you open.
+The Sandbox's **Text** tab, outside any project, gives a scratch chat with no
+template by default: the raw model. Pick one from the System prompt select to
+change that. It goes when you leave the page or switch tabs; **Clear chat**
+empties it. Apply to generation form hands a proposal to the Sandbox's image
+form.

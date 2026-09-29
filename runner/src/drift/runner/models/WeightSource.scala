@@ -2,7 +2,7 @@ package drift.runner.models
 
 import drift.runner.formats.*
 import drift.runner.ops.Ops
-import drift.runner.tensor.{MappedFile, Tensor}
+import drift.runner.tensor.{DType, MappedFile, Shape, Tensor}
 
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout.JAVA_BYTE
@@ -11,7 +11,9 @@ import scala.collection.mutable
 
 /** A model's weights where the backend reads them in place: one GGUF, one
   * safetensors file, or a shard index. Tensors are views over the mapped files,
-  * never copies; closing unmaps them. `copied` weights are the exception. Every
+  * never copies; closing unmaps them. `copied` weights are the exception, and
+  * so are fp8 E4M3 safetensors weights, dequantized to BF16 (times their scale
+  * tensor, ComfyUI's scaled fp8) the first time they are asked for. Every
   * tensor goes by the name the loaders read (`WeightNames`), whatever prefix or
   * naming the file stores it under.
   */
@@ -36,6 +38,15 @@ final class WeightSource private (
     }
 
   def names: Iterable[String] = stored.keys
+
+  /** A tensor's shape, nothing loaded. */
+  def shape(name: String): Shape =
+    stored
+      .getOrElse(
+        name,
+        throw new NoSuchElementException(s"the weights have no tensor $name")
+      )
+      .shape
 
   /** A tensor's bytes as the file holds them, on the host. */
   def bytes(name: String): MemorySegment =
@@ -81,11 +92,14 @@ object WeightSource {
         mappings
           .zip(shards)
           .flatMap { (mapped, shard) =>
-            Safetensors
-              .read(mapped.segment, shard.toString)
-              .tensors
-              .view
-              .mapValues(_ -> mapped)
+            val file = Safetensors.read(mapped.segment, shard.toString)
+            file.tensors.view.mapValues { tensor =>
+              val scale = Option
+                .when(tensor.dtype == DType.F8E4M3)(file.scaleOf(tensor.name))
+                .flatten
+                .fold(1f)(_.decode().head)
+              (tensor, mapped, scale)
+            }
           }
           .toMap
       )
@@ -93,12 +107,25 @@ object WeightSource {
         .filter(Files.isRegularFile(_))
         .map(ModelConfig.read)
       // by the stored name, which a tensor keeps
-      val mappedFiles =
-        stored.values.map((tensor, mapped) => tensor.name -> mapped).toMap
+      val placed =
+        stored.values.map((tensor, mapped, scale) => tensor.name -> (mapped, scale)).toMap
+      val dequantized = mutable.Map.empty[String, Tensor]
       new WeightSource(
         stored.view.mapValues(_._1).toMap,
-        tensor => tensor.tensor(mappedFiles(tensor.name).storage),
-        () => mappings.foreach(_.close()),
+        tensor => {
+          val (mapped, scale) = placed(tensor.name)
+          val inPlace = tensor.tensor(mapped.storage)
+          if (tensor.dtype != DType.F8E4M3) inPlace
+          else
+            dequantized.getOrElseUpdate(
+              tensor.name,
+              toBf16(ops, inPlace, scale)
+            )
+        },
+        () => {
+          dequantized.values.foreach(ops.release)
+          mappings.foreach(_.close())
+        },
         None,
         config
       )
@@ -137,6 +164,29 @@ object WeightSource {
         mapped.close()
         throw error
     }
+  }
+
+  /** An fp8 E4M3 weight times `scale`, in BF16: through F32 a few million
+    * values at a time.
+    */
+  private def toBf16(ops: Ops, fp8: Tensor, scale: Float): Tensor = {
+    val columns = fp8.shape.dimensions.last
+    val rows = fp8.shape.elementCount / columns
+    val chunk = math.min(rows, math.max(1L, (1L << 24) / columns))
+    val out = ops.allocate(DType.BF16, fp8.shape)
+    val floats = ops.allocate(DType.F32, Shape.of(chunk, columns))
+    try {
+      var row = 0L
+      while (row < rows) {
+        val count = math.min(chunk, rows - row)
+        val part = floats.rows(0, count)
+        ops.convert(fp8.view(rows, columns).rows(row, count), part)
+        if (scale != 1f) ops.scale(part, scale, part)
+        ops.convert(part, out.view(rows, columns).rows(row, count))
+        row += count
+      }
+    } finally ops.release(floats)
+    out
   }
 
   /** `tensors` by the names the loaders read. */

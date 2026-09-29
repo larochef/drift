@@ -95,7 +95,7 @@ trait Ops extends AutoCloseable {
   /** `out = kind(gate) × up`: SwiGLU with `Silu`, GeGLU with a GELU. */
   def gated(kind: Activation, gate: Tensor, up: Tensor, out: Tensor): Unit
 
-  /** Between F32 and F16 or BF16, rounding to nearest even. */
+  /** Between F32 and F16 or BF16, rounding to nearest even; fp8 E4M3 to F32. */
   def convert(x: Tensor, out: Tensor): Unit
 
   /** RMS norm over the last dimension:
@@ -1180,7 +1180,8 @@ object Ops {
     DType.F32 -> DType.F16,
     DType.F32 -> DType.BF16,
     DType.F16 -> DType.F32,
-    DType.BF16 -> DType.F32
+    DType.BF16 -> DType.F32,
+    DType.F8E4M3 -> DType.F32
   )
 
   def checkConvert(x: Tensor, out: Tensor): Unit = {

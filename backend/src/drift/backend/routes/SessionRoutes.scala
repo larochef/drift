@@ -18,7 +18,11 @@ def sessionEndpoints(
 ): List[ServerEndpoint[Any, Identity]] = List(
   listSessions.serverLogicSuccess[Identity](_ => manager.list),
   launchSession.serverLogicSuccess[Identity](request =>
-    manager.launch(request.runConfigurationId, request.runtimeId)
+    manager.launch(
+      request.runConfigurationId,
+      request.runtimeId,
+      request.projectId
+    )
   ),
   stopSession.serverLogicSuccess[Identity] { sessionId =>
     val stopped = manager.stop(sessionId)

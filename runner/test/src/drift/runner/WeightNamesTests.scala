@@ -58,7 +58,7 @@ object WeightNamesTests extends TestSuite {
       )
     }
     test("a tensor stored twice under two prefixes is refused by name") {
-      val error = intercept[FormatException](
+      val error = assertThrows[FormatException](
         WeightNames.canonical(
           Seq("first.weight", "model.diffusion_model.first.weight")
         )

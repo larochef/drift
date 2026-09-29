@@ -1,6 +1,7 @@
 # 22 — Free play and scratch generations
 
-**Status:** done
+**Status:** done; free play's page is the Sandbox since `47-sandbox.md`,
+which supersedes the Models page placement below
 **Depends on:** 19, 08, 21
 
 Projects are the work; everything else is configuration, and the one thing

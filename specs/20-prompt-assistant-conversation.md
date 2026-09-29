@@ -31,13 +31,18 @@ version vN → generate → look → ask the assistant → proposal → apply �
   (parameters). Images are sent only when the session reports vision; the
   composer says so otherwise. Only the newest message carries images; earlier
   turns travel as text.
+- **Replies and summaries show as Markdown** once finished: plain while they
+  stream, then `POST /api/assistant/markdown` renders them with the model
+  cards' commonmark + jsoup (`ModelDescriptions.fromReply`: no front matter,
+  no base) and `RichText` inserts the result. Cached by text per page load;
+  a failed render leaves the plain text.
 - **Proposals**: a finished reply whose last fenced `prompt` / `negative`
   blocks parse shows a card with the proposal as a word diff against the
   prompt the question was asked about; when fewer than half the words survive
   it opens on the plain text and lists the words not carried over. **Apply
-  to form** fills the two prompts and nothing more; Generate stays the form's
-  button.
-- **Compare** in the versions column diffs any two versions' prompts.
+  to form** fills the two prompts and nothing more; in a workspace **Apply
+  and run** fills them and submits (`AssistantTurns.ProposalTarget`).
+- **Compare** in the version history diffs any two versions' prompts.
 - **Context meter**: the newest reply's prompt plus completion tokens over the
   applied context size. Past 75 % it says what to do and Compact is
   highlighted; at 100 % Send is refused.
@@ -49,7 +54,7 @@ version vN → generate → look → ask the assistant → proposal → apply �
   Versions and generations stay.
 - **Retry** on the newest reply when it failed or was stopped; a request that
   fails mid-stream keeps the partial text.
-- With no assistant live the column says to pick one in the header.
+- With no assistant live the drawer is closed; the model bar offers one.
 
 ## Shape
 
@@ -70,7 +75,7 @@ version vN → generate → look → ask the assistant → proposal → apply �
   `services/AssistantPrompts` (`DefaultSystemPrompt`, `PromptRules`,
   `GenericPromptingNote`, `CompactionPrompt`, the fence parser),
   `components/PromptDiff` (LCS over words; rewrite view; "not carried over"
-  ignoring case, punctuation and filler), `pages/projects/VersionsColumn`
+  ignoring case, punctuation and filler), `pages/projects/VersionHistory`
   (the compare modal). `GenerationPanel` publishes the working prompt, the
   target and the CFG and clears them on unmount.
 

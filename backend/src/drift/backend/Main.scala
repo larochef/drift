@@ -202,6 +202,9 @@ import sttp.tapir.server.netty.sync.*
   val nettyConfig =
     NettyConfig.default
       .requestTimeout(5.minutes)
+      // A streamed chat is silent while the model prefills its prompt; the
+      // 60 s default dropped long prefills on large models.
+      .idleTimeout(10.minutes)
       .socketConfig(NettySocketConfig.default.withReuseAddress)
 
   supervised {

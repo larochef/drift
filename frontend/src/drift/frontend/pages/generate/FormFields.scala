@@ -16,12 +16,18 @@ object FormFields {
       labelText: String,
       state: Var[String],
       minimum: Option[Int] = None,
-      maximum: Option[Int] = None
+      maximum: Option[Int] = None,
+      /** As wide as this many characters, rather than the whole row: a size
+        * never needs more than 4, steps 3 (François, 2026-09-29).
+        */
+      digits: Option[Int] = None
   ): HtmlElement =
     field(
       labelText,
       input(
         cls := "input is-small",
+        digits.map(_ => cls := "is-digits"),
+        digits.map(n => styleAttr := s"--digits: $n;"),
         typ := "number",
         minimum.map(v => minAttr := v.toString),
         maximum.map(v => maxAttr := v.toString),

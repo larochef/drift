@@ -95,7 +95,7 @@ Each keeps its public API over package-private pieces:
 - Assistant: `services/AssistantService` with `ChatStreaming`,
   `ConversationStore`, `AssistantPrompts`.
 - Workspace: `pages/projects/ProjectWorkspacePage` with `WorkspaceHeader`,
-  `VersionsColumn`, `ProjectResults`, `WorkspaceSessions` (the picker reads
+  `VersionHistory`, `WorkspaceSessions` (the picker reads
   only the live session's ids and status, so a progress tick does not
   rebuild the select).
 - Browsers and cache: `components/CivitaiBrowser` with `CivitaiMedia`,

@@ -33,11 +33,9 @@ class ModelsPage(
     downloadService: DownloadService,
     sessionService: SessionService,
     runtimeService: RuntimeService,
-    generationService: GenerationService,
     assistantService: AssistantService,
     loraService: LoraService,
     projectService: ProjectService,
-    logService: LogService,
     browsers: BrowserServices,
     /** The path after `/models/`: its first segment names the tab. */
     section: Signal[List[String]]
@@ -76,11 +74,9 @@ class ModelsPage(
       downloadService,
       sessionService,
       runtimeService,
-      generationService,
       assistantService,
       loraService,
       projectService,
-      logService,
       browsers,
       tools = List(RuntimeTool.SdCpp, RuntimeTool.LlamaCpp)
     ).element

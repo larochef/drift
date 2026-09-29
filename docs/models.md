@@ -181,17 +181,15 @@ the bottom layer, where removing a default means deleting it.
 
 The card's launch control preselects the configuration's runner. It offers
 the other installed runtimes its architecture can run on, for one launch.
-Click **Launch**; progress, notes, the log and **Stop** are described in
-[generating.md](generating.md). One image session and one assistant session
+Click **Launch** and the Sandbox opens on the model; progress, notes, the log
+and **Stop** are described in [generating.md](generating.md). A running
+configuration's card says where it runs — *Running in the Sandbox* or in a
+project — with **Open** to go there and **Stop**; the page itself only lists
+configurations. One image session and one assistant session
 run at a time: a second model would not fit in VRAM. There is no UI for the
 limits; a file
 `~/.config/drift/settings/sessions.json` with `maximumConcurrentSessions` and
 `maximumConcurrentAssistantSessions` overrides them.
 
-### Free play
-
-Generating from this page is a scratch pad: results are not recorded and go away
-when the session stops. Use it to try a checkpoint or check a build's flags.
-When something is worth keeping, **Keep** puts it in the gallery, optionally
-**into** a project. Real work lives in projects: see [projects.md](projects.md)
-and [generating.md](generating.md).
+Trying a model happens in the **Sandbox** (see [generating.md](generating.md));
+real work lives in projects: see [projects.md](projects.md).

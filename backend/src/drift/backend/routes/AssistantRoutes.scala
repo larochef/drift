@@ -29,7 +29,10 @@ def assistantEndpoints(
           Right((Files.readAllBytes(file), AssistantMedia.mimeFor(file)))
         case None => Left(())
       }
-    }
+    },
+    renderAssistantMarkdown.serverLogicSuccess[Identity](
+      ModelDescriptions.fromReply
+    )
   )
 
 /** The chat (`assistantChatPath` in the shared module): a `POST` of the

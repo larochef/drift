@@ -48,9 +48,9 @@ token: Settings → Authentication.
 
 Two ways:
 
-- **Free play**: on the Models page, launch the configuration and generate
-  right there. Results are scratch: gone on restart unless you **Keep** them,
-  into the gallery or straight into a project.
+- **The Sandbox**: pick Image, Video or Text, pick the model and generate.
+  Nothing is kept unless you **Save** a result, into the gallery or straight
+  into a project; the rest goes when you leave the page.
 - **A project**: Projects → new project → open it, launch the configuration
   from the header, write a prompt, generate. Every generation is a version of
   the project. This is the intended way to work; see [projects.md](projects.md).

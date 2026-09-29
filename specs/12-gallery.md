@@ -142,6 +142,11 @@ in-memory state.
   round-trip. On `Reuse.Task` there is no base; a sampler the target does not
   list falls back to "(model default)" and recorded LoRAs are named and
   skipped — a LoRA suits a model, not a task.
+- Image `b` of a batch ran with `seed + b` (sd-cpp and the drift runner
+  alike), so only the base seed is recorded: `Generation.seedOf(index)` gives
+  an output's own, shown in the detail and the version tiles, and reuse from
+  the detail stages `Generation.ofOutput(index)` — that image's seed, a batch
+  of one. The runner logs `generating image i/n (seed s)` before each image.
 
 ## Notes
 

@@ -126,15 +126,22 @@ class ModelCache(
     *
     * The shared cache stores content under `blobs/<sha256>` with
     * `snapshots/<commit>/<path>` symlinking to it. Any snapshot will do: the
-    * blob is the same file whichever revision references it.
+    * blob is the same file whichever revision references it. A file the
+    * shared cache could not take (no blob name or no commit) is in drift's
+    * own tree, `<driftRoot>/models/huggingface/<repo dir>/<path>`.
     */
   private def huggingFacePaths(source: HuggingFace): List[Path] = {
-    val repoDir =
-      huggingFaceRoot.resolve(ModelCache.repoDirectoryName(source.repo))
+    val repoDirectoryName = ModelCache.repoDirectoryName(source.repo)
+    val repoDir = huggingFaceRoot.resolve(repoDirectoryName)
     val snapshots = childDirectories(repoDir.resolve("snapshots"))
     val fromSnapshots = snapshots.map(_.resolve(source.filename))
+    val fromDriftTree = driftRoot
+      .resolve("models")
+      .resolve("huggingface")
+      .resolve(repoDirectoryName)
+      .resolve(source.filename)
     val fromExtras = extraRoots.map(_.resolve(source.filename))
-    fromSnapshots ++ fromExtras
+    fromSnapshots ++ (fromDriftTree :: fromExtras)
   }
 
   private def firstPresent(candidates: List[Path]): CacheEntry =

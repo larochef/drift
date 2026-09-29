@@ -11,7 +11,9 @@ import com.raquo.laminar.api.L.*
   */
 class GenerationParameters(
     generation: Generation,
-    configurationLabel: Signal[String]
+    configurationLabel: Signal[String],
+    /** The output of the batch on screen: each image has its own seed. */
+    outputIndex: Signal[Int]
 ) extends Component {
 
   private def row(name: String, value: String): HtmlElement =
@@ -89,17 +91,20 @@ class GenerationParameters(
         ) ++
         RecordedParameters.durationOf(generation).map("Duration" -> _) ++
         List("Generation id" -> generation.id)
-    val (prose, values) =
+    def partitioned(index: Int) =
       RecordedParameters
-        .rows(generation)
+        .rows(generation, index)
         .partition((name, _) => proseFields.contains(name))
+    val (prose, _) = partitioned(0)
     div(
       prose.map(proseBlock),
       child.maybe <-- opened.signal.map(_.map(proseModal)),
       table(
         cls := "table is-narrow is-fullwidth gallery-parameters",
         tbody(
-          values.map((name, value) => row(name, value)),
+          children <-- outputIndex.distinct.map(index =>
+            partitioned(index)._2.map((name, value) => row(name, value))
+          ),
           tr(
             td(cls := "text-secondary", "Configuration"),
             td(

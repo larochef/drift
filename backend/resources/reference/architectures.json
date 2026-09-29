@@ -378,6 +378,12 @@
         "familyId": "hidream-o1-diffusion",
         "flag": "--model",
         "required": true
+      },
+      {
+        "name": "tokenizer",
+        "familyId": "hidream-o1-tokenizer",
+        "flag": "--tokenizer",
+        "required": true
       }
     ],
     "defaultParameters": {
@@ -385,19 +391,20 @@
       "--cfg-scale": "1.0",
       "--steps": "28",
       "--flow-shift": "1.0",
-      "-H": "1024",
-      "-W": "1024",
+      "-H": "2048",
+      "-W": "2048",
       "--cache-mode": "spectrum",
       "--mmap": ""
     },
     "tags": [
       "image"
     ],
-    "promptingNotes": "Reads natural language: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes. The seeded defaults are the Dev checkpoint's — 28 steps, no CFG, flow shift 1. The full checkpoint wants 50 steps at CFG 5 with flow shift 3. Both render up to 2048x2048; sizes snap to the resolutions it was trained on. One file holds the whole model: it takes no separate VAE or text encoder.",
-    "sizeMultiple": 16,
-    "modelKind": null,
+    "promptingNotes": "Reads natural language: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes. The seeded defaults are the Dev checkpoint's — 28 steps, no CFG, flow shift 1. The full checkpoint wants 50 steps at CFG 5 with flow shift 3. It was trained around 2048x2048 (2048x2048, 2304x1728, 2560x1440, 2496x1664, 3104x1312, 2304x1792 and their portraits); at 1024 it loses detail. Sides are multiples of 32. One file holds the whole model: no separate VAE or text encoder, only its tokenizer.json. On the drift runner the Dev checkpoint samples as the vendor's does (its distilled timesteps, fresh noise each step); sd-cpp runs plain Euler, which leaves the Dev images looking unfinished.",
+    "sizeMultiple": 32,
+    "modelKind": "hidream-o1",
     "runners": [
-      "SdCpp"
+      "SdCpp",
+      "DriftRunner"
     ]
   },
   {

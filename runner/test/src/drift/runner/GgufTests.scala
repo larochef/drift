@@ -92,12 +92,12 @@ object GgufTests extends TestSuite {
       // IQ2_XXS blocks are 256 elements: the 512-element q4_k tensor stays whole
       val file = read(withType("q4_k", 16))
       assert(file("q8_0").dtype == GgmlQuants.Q8_0)
-      val error = intercept[NoSuchElementException](file("q4_k"))
+      val error = assertThrows[NoSuchElementException](file("q4_k"))
       assert(error.getMessage == "q4_k: GGML type IQ2_XXS is not supported yet")
     }
     test("a type whose blocks do not fit the file's spans is refused") {
       // Q8_0 blocks read as ROCmFP4: 34-byte blocks taken for 18-byte ones
-      val error = intercept[FormatException](read(withType("q8_0", 100)))
+      val error = assertThrows[FormatException](read(withType("q8_0", 100)))
       assert(error.getMessage.contains("q8_0 is Q4_0_ROCMFP4"))
       assert(error.getMessage.contains("but the file gives it"))
     }
@@ -106,12 +106,12 @@ object GgufTests extends TestSuite {
       val file = read(bytes)
       val tensor = file("q4_0_rocmfp4")
       copy((tensor.fileOffset + 16).toInt) = 0x90.toByte // block 0, first scale
-      val error = intercept[FormatException](read(copy))
+      val error = assertThrows[FormatException](read(copy))
       assert(error.getMessage.contains("scale byte 0x90"))
     }
     test("broken files are refused with a reason") {
       def refusal(content: Array[Byte]) =
-        intercept[FormatException](read(content)).getMessage
+        assertThrows[FormatException](read(content)).getMessage
       assert(refusal(bytes.take(bytes.length - 40)).contains("past the end"))
       assert(refusal(bytes.take(200)).contains("truncated"))
       assert(

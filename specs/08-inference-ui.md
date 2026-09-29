@@ -67,6 +67,9 @@ built from what the loaded model reports it supports, not from hardcoded lists.
   filled by `push` and emptied by `settle` as the listings come back — in the
   service, not the button, since the panel rebuilds its rows on every status
   tick. A cancel the backend never received clears it, rather than spinning on.
+- Size, steps, CFG and seed sit side by side, wrapping, each input as wide as
+  what it holds (`FormFields.numberField(digits)`: 4, 3, 4 and 11
+  characters), not two per row across the form.
 - Random seed: with Random ticked the panel draws a 31-bit seed per
   submission and shows it; the backend draws one for any request that still
   arrives negative, so the sidecar always records the seed actually used.

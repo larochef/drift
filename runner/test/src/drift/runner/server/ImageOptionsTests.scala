@@ -40,7 +40,7 @@ object ImageOptionsTests extends TestSuite {
       assert(options.loraDirectory.map(_.toString).contains("/l"))
       assert(
         options.diffusionModel.toString == "/m/krea.safetensors",
-        options.llm.toString == "/m/qwen.gguf"
+        options.llm.map(_.toString).contains("/m/qwen.gguf")
       )
       assert(
         options.port == 8123,
@@ -58,6 +58,17 @@ object ImageOptionsTests extends TestSuite {
       val Right(dev) =
         ImageOptions.parse(Krea2 ++ Seq("--guidance", "4.0")): @unchecked
       assert(dev.guidance.contains(4.0))
+    }
+    test("a whole model in one file: --model, no VAE or text encoder") {
+      val Right(options) = ImageOptions.parse(
+        Seq("--model", "/m/hidream.safetensors", "--tokenizer", "/m/t.json")
+      ): @unchecked
+      assert(
+        options.diffusionModel.toString == "/m/hidream.safetensors",
+        options.vae.isEmpty,
+        options.llm.isEmpty,
+        options.tokenizer.map(_.toString).contains("/m/t.json")
+      )
     }
     test(
       "what the runner cannot do yet is refused by name, and unknown flags too"

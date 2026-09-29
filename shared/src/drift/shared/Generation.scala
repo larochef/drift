@@ -430,7 +430,27 @@ case class Generation(
       * it into the gallery or a project. Keeping it clears this.
       */
     scratch: Boolean = false
-)
+) {
+
+  /** The seed output `index` of an image batch was made with: sd-cpp and the
+    * drift runner both give image `b` of a batch `seed + b`, so the recorded
+    * seed is only the first image's. None when the request left it random.
+    */
+  def seedOf(index: Int): Option[Long] =
+    imageParameters.map(_.seed).filter(_ >= 0).map(_ + index)
+
+  /** This generation narrowed to one output of its batch — that image's seed,
+    * a batch of one — which is what reusing that image reproduces.
+    */
+  def ofOutput(index: Int): Generation =
+    imageParameters match {
+      case Some(p) if p.batchCount > 1 =>
+        copy(imageParameters =
+          Some(p.copy(seed = seedOf(index).getOrElse(p.seed), batchCount = 1))
+        )
+      case _ => this
+    }
+}
 object Generation {
   given Schema[Generation] = Schema.derived
   given JsonValueCodec[Generation] = JsonCodecMaker.make(

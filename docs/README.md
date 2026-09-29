@@ -29,8 +29,9 @@ The sidebar, in the order the work happens:
 | Page | What you do there | Guide |
 |------|-------------------|-------|
 | Projects | Work a prompt to a result, with versions and the assistant | [projects.md](projects.md), [assistant.md](assistant.md) |
+| Sandbox | Try a model — image, video or text — with nothing kept unless saved | [generating.md](generating.md), [assistant.md](assistant.md) |
 | Gallery | Browse, reuse, delete and post-process what drift made | [gallery.md](gallery.md) |
-| Models | Architectures, models, run configurations; launch a session; free play | [models.md](models.md), [generating.md](generating.md), [loras.md](loras.md) |
+| Models | Architectures, models, run configurations; launch a session | [models.md](models.md), [generating.md](generating.md), [loras.md](loras.md) |
 | Model Cache | Weights on disk, downloads, conversion, upscaler weights | [model-cache.md](model-cache.md), [browsers.md](browsers.md) |
 | Settings | Runtimes (sd-cpp, llama.cpp, ROCm/Vulkan/CPU) and API tokens | [settings.md](settings.md) |
 

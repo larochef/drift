@@ -25,7 +25,9 @@ above them suggests starting one, with the same button.
 Click a tile to open it:
 
 - The image or video player, with the thumbnails of the batch under it.
-- Every recorded parameter, including the input images.
+- Every recorded parameter, including the input images. Each image of a
+  batch has its own seed — the first image's plus its place in the batch — and
+  the seed shown is the one of the image on screen.
 - **Made from** / **Made from this** links for derived entries, and an
   **Original** / **Result** toggle at matched zoom on an upscaled or redrawn
   image.
@@ -34,7 +36,8 @@ Click a tile to open it:
 ## Reusing parameters
 
 - **↺ Reuse these parameters** into a live session of the same run
-  configuration reproduces the request exactly, seed included.
+  configuration reproduces the request exactly, seed included. From an image
+  of a batch it reproduces that image: its own seed, a batch of one.
 - On another configuration it carries the *task*: prompt, negative prompt,
   input images, seed, size and the sampling fields the form shows, over the
   target's own defaults. Recorded LoRAs are left out, since a LoRA suits a

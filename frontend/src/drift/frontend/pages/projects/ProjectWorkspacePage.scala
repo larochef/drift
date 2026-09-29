@@ -2,26 +2,30 @@ package drift.frontend.pages.projects
 
 import drift.frontend.Page
 import drift.frontend.components.*
-import drift.frontend.pages.assistant.AssistantPanel
+import drift.frontend.pages.assistant.{
+  AssistantPanel,
+  AssistantSessionFacts,
+  AssistantTurns
+}
 import drift.frontend.pages.gallery.GenerationDetailHost
 import drift.frontend.pages.generate.GenerationPanel
-import drift.frontend.pages.inference.NewRunConfigurationModal
 import drift.frontend.services.*
 import drift.frontend.services.ProjectService.Command
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
 
-/** One project's workspace (`specs/19-projects-and-prompt-versions.md`):
-  * versions on the left, the live generation panel in the middle with the
-  * project's results under it, the assistant on the right. The model picker in
-  * the header launches or switches the image session; the chat column launches
-  * the assistant. A text project's workspace is the chat column alone
-  * (`specs/41-text-projects.md`).
+/** One project's workspace (`specs/19-projects-and-prompt-versions.md`), laid
+  * out by what is loaded (François, 2026-09-29): an empty project with no model
+  * is the model bar alone, in the middle of the page; a project with versions
+  * and no model is the bar over its version history; with an image model up, it
+  * is the bar over the generation panel, the history under its result. The
+  * assistant is a drawer on the right, opened from its picker. A text project's
+  * workspace is the chat column alone (`specs/41-text-projects.md`).
   *
   * The pieces live beside this file (`specs/29-split-oversized-files.md`):
-  * `WorkspaceHeader`, `VersionsColumn`, `ProjectResults`, and what they read of
-  * the sessions, `WorkspaceSessions`.
+  * `WorkspaceHeader`, `VersionHistory`, and what they read of the sessions,
+  * `WorkspaceSessions`.
   */
 class ProjectWorkspacePage(
     projectId: String,
@@ -113,29 +117,83 @@ class ProjectWorkspacePage(
   private def openOutput(generationId: String, index: Int): Unit =
     openDetail.set(Some(GenerationDetailHost.Open(generationId, index)))
 
+  private def setCover(output: Option[GenerationOutput]): Unit =
+    currentProject
+      .now()
+      .foreach(current =>
+        projectService.push(
+          Command.Update(
+            current.id,
+            current.copy(cover = output.map(ProjectCover.of))
+          )
+        )
+      )
+
+  /** Whether the project has versions; none until it has loaded, so that
+    * neither the start screen nor the top bar flashes by.
+    */
+  private val versionsKnown: Signal[Option[Boolean]] =
+    project.map(_.map(_.versions.nonEmpty)).distinct
+
+  /** Whether the assistant drawer is open — once an assistant is live. */
+  private val drawerOpen = Var(true)
+
+  private val drawerShown: Signal[Boolean] =
+    sessions
+      .liveKey(RuntimeTool.LlamaCpp)
+      .map(_.isDefined)
+      .combineWith(drawerOpen.signal)
+      .map(_ && _)
+      .distinct
+
+  private def history(size: VersionHistory.Size): HtmlElement =
+    VersionHistory(
+      size,
+      project,
+      generations,
+      selectedVersion,
+      () => selectedVersionId.now(),
+      () => currentProject.now(),
+      sessions.labelOf,
+      assistantService,
+      historyService,
+      selectVersion,
+      openOutput,
+      setCover
+    ).element
+
   // ------------------------------------------------------------ generation
 
-  private def generationColumn: HtmlElement = div(
-    cls := "workspace-generation",
+  /** What the page shows left of the drawer: the generation panel while an
+    * image model is live, else the history — or, with nothing yet, the model
+    * bar in the middle of the page.
+    */
+  private def mainColumn(header: WorkspaceHeader): HtmlElement = div(
+    cls := "workspace-main",
     child <-- sessions.liveKey(RuntimeTool.SdCpp).map {
       case None =>
         panelNow.set(None)
-        // Stands in for the panel's header, band and all, so the results
-        // below stay under the rule (François, 2026-09-15).
-        div(
-          cls := "workspace-idle-head",
-          p(
-            cls := "text-secondary",
-            child.text <-- project.map(_.map(_.kind)).distinct.map { kind =>
-              val model = kind match {
-                case Some(ProjectKind.Video) => "a video model"
-                case _                       => "an image model"
-              }
-              s"Pick $model above to generate. Selecting a version seeds " +
-                "the form with its recipe; every generation is a version."
-            }
-          )
-        )
+        div(child <-- versionsKnown.map {
+          case None        => emptyNode
+          case Some(true)  => history(VersionHistory.Size.Large)
+          case Some(false) =>
+            div(
+              cls := "workspace-start",
+              h2(
+                cls := "title is-4 text-primary",
+                child.text <-- project.map(_.map(_.kind)).distinct.map {
+                  case Some(ProjectKind.Video) => "Pick a video model to start"
+                  case _                       => "Pick an image model to start"
+                }
+              ),
+              p(
+                cls := "text-secondary mb-5",
+                "Every generation becomes a version of the project. The " +
+                  "assistant is optional: it talks the prompt over with you."
+              ),
+              header.modelBar(prominent = true)
+            )
+        })
       case Some((sessionId, configurationId)) =>
         val panel = GenerationPanel(
           sessionId = sessionId,
@@ -189,7 +247,8 @@ class ProjectWorkspacePage(
                     ProjectWorkspacePage
                       .resolveVersion(project, selectedVersionId.now())
                   )
-                  .map(_.id)
+                  .map(_.id),
+              history = history(VersionHistory.Size.Small)
             )
           ),
           // The result under the form opens where every other result on this
@@ -199,26 +258,7 @@ class ProjectWorkspacePage(
         )
         panelNow.set(Some(panel))
         panel.element
-    },
-    ProjectResults(
-      project,
-      generations,
-      assistantService,
-      historyService,
-      selectVersion,
-      openOutput,
-      output =>
-        currentProject
-          .now()
-          .foreach(current =>
-            projectService.push(
-              Command.Update(
-                current.id,
-                current.copy(cover = output.map(ProjectCover.of))
-              )
-            )
-          )
-    ).element
+    }
   )
 
   // ------------------------------------------------------------- assistant
@@ -227,16 +267,13 @@ class ProjectWorkspacePage(
     cls := "workspace-assistant",
     child <-- sessions.liveKey(RuntimeTool.LlamaCpp).map {
       case None =>
-        div(
-          cls := "workspace-idle-head",
+        if (text)
           p(
             cls := "text-secondary",
-            if (text)
-              "Pick a chat model above to continue the conversation; it is " +
-                "kept with the project."
-            else "Pick an assistant above to talk about this project."
+            "Pick a chat model above to continue the conversation; it is " +
+              "kept with the project."
           )
-        )
+        else emptyNode
       case Some((sessionId, configurationId)) =>
         AssistantPanel(
           sessionId = sessionId,
@@ -247,15 +284,24 @@ class ProjectWorkspacePage(
           generationService = generationService,
           onStop =
             () => sessionService.push(SessionService.Command.Stop(sessionId)),
-          onApplyProposal = Option.unless(text)(proposal =>
-            panelNow.now() match {
-              case Some(panel) => panel.applyProposal(proposal)
-              // No image model live yet, so there is no form to fill: hold
-              // the proposal, and the panel takes it when the picker
-              // launches one.
-              case None =>
-                generationService.requestPromptProposal(proposal)
-            }
+          showHeader = false,
+          proposalTarget = Option.unless(text)(
+            AssistantTurns.ProposalTarget(
+              apply = proposal =>
+                panelNow.now() match {
+                  case Some(panel) => panel.applyProposal(proposal)
+                  // No image model live yet, so there is no form to fill:
+                  // hold the proposal, and the panel takes it when the
+                  // picker launches one.
+                  case None =>
+                    generationService.requestPromptProposal(proposal)
+                },
+              applyAndRun = proposal =>
+                panelNow.now().foreach(_.applyProposalAndRun(proposal)),
+              canRun = sessions
+                .liveStatus(RuntimeTool.SdCpp)
+                .map(_.contains(SessionStatus.Ready))
+            )
           )
         ).element
     }
@@ -263,35 +309,66 @@ class ProjectWorkspacePage(
 
   // ---------------------------------------------------------------- layout
 
-  /** A picker's **+ New** (François, 2026-09-28): the run configurations page's
-    * own modal, offering the architectures of the picker's tool that make what
-    * the project makes.
+  /** A picker's **+ New** (François, 2026-09-28). */
+  private val newConfiguration = ModelPicker.newConfiguration(
+    runConfigurationService,
+    loraService,
+    assistantService,
+    runtimeService,
+    browsers
+  )
+
+  private val header = WorkspaceHeader(
+    projectId,
+    project,
+    () => currentProject.now(),
+    projectService,
+    sessionService,
+    sessions,
+    prerequisites,
+    newConfiguration,
+    imageControls = panelNow.signal.map(
+      _.fold[Node](emptyNode)(_.sessionControls)
+    ),
+    assistantControls = assistantSessionControls(withDrawer = true),
+    chatModelControls = assistantSessionControls(withDrawer = false)
+  )
+
+  /** The live assistant's controls in the model bar, as the image model has its
+    * own there: the chat drawer's toggle, Stop, and what the server applied —
+    * out of the chat, which keeps the room (François, 2026-09-29). A text
+    * project's conversation is the page, so it has no drawer.
     */
-  private def newConfiguration(
-      tool: RuntimeTool,
-      kind: Option[ProjectKind],
-      onCreated: RunConfiguration => Unit,
-      onClose: () => Unit
-  ): HtmlElement =
-    NewRunConfigurationModal(
-      runConfigurationService,
-      runConfigurationService.architectures.map(
-        _.filter(a => a.tool == tool && kind.forall(_.accepts(a)))
-      ),
-      loraService,
-      browsers,
-      assistantService.library.ofKind(PromptKind.AssistantSystem),
-      runtimeService.runtimes,
-      onClose = onClose,
-      onCreated = onCreated,
-      heading = tool match {
-        case RuntimeTool.LlamaCpp => "New chat configuration"
-        case _                    =>
-          kind.fold("New run configuration")(k =>
-            s"New ${k.noun} configuration"
+  private def assistantSessionControls(withDrawer: Boolean): Signal[Node] =
+    sessions
+      .liveKey(RuntimeTool.LlamaCpp)
+      .map(_.map(_._1))
+      .distinct
+      .map {
+        case None            => emptyNode
+        case Some(sessionId) =>
+          div(
+            cls := "is-flex is-align-items-center",
+            styleAttr := "gap: 0.5rem;",
+            Option.when(withDrawer)(
+              button(
+                cls := "button is-small",
+                cls("is-active") <-- drawerOpen.signal,
+                child.text <-- drawerOpen.signal
+                  .map(open => if (open) "💬 Hide chat" else "💬 Show chat"),
+                onClick --> (_ => drawerOpen.update(!_))
+              )
+            ),
+            button(
+              cls := "button is-small is-warning",
+              "⏹ Stop session",
+              onClick --> (_ =>
+                sessionService.push(SessionService.Command.Stop(sessionId))
+              )
+            ),
+            AssistantSessionFacts(assistantService).element
           )
       }
-    ).element
 
   lazy val element: HtmlElement = div(
     cls := "content workspace",
@@ -411,6 +488,7 @@ class ProjectWorkspacePage(
       upscalerService,
       runtimeService,
       prerequisites,
+      launchingProject = Some(projectId),
       // Both columns are already on screen here: staging into them is the
       // whole action, and the modal steps out of the way.
       onReuseStaged = () => {
@@ -434,32 +512,46 @@ class ProjectWorkspacePage(
       },
       onAssistantStaged = () => openDetail.set(None)
     ),
-    WorkspaceHeader(
-      project,
-      () => currentProject.now(),
-      projectService,
-      sessionService,
-      sessions,
-      prerequisites,
-      newConfiguration
-    ).element,
+    // An assistant just launched opens its drawer.
+    sessions
+      .liveKey(RuntimeTool.LlamaCpp)
+      .map(_.map(_._1))
+      .changes
+      .filter(_.isDefined) --> Observer[Option[String]](_ =>
+      drawerOpen.set(true)
+    ),
+    header.element,
     child <-- isText.map {
       case true =>
-        div(cls := "workspace-columns is-text", assistantColumn(text = true))
+        div(
+          header.modelBar(prominent = false),
+          div(cls := "workspace-columns is-text", assistantColumn(text = true))
+        )
       case false =>
         div(
-          cls := "workspace-columns",
-          VersionsColumn(
-            project,
-            generations,
-            selectedVersion,
-            () => selectedVersionId.now(),
-            () => currentProject.now(),
-            sessions.labelOf,
-            selectVersion
-          ).element,
-          generationColumn,
-          assistantColumn(text = false)
+          // Up top unless it is the middle of the page already.
+          child <-- sessions
+            .liveKey(RuntimeTool.SdCpp)
+            .map(_.isDefined)
+            .combineWith(versionsKnown)
+            .map((live, versions) => live || versions.contains(true))
+            .distinct
+            .map {
+              case true  => header.modelBar(prominent = false)
+              case false => emptyNode
+            },
+          div(
+            cls := "workspace-body",
+            cls("has-drawer") <-- drawerShown,
+            mainColumn(header),
+            // Kept mounted while closed, so the conversation's scroll and
+            // what is typed survive a toggle.
+            div(
+              cls := "workspace-drawer",
+              display <-- drawerShown.map(shown => if (shown) "" else "none"),
+              assistantColumn(text = false)
+            )
+          )
         )
     }
   )

@@ -1,0 +1,7 @@
+{
+  "version": 8,
+  "description": "specs/42: the drift runner runs HiDream O1 (its tokenizer.json now a checkpoint, 2048² by default, sides of 32)",
+  "steps": [
+    { "collection": "architectures", "op": "reseed", "where": { "id": "hidream-o1", "builtIn": true } }
+  ]
+}

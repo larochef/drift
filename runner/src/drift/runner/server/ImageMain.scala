@@ -25,7 +25,8 @@ object ImageMain {
       "qwen-image-2.1",
       "pid-flux2",
       "pid-flux1",
-      "pid-qwen-image"
+      "pid-qwen-image",
+      "hidream-o1"
     )
 
   def main(arguments: Array[String]): Unit = {
@@ -34,8 +35,8 @@ object ImageMain {
       RunnerIdentity.modelKinds(ModelKinds)
     if (arguments.contains("--help") || arguments.contains("-h")) {
       println(
-        s"$Version: sd-server's native API on drift's own engine (Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, PiD)\n" +
-          "  --diffusion-model FILE  --vae FILE  --llm FILE  --listen-ip HOST  --listen-port PORT\n" +
+        s"$Version: sd-server's native API on drift's own engine (Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, PiD, HiDream O1)\n" +
+          "  --diffusion-model FILE  --vae FILE  --llm FILE  (or --model FILE, one file)  --tokenizer FILE  --listen-ip HOST  --listen-port PORT\n" +
           "  -W WIDTH  -H HEIGHT  --steps N  --cfg-scale S  --guidance G  --flow-shift MU  -s SEED"
       )
       sys.exit(0)

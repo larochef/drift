@@ -547,7 +547,8 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
     (DType.F32, DType.F16) -> 0,
     (DType.F32, DType.BF16) -> 1,
     (DType.F16, DType.F32) -> 2,
-    (DType.BF16, DType.F32) -> 3
+    (DType.BF16, DType.F32) -> 3,
+    (DType.F8E4M3, DType.F32) -> 4
   )
 
   def convert(x: Tensor, out: Tensor): Unit = {

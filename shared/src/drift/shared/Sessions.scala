@@ -53,6 +53,11 @@ case class Session(
     pid: Option[Long],
     status: SessionStatus,
     startedAt: Long,
+    /** The project whose workspace launched it; empty for the Sandbox and every
+      * other page (`specs/47-sandbox.md`). Who launched it, not who uses it: a
+      * live model is shared by whichever page picks its configuration.
+      */
+    projectId: Option[String],
     error: Option[String] = None,
     /** Where the session's current phase has got to, read out of its log
       * (`specs/13-log-streaming.md`): loading tensors while it starts, sampling
@@ -86,11 +91,13 @@ object Session {
 
 /** `runtimeId` is the launch-time runtime choice; empty means the default
   * runtime. The chosen runtime lives on the session, not the configuration —
-  * picking one at launch pins nothing for next time.
+  * picking one at launch pins nothing for next time. `projectId` is the
+  * workspace launching it, recorded on the session.
   */
 case class LaunchSessionRequest(
     runConfigurationId: String,
-    runtimeId: Option[String] = None
+    runtimeId: Option[String],
+    projectId: Option[String]
 )
 object LaunchSessionRequest {
   given JsonValueCodec[LaunchSessionRequest] = JsonCodecMaker.make

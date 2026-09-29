@@ -69,7 +69,10 @@ object AssistantService {
     Attachment(
       OutputAttachment(output.date, output.fileName),
       output.url,
-      AssistantPrompts.describe(generation, configurationLabel)
+      AssistantPrompts.describe(
+        generation.ofOutput(output.index),
+        configurationLabel
+      )
     )
 
   /** Consecutive messages of one role merged into one. Chat templates that
@@ -550,6 +553,16 @@ class AssistantService(val library: PromptTemplateService) {
     _turns.set(Nil)
     persist()
   }
+
+  /** The Sandbox's chat thrown away as it is left (`specs/47-sandbox.md`) — set
+    * aside already if a workspace has bound its own in the meantime.
+    */
+  def clearScratch(): Unit =
+    if (_boundProject.now().isDefined) scratch = Nil
+    else {
+      stop()
+      _turns.set(Nil)
+    }
 
   /** Free play's scratch chat is simply emptied; a project's is restarted. */
   def clear(): Unit =

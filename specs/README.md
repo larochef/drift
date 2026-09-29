@@ -33,7 +33,7 @@ in [`../docs/`](../docs/README.md).
 | [19](19-projects-and-prompt-versions.md) | Projects and prompt versions | done |
 | [20](20-prompt-assistant-conversation.md) | Prompt assistant conversation, compaction, restart | done in code, not yet run live |
 | [21](21-assistant-page.md) | Assistant chat on the Models page | done |
-| [22](22-free-play-and-scratch-generations.md) | Free play and scratch generations | done |
+| [22](22-free-play-and-scratch-generations.md) | Free play and scratch generations | done; its page is the Sandbox since 47 |
 | [23](23-seeded-vendor-models.md) | Seeded vendor models | done |
 | [24](24-model-details-in-browsers.md) | Model details in the browsers | done |
 | [25](25-model-conversion.md) | Model conversion | partial — step 3 (imatrix + presets) parked |
@@ -58,6 +58,7 @@ in [`../docs/`](../docs/README.md).
 | [44](44-generation-progress.md) | Generation progress: batch and image bars, the runner reporting its own progress | planned |
 | [45](45-redraw-steps-and-reference.md) | Redraw: full steps at any strength, a reference at the tile's scale, reference-taking models only | planned |
 | [46](46-starter-configurations.md) | Starter run configurations; every launch becomes a download while weights are missing | done in code, not yet run live |
+| [47](47-sandbox.md) | Sandbox page: free play out of the Models page, image / video / text switch | done in code, not run live |
 
 ## What is left
 

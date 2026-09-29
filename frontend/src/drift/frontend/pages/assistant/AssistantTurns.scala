@@ -24,7 +24,7 @@ class AssistantTurns(
     /** In a workspace a proposal goes to the panel beside the chat; on the
       * Assistant page it is handed on and Inference opens.
       */
-    onApplyProposal: Option[PromptProposal => Unit]
+    proposalTarget: Option[AssistantTurns.ProposalTarget]
 ) extends Component {
 
   private def turnElement(
@@ -70,7 +70,7 @@ class AssistantTurns(
           ),
           child <-- signal.map(turn =>
             div(
-              pre(cls := "assistant-text", turn.text),
+              ReplyText(turn.text, turn.streaming).element,
               turn.error match {
                 case Some(error) =>
                   p(cls := "has-text-danger is-size-7", error)
@@ -101,7 +101,7 @@ class AssistantTurns(
                   pre(cls := "assistant-text is-size-7", turn.reasoning)
                 )
               else emptyNode,
-              pre(cls := "assistant-text", turn.text),
+              ReplyText(turn.text, turn.streaming).element,
               turn.error match {
                 case Some(error) =>
                   div(
@@ -193,22 +193,41 @@ class AssistantTurns(
         )
       )
     else emptyNode,
-    button(
-      cls := "button is-primary is-small mt-2",
-      if (onApplyProposal.isDefined) "Apply to form"
-      else "Apply to generation form",
-      title :=
-        "Fills the prompt and negative prompt of the generation form" +
-          (if (onApplyProposal.isDefined) "" else " and opens Inference"),
-      onClick --> { _ =>
-        onApplyProposal match {
-          case Some(apply) => apply(proposal)
-          case None        =>
+    proposalTarget match {
+      case Some(target) =>
+        // Running it is what comes next nearly every time, so it is one
+        // click beside the plain Apply (François, 2026-09-29).
+        div(
+          cls := "buttons mt-2",
+          button(
+            cls := "button is-primary is-small",
+            "Apply to form",
+            title := "Fills the prompt and negative prompt of the generation form",
+            onClick --> (_ => target.apply(proposal))
+          ),
+          button(
+            cls := "button is-primary is-outlined is-small",
+            "Apply and run",
+            title <-- target.canRun.map(canRun =>
+              if (canRun) "Fills the form and generates with it"
+              else "Load an image model to run it"
+            ),
+            disabled <-- target.canRun.map(!_),
+            onClick --> (_ => target.applyAndRun(proposal))
+          )
+        )
+      case None =>
+        button(
+          cls := "button is-primary is-small mt-2",
+          "Apply to generation form",
+          title :=
+            "Fills the prompt and negative prompt of the generation form and opens the Sandbox",
+          onClick --> { _ =>
             generationService.requestPromptProposal(proposal)
-            Page.Models.navigate()
-        }
-      }
-    )
+            Page.Sandbox.navigateTo(ProjectKind.Image)
+          }
+        )
+    }
   )
 
   /** A proposed text as what it changed (`specs/20`): diffed against the
@@ -242,6 +261,15 @@ object AssistantTurns {
     case "summary" => "Summary"
     case _         => "Assistant"
   }
+
+  /** Where a workspace's proposal goes: into the form, or into the form and
+    * straight to a run — which needs a live image model.
+    */
+  case class ProposalTarget(
+      apply: PromptProposal => Unit,
+      applyAndRun: PromptProposal => Unit,
+      canRun: Signal[Boolean]
+  )
 
   /** What compactions and restarts moved out of the transcript (`specs/20`),
     * newest first like the chat, folded until asked for.

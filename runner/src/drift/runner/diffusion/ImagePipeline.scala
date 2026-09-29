@@ -59,29 +59,45 @@ trait ImagePipeline extends AutoCloseable {
 
 object ImagePipeline {
 
-  /** The pipeline of `diffusionModel`'s family: FLUX.2, Qwen Image 2.1 (which
-    * edits with the text encoder's vision tower), PiD (which takes a
-    * `tokenizer.json`), else Krea 2.
+  /** The pipeline of `diffusionModel`'s family: HiDream O1 (one file, which
+    * takes a `tokenizer.json`), FLUX.2, Qwen Image 2.1 (which edits with the
+    * text encoder's vision tower), PiD (which takes a `tokenizer.json`), else
+    * Krea 2. All but HiDream O1 take a VAE and a text encoder.
     */
   def open(
       ops: Ops,
       diffusionModel: Path,
-      vae: Path,
-      textEncoder: Path,
+      vaeFile: Option[Path],
+      textEncoderFile: Option[Path],
       tokenizer: Option[Path],
       textEncoderVision: Option[Path]
   ): ImagePipeline = {
-    val (flux2, qwenImage21, pid) = {
+    val (hiDreamO1, flux2, qwenImage21, pid) = {
       val source = WeightSource.open(ops, diffusionModel)
       try
         (
+          HiDreamO1.holds(source),
           Flux2Config.holds(source),
           QwenImage21Config.holds(source),
           source.has("lq_proj.pit_head.weight")
         )
       finally source.close()
     }
-    if (flux2) new Flux2Pipeline(ops, diffusionModel, vae, textEncoder)
+    def needed(file: Option[Path], flag: String, what: String) =
+      file.getOrElse(
+        throw new IllegalArgumentException(
+          s"${diffusionModel.getFileName} needs $what: pass $flag <file>"
+        )
+      )
+    lazy val vae = needed(vaeFile, "--vae", "a VAE")
+    lazy val textEncoder = needed(textEncoderFile, "--llm", "a text encoder")
+    if (hiDreamO1)
+      new HiDreamO1Pipeline(
+        ops,
+        diffusionModel,
+        needed(tokenizer, "--tokenizer", "HiDream O1's tokenizer.json")
+      )
+    else if (flux2) new Flux2Pipeline(ops, diffusionModel, vae, textEncoder)
     else if (qwenImage21)
       new QwenImage21Pipeline(
         ops,

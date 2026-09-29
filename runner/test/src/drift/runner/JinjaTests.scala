@@ -49,21 +49,21 @@ object JinjaTests extends TestSuite {
       assert(results.forall(identity))
     }
     test("errors carry the template's message") {
-      val error = intercept[TemplateException](
+      val error = assertThrows[TemplateException](
         render("{{ raise_exception('bad role') }}")
       )
       assert(error.getMessage == "bad role")
       assert(
-        intercept[TemplateException](
+        assertThrows[TemplateException](
           render("{{ missing.attribute }}")
         ).getMessage.contains("undefined")
       )
       assert(
-        intercept[TemplateException](render("{{ 'a' + [1] }}")).getMessage
+        assertThrows[TemplateException](render("{{ 'a' + [1] }}")).getMessage
           .contains("concatenate")
       )
       assert(
-        intercept[TemplateException](
+        assertThrows[TemplateException](
           render("{% if x %}never closed")
         ).getMessage.contains("never closed")
       )

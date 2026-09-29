@@ -182,7 +182,7 @@ class PromptsSection(service: PromptTemplateService) extends Component {
               "project brief",
               "\"The project being worked on: …\" — the brief typed on the " +
                 "project, so the model knows what the images are for. Nothing " +
-                "is added in free play.",
+                "is added in the Sandbox.",
               _.brief,
               (a, on) => a.copy(brief = on)
             ),

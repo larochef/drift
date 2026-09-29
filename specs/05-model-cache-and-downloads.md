@@ -94,7 +94,11 @@ copy serves drift and `huggingface_hub` alike.
 - HuggingFace hashes: use the `x-linked-etag` response header, never `etag`
   (the Xet content hash, a different value), and request the model info with
   `?blobs=true` or the `lfs.sha256` is absent. For LFS files the etag is the
-  SHA256, so the blob name is a value drift already verifies.
+  SHA256, so the blob name is a value drift already verifies. A small file
+  outside LFS (HiDream O1's `tokenizer.json`) has no SHA256: its blob is named
+  by its git blob id, as `huggingface_hub` names it, and is not verified. Only
+  a file with no blob name or no commit goes to drift's own tree
+  (`models/huggingface/<repo dir>/<path>`), which resolution searches too.
 - A resumed download re-reads the existing `.part` to prime the digest; hashing
   only the new bytes would pass a corrupted partial.
 - Some tools write real files straight into `snapshots/` with an empty

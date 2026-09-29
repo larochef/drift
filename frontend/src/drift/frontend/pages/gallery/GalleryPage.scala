@@ -489,7 +489,7 @@ class GalleryPage(
                 "you write them. You can also just try a model on its own."
             ),
             () => creatingProject.set(true),
-            Some("Just try a model" -> (() => Page.Models.navigate()))
+            Some("Just try a model" -> (() => Page.Sandbox.navigate()))
           )
         case (true, false, true, true) =>
           div(
@@ -542,8 +542,9 @@ class GalleryPage(
       upscalerService,
       runtimeService,
       prerequisites,
-      onReuseStaged = () => Page.Models.navigate(),
-      onAssistantStaged = () => Page.Models.navigate()
+      launchingProject = None,
+      onReuseStaged = () => Page.Sandbox.navigate(),
+      onAssistantStaged = () => Page.Sandbox.navigateTo(ProjectKind.Text)
     )
   )
 }

@@ -10,7 +10,10 @@ import com.raquo.laminar.api.L.*
   * live: the same configuration takes every parameter, another one the task,
   * nothing running offers a launch first.
   */
-case class ReuseAction(label: String, buttonClass: String, run: () => Unit)
+/** `run` takes the batch index of the output on screen: reusing one image of a
+  * batch reproduces that image (`Generation.ofOutput`).
+  */
+case class ReuseAction(label: String, buttonClass: String, run: Int => Unit)
 
 /** `otherConfigurations` (id → label) are the models this generation's task can
   * be launched on to compare them on the same job — offered only while nothing
@@ -20,7 +23,8 @@ case class ReuseOffer(
     actions: List[ReuseAction],
     note: Option[String],
     otherConfigurations: List[(String, String)] = List.empty,
-    launchOther: String => Unit = _ => (),
+    /** The configuration picked, then the batch index shown, as `run`. */
+    launchOther: (String, Int) => Unit = (_, _) => (),
     /** A configuration that cannot launch yet: its missing runtime and weights
       * are offered in the actions' place (`specs/46`).
       */
@@ -288,7 +292,17 @@ class GenerationDetail(
         )
       })
 
-  private val parameters = GenerationParameters(generation, configurationLabel)
+  private val parameters = GenerationParameters(
+    generation,
+    configurationLabel,
+    picture.selectedIndex.signal.map(generation.outputs.lift(_).fold(0)(_.index))
+  )
+
+  /** The batch index of the output on screen — not its place in the strip,
+    * which differs once a batch has lost an image.
+    */
+  private def shownOutputIndex(): Int =
+    generation.outputs.lift(picture.selectedIndex.now()).fold(0)(_.index)
 
   /** The configuration picked to try the task on; empty, or one no longer
     * offered, means the first offered.
@@ -328,7 +342,7 @@ class GenerationDetail(
               cls := "button is-link",
               "▶ Try this task on that model",
               onClick.compose(_.sample(chosen)) --> (id =>
-                offer.launchOther(id)
+                offer.launchOther(id, shownOutputIndex())
               )
             )
           ).element
@@ -412,7 +426,7 @@ class GenerationDetail(
             button(
               cls := s"button ${action.buttonClass}",
               action.label,
-              onClick --> (_ => action.run())
+              onClick --> (_ => action.run(shownOutputIndex()))
             )
           )
         ),
@@ -434,7 +448,12 @@ class GenerationDetail(
               "🤖 Ask the assistant",
               title := "Send this image and its parameters to the assistant",
               onClick.compose(_.sample(configurationLabel)) --> (label =>
-                onAskAssistant(output, label)
+                onAskAssistant(
+                  generation.outputs
+                    .lift(picture.selectedIndex.now())
+                    .getOrElse(output),
+                  label
+                )
               )
             )
           ),

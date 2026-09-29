@@ -52,14 +52,15 @@ final class HuggingFaceDownloads(
         downloadSharded(source, detail, isCancelled, onProgress)
       case Right(detail) =>
         val sibling = detail.siblings.find(_.rfilename == source.filename)
-        val sha256 = sibling.flatMap(_.sha256)
         val commit = detail.sha
-        (sha256, commit) match {
-          case (Some(sha), Some(revision)) =>
+        (sibling.flatMap(blobNameOf), commit) match {
+          case (Some(blobName), Some(revision)) =>
+            // an LFS file is verified by its sha256; a small file outside LFS
+            // (a tokenizer.json) is named by its git blob id, unverified
             downloadIntoSharedCache(
               source,
-              sha,
-              Some(sha),
+              blobName,
+              sibling.flatMap(_.sha256),
               revision,
               isCancelled,
               onProgress
@@ -69,9 +70,9 @@ final class HuggingFaceDownloads(
               s"'${source.filename}' is not in ${source.repo}"
             )
           case _ =>
-            // No LFS hash (a small non-LFS file) or no commit: the shared
-            // cache layout is keyed by both, so fall back to drift's own tree,
-            // unverified — the "trust the file" case of the spec.
+            // No blob name or no commit: the shared cache layout is keyed by
+            // both, so fall back to drift's own tree, unverified — the "trust
+            // the file" case of the spec.
             downloadIntoDriftTree(source, isCancelled, onProgress)
         }
     }

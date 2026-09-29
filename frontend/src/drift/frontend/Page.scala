@@ -1,5 +1,7 @@
 package drift.frontend
 
+import drift.shared.ProjectKind
+
 import frontroute.BrowserNavigation
 
 sealed trait Page {
@@ -29,6 +31,18 @@ object Page {
     val path = "/projects"
     val label = "Projects"
     override val icon = "\uD83D\uDCC1"
+  }
+
+  /** The Sandbox (`specs/47-sandbox.md`): trying a model, nothing kept. The
+    * rest of the path names what is being made — `/sandbox/video`.
+    */
+  case object Sandbox extends Page {
+    val path = "/sandbox"
+    val label = "Sandbox"
+    override val icon = "\uD83E\uDDEA"
+
+    def navigateTo(kind: ProjectKind): Unit =
+      BrowserNavigation.pushState(url = s"$path/${kind.noun}")
   }
 
   case class ProjectWorkspace(id: String) extends Page {
@@ -63,6 +77,7 @@ object Page {
     */
   val navPages: List[Page] = List(
     Projects,
+    Sandbox,
     Gallery,
     Models,
     ModelCache,

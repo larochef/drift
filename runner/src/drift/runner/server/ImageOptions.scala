@@ -5,14 +5,15 @@ import java.nio.file.{Path, Paths}
 /** `sd-server`'s flags as drift passes them for an image configuration
   * (`specs/42`, step 12): the checkpoints, the defaults a request starts from
   * (size, steps, CFG scale, distilled guidance, flow shift, seed, prompts), and
-  * where to listen. Flags that change how sd-cpp runs but not the image are
+  * where to listen. A whole model in one file (HiDream O1) comes as `--model`,
+  * with no VAE or text encoder of its own. Flags that change how sd-cpp runs but not the image are
   * accepted with a note; flags asking for what the runner cannot do yet are
   * refused by name, and so is any unknown flag.
   */
 final case class ImageOptions(
     diffusionModel: Path,
-    vae: Path,
-    llm: Path,
+    vae: Option[Path],
+    llm: Option[Path],
     host: String,
     port: Int,
     width: Int,
@@ -94,7 +95,8 @@ object ImageOptions {
           None
       }
       flag match {
-        case "--diffusion-model" | "--vae" | "--llm" | "--listen-ip" |
+        case "--diffusion-model" | "--model" | "-m" | "--vae" | "--llm" |
+            "--listen-ip" |
             "--listen-port" | "-W" | "--width" | "-H" | "--height" | "--steps" |
             "--cfg-scale" | "--guidance" | "--flow-shift" | "-s" | "--seed" |
             "-p" | "--prompt" | "-n" | "--negative-prompt" |
@@ -116,13 +118,15 @@ object ImageOptions {
         .toRight(s"no ${flag.stripPrefix("--")}: pass $flag <file>")
     problem.map(Left(_)).getOrElse {
       for {
-        diffusion <- path("--diffusion-model")
-        vae <- path("--vae")
-        llm <- path("--llm")
+        diffusion <- path("--diffusion-model").left.flatMap(_ =>
+          path("--model").left.map(_ =>
+            "no diffusion model: pass --diffusion-model <file> (or --model <file>)"
+          )
+        )
       } yield ImageOptions(
         diffusion,
-        vae,
-        llm,
+        values.get("--vae").map(Paths.get(_)),
+        values.get("--llm").map(Paths.get(_)),
         values.getOrElse("--listen-ip", "127.0.0.1"),
         values.get("--listen-port").fold(1234)(_.toInt),
         values.get("-W").fold(1024)(_.toInt),
@@ -148,6 +152,7 @@ object ImageOptions {
     case "--seed"            => "-s"
     case "--prompt"          => "-p"
     case "--negative-prompt" => "-n"
+    case "-m"                => "--model"
     case other               => other
   }
 }

@@ -76,7 +76,7 @@ object SafetensorsTests extends TestSuite {
           index,
           """{"weight_map": {"x": "model-00001-of-00001.safetensors"}}"""
         )
-        val error = intercept[FormatException](SafetensorsModel.open(index))
+        val error = assertThrows[FormatException](SafetensorsModel.open(index))
         assert(error.getMessage.contains("which is missing"))
       } finally {
         Files.list(folder).forEach(Files.delete)
@@ -92,12 +92,12 @@ object SafetensorsTests extends TestSuite {
         "test"
       )
       assert(file("x").decode().sameElements(Array(0f)))
-      val error = intercept[NoSuchElementException](file("ids"))
+      val error = assertThrows[NoSuchElementException](file("ids"))
       assert(error.getMessage == "ids: safetensors dtype I64 is not supported")
     }
     test("broken files are refused with a reason") {
       def refusal(header: String, data: Int) =
-        intercept[FormatException](
+        assertThrows[FormatException](
           Safetensors.read(fileOf(header, new Array[Byte](data)), "test")
         ).getMessage
       assert(
@@ -112,7 +112,7 @@ object SafetensorsTests extends TestSuite {
       val truncated = java.lang.foreign.MemorySegment
         .ofArray(Array[Byte](100, 0, 0, 0, 0, 0, 0, 0, '{'))
       assert(
-        intercept[FormatException](
+        assertThrows[FormatException](
           Safetensors.read(truncated, "test")
         ).getMessage.contains("runs past")
       )

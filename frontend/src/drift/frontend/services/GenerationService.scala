@@ -84,7 +84,7 @@ class GenerationService(statusSocket: StatusSocketService)
   private val submitVideoFn = ApiClient.stream(submitVideoGeneration)
   private val cancelFn = ApiClient.stream(cancelGeneration)
   private val keepFn = ApiClient.stream(keepScratchGeneration)
-  private val clearScratchFn = ApiClient.stream(clearScratch)
+  private val clearScratchFn = ApiClient.stream(drift.shared.clearScratch)
 
   /** Keyed by session id. A session that is not ready yet simply has no entry;
     * the panel keeps asking until one appears.
@@ -113,6 +113,17 @@ class GenerationService(statusSocket: StatusSocketService)
 
   def requestReuse(reuse: GenerationService.Reuse): Unit =
     pendingReuse.set(Some(reuse))
+
+  /** Empties the Sandbox's results (`specs/47-sandbox.md`) on a subscription of
+    * its own: the Sandbox calls it as it unmounts, when the `effects` that
+    * serve `Command.ClearScratch` may already be torn down with it.
+    */
+  def clearScratch(): Unit =
+    clearScratchFn(()).recoverToTry.foreach {
+      case Success(cleared) =>
+        _generations.update(_.filterNot(g => cleared.contains(g.id)))
+      case Failure(err) => reportFailure("Clearing the Sandbox's results", err)
+    }(using unsafeWindowOwner)
 
   /** Hands the pending reuse over exactly once. */
   def takePendingReuse(): Option[GenerationService.Reuse] = {

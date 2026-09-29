@@ -368,6 +368,7 @@ final class ImageServer(options: ImageOptions, pipeline: ImagePipeline) {
         println("sampling using Euler method")
         job.images = (0 until job.count).map { index =>
           val request = job.request.copy(seed = job.request.seed + index)
+          println(s"generating image ${index + 1}/${job.count} (seed ${request.seed})")
           var last = System.nanoTime()
           val image = pipeline.generate(
             request,

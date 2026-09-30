@@ -2,7 +2,6 @@ package drift.frontend.pages.projects
 
 import drift.frontend.Page
 import drift.frontend.components.{Component, ErrorBanner}
-import drift.frontend.pages.gallery.GenerationCard
 import drift.frontend.services.ProjectService
 import drift.frontend.services.ProjectService.Command
 import drift.shared.*
@@ -61,32 +60,15 @@ class ProjectsPage(service: ProjectService) extends Component {
         else s"no ${project.kind.noun} yet"
       ),
       project.kind match {
-        case ProjectKind.Image =>
+        // A video project's cover is its newest video's first frame, a JPEG
+        // like an image project's: the list loads no video (bug 37).
+        case ProjectKind.Image | ProjectKind.Video =>
           img(
             src := projectCoverPath(project.id),
             loadingAttr := "lazy",
-            alt := s"Newest image of ${project.label}",
+            alt := s"Newest ${project.kind.noun} of ${project.label}",
             inContext(node =>
               onError --> (_ => node.ref.style.setProperty("display", "none"))
-            )
-          )
-        // The first frame, playing only while hovered: a grid of clips all
-        // playing at once would keep the page repainting.
-        case ProjectKind.Video =>
-          videoTag(
-            src := projectCoverPath(project.id),
-            GenerationCard.preloadAttr := "metadata",
-            GenerationCard.mutedAttr := true,
-            GenerationCard.loopAttr := true,
-            GenerationCard.playsInlineAttr := true,
-            inContext(node =>
-              Seq(
-                onError --> (_ =>
-                  node.ref.style.setProperty("display", "none")
-                ),
-                onMouseEnter --> (_ => { node.ref.play(); () }),
-                onMouseLeave --> (_ => node.ref.pause())
-              )
             )
           )
         // A conversation has no picture to show (`specs/41-text-projects.md`).

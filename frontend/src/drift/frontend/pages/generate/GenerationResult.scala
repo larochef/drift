@@ -1,6 +1,6 @@
 package drift.frontend.pages.generate
 
-import drift.frontend.components.{Component, LogProgressView}
+import drift.frontend.components.{Component, LogProgressView, VideoRelease}
 import drift.frontend.services.*
 import drift.shared.*
 
@@ -64,6 +64,7 @@ class GenerationResult(
   private def outputElement(output: GenerationOutput, index: Int): HtmlElement =
     if (output.mimeType.startsWith("video/"))
       videoTag(
+        VideoRelease.onUnmount,
         controlsAttr := true,
         loopAttr := true,
         src := output.url,

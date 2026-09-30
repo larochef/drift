@@ -208,8 +208,9 @@ val deleteProjectGenerations: PublicEndpoint[String, Unit, List[String], Any] =
   * as bytes an `img` or a `video` can point straight at (François, 2026-09-10).
   * An image project's is its newest image, as a downscaled JPEG rather than the
   * original: a cover sits in a 20rem tile, and the generations behind it are
-  * multi-megabyte PNGs. A video project's is its newest video, the output file
-  * as it is (`specs/31-project-kinds.md`).
+  * multi-megabyte PNGs. A video project's is its newest video's first frame,
+  * the same JPEG, so the list loads no video (`specs/31-project-kinds.md`, bug
+  * 37).
   *
   * 404 when the project has made nothing yet, which is not an error - the card
   * shows its placeholder and says so.

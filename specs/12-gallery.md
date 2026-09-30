@@ -21,6 +21,13 @@ in-memory state.
   remaining days". Filters apply to loaded days only.
 - A generation completing while the gallery is open appears by itself, folded
   in from the status socket's `generations` topic.
+- Videos play in two places only: the detail's player and the latest
+  result of the generation panel. Everywhere else (gallery cards, the
+  detail's strip, version histories, project covers) a video shows its
+  first frame, `…/preview` of a video being that still (ffmpeg, cached like
+  the scaled images); a player that leaves the page drops its download
+  (`components/VideoRelease`). drift serves HTTP/1.1, so every `<video>` a
+  page holds keeps one of the browser's six connections to it (bug 37).
 - The detail view: the media (a `<video>` player for video formats), every
   recorded parameter, the input images, the lineage of derived entries with an
   original ↔ result toggle (15), and the post-processing section (15, 26, 27).

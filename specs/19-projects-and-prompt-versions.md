@@ -93,8 +93,8 @@ them.
 - Endpoints under `/api/projects`: list, get, create, update (`mergeUpdate`:
   the stored `versions` and `lastUsedAt` are kept, never taken from the
   client), delete, `GET/DELETE …/{id}/generations`, `GET …/{id}/cover`
-  (downscaled JPEG bytes, 404 when none, a video project's cover is the file
-  itself), `GET/PUT …/{id}/conversation` ([`20`](20-prompt-assistant-conversation.md)).
+  (downscaled JPEG bytes, 404 when none; a video project's is its first
+  frame), `GET/PUT …/{id}/conversation` ([`20`](20-prompt-assistant-conversation.md)).
 - Submit carries `?project=&version=&origin=` beside the native body
   (`SubmitContext`); `backend/projects/ProjectManager.versionFor` decides on
   the recorded request (`sameRecipe` blanks seed and inputs, `describeChange`

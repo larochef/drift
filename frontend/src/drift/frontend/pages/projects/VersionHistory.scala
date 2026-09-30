@@ -1,7 +1,10 @@
 package drift.frontend.pages.projects
 
 import drift.frontend.components.*
-import drift.frontend.pages.gallery.{GenerationCard, GenerationDetailHost}
+import drift.frontend.pages.gallery.{
+  GenerationDetailHost,
+  GenerationMediaViewer
+}
 import drift.frontend.services.{AssistantService, HistoryService}
 import drift.shared.*
 
@@ -151,21 +154,20 @@ class VersionHistory(
       .orElse(generation.videoParameters.map(_.seed))
       .getOrElse(-1L)
     val media: Seq[Modifier[HtmlElement]] = Seq(
-      src := output.url,
       cls := "version-history-media cursor-pointer",
       title := s"seed $seed — click for the details",
       onClick --> (_ => onOpen(generation.id, index))
     )
     div(
-      // A video shows its first frame, as on a gallery card.
-      if (isVideo)
-        videoTag(
-          GenerationCard.preloadAttr := "metadata",
-          GenerationCard.mutedAttr := true,
-          GenerationCard.playsInlineAttr := true,
-          media
-        )
-      else img(loadingAttr := "lazy", media),
+      // A video shows its still, as on a gallery card: only the detail's
+      // player loads it (bug 37).
+      img(
+        loadingAttr := "lazy",
+        src := (
+          if (isVideo) GenerationMediaViewer.stillUrl(output) else output.url
+        ),
+        media
+      ),
       div(
         cls := "buttons are-small mt-1",
         styleAttr := "gap: 0.25rem;",

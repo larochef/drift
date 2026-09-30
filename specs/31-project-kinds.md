@@ -12,9 +12,9 @@ before kinds existed is an image project.
 - The new project form has a "Makes" choice, Images by default; the
   workspace header has a select to change it. The model picker narrows at
   once and is titled "Image model" or "Video model".
-- Project cards show the kind. A video project's cover is its newest video,
-  the file itself (no transcoder): the first frame shows, and it plays muted
-  while hovered.
+- Project cards show the kind. A video project's cover is its newest video's
+  first frame (read by ffmpeg), a JPEG like an image project's: the list
+  loads no video.
 - A live session of the other kind stays in the picker, marked "(live, not a
   video model)", since sessions belong to the machine, not the project.
   Nothing prevents generating with it.

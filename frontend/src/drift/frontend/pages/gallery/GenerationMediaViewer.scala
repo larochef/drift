@@ -1,6 +1,6 @@
 package drift.frontend.pages.gallery
 
-import drift.frontend.components.Component
+import drift.frontend.components.{Component, VideoRelease}
 import drift.frontend.pages.gallery.GenerationCard.*
 import drift.frontend.pages.gallery.GenerationMediaViewer.*
 import drift.frontend.services.ApiClient
@@ -152,6 +152,7 @@ class GenerationMediaViewer(
   ): HtmlElement =
     if (GenerationMediaViewer.isVideo(output))
       videoTag(
+        VideoRelease.onUnmount,
         src := output.url,
         controlsAttr := true,
         loopAttr := true,
@@ -213,19 +214,15 @@ class GenerationMediaViewer(
   private def stripEntry(output: GenerationOutput, index: Int): HtmlElement = {
     val selectedClass =
       selectedIndex.signal.map(i => if (i == index) "is-selected" else "")
-    if (GenerationMediaViewer.isVideo(output))
-      videoTag(
-        src := output.url,
-        mutedAttr := true,
-        cls <-- selectedClass,
-        onClick --> (_ => selectedIndex.set(index))
-      )
-    else
-      img(
-        src := output.url,
-        cls <-- selectedClass,
-        onClick --> (_ => selectedIndex.set(index))
-      )
+    img(
+      src := (
+        if (GenerationMediaViewer.isVideo(output))
+          GenerationMediaViewer.stillUrl(output)
+        else output.url
+      ),
+      cls <-- selectedClass,
+      onClick --> (_ => selectedIndex.set(index))
+    )
   }
 
   lazy val element: HtmlElement = div(
@@ -273,6 +270,18 @@ object GenerationMediaViewer {
     */
   def previewUrl(output: GenerationOutput): String =
     if (isVideo(output)) output.url else s"${output.url}/preview"
+
+  /** A still of a video, its first frame fitted in a tile: what every place
+    * that shows a video small displays, so only the players load videos (bug
+    * 37).
+    */
+  def stillUrl(output: GenerationOutput): String =
+    s"${output.url}/preview?side=$StillSide"
+
+  /** The longest side of a still: a gallery card or strip entry on a
+    * high-density screen.
+    */
+  private val StillSide = 768
 
   /** A length as a percentage of the picture: the browser scales the image, so
     * the box is placed in the picture's own terms.

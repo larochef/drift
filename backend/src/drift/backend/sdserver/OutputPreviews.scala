@@ -1,8 +1,10 @@
 package drift.backend.sdserver
 
+import drift.backend.images.VideoFrames
 import drift.backend.postprocess.PostProcessImages
 
-import java.nio.file.{Files, Path}
+import java.awt.image.BufferedImage
+import java.nio.file.{Files, Path, StandardCopyOption}
 import javax.imageio.ImageIO
 import scala.util.control.NonFatal
 
@@ -47,25 +49,27 @@ final class OutputPreviews(outputsRoot: Path, cacheRoot: Path) {
 
   /** A copy of the image no larger than `side` on its longest edge, as PNG
     * bytes. The original is answered when it is already that small, or when it
-    * cannot be read as an image — a video, say, which has no preview and must
-    * be asked for by its own URL.
+    * cannot be read as an image. A video's is its first frame, no larger than
+    * `side` either: what the pages that show videos small display, so only the
+    * players load the video itself (bug 37); `None` when ffmpeg cannot give
+    * one.
     */
   def preview(
       date: String,
       fileName: String,
       side: Option[Int]
   ): Option[(Array[Byte], String)] =
-    sourceOf(date, fileName).map { file =>
+    sourceOf(date, fileName).flatMap { file =>
       val longest = side.filter(_ > 0).getOrElse(defaultSide).min(8192)
-      val original =
-        (
-          Files.readAllBytes(file),
-          GenerationManager.mimeTypeFor(extensionOf(fileName))
-        )
-      PostProcessImages.imageSize(file) match {
-        case Some((width, height)) if math.max(width, height) > longest =>
-          scaled(file, date, fileName, longest).getOrElse(original)
-        case _ => original
+      val mimeType = GenerationManager.mimeTypeFor(extensionOf(fileName))
+      if (mimeType.startsWith("video/")) still(file, date, fileName, longest)
+      else {
+        val original = (Files.readAllBytes(file), mimeType)
+        Some(PostProcessImages.imageSize(file) match {
+          case Some((width, height)) if math.max(width, height) > longest =>
+            scaled(file, date, fileName, longest).getOrElse(original)
+          case _ => original
+        })
       }
     }
 
@@ -73,6 +77,55 @@ final class OutputPreviews(outputsRoot: Path, cacheRoot: Path) {
     fileName.lastIndexOf('.') match {
       case -1 => ""
       case i  => fileName.substring(i + 1).toLowerCase
+    }
+
+  /** A video's first frame fitted in `side`, cached as the scaled copies are. */
+  private def still(
+      file: Path,
+      date: String,
+      fileName: String,
+      side: Int
+  ): Option[(Array[Byte], String)] =
+    cached(
+      date,
+      s"${fileName.stripSuffix("." + extensionOf(fileName))}-still-$side.png",
+      s"Still of $date/$fileName"
+    )(
+      VideoFrames.first(file).map { frame =>
+        val scale =
+          math.min(1.0, side.toDouble / math.max(frame.getWidth, frame.getHeight))
+        PostProcessImages.scaledCopy(
+          frame,
+          math.round(frame.getWidth * scale).toInt.max(1),
+          math.round(frame.getHeight * scale).toInt.max(1)
+        )
+      }
+    )
+
+  /** The PNG `name` in the day's previews, made by `make` the first time. */
+  private def cached(date: String, name: String, what: String)(
+      make: => Option[BufferedImage]
+  ): Option[(Array[Byte], String)] =
+    try {
+      val target = previewsRoot.resolve(date).resolve(name)
+      if (Files.isRegularFile(target))
+        Some((Files.readAllBytes(target), "image/png"))
+      else
+        make.map { image =>
+          Files.createDirectories(target.getParent)
+          // Written under a name of its own first: a half-written file served
+          // to the next request would look corrupt, and two requests may make
+          // the same one at once.
+          val partial = Files.createTempFile(target.getParent, name, ".part")
+          ImageIO.write(image, "png", partial.toFile)
+          Files.move(partial, target, StandardCopyOption.REPLACE_EXISTING)
+          logger.info(s"$what at ${image.getWidth}x${image.getHeight}")
+          (Files.readAllBytes(target), "image/png")
+        }
+    } catch {
+      case NonFatal(err) =>
+        logger.warn(s"Cannot make ${what.toLowerCase}", err)
+        None
     }
 
   /** The cached copy, made if this is the first time it is asked for. */

@@ -33,20 +33,17 @@ class GenerationCard(
     onToggleSelected: () => Unit = () => ()
 ) extends Component {
 
+  /** A video shows its still: only the detail's player loads it (bug 37). */
   private def thumbnail(output: GenerationOutput): HtmlElement =
-    if (output.mimeType.startsWith("video/"))
-      videoTag(
-        src := output.url,
-        GenerationCard.preloadAttr := "metadata",
-        GenerationCard.mutedAttr := true,
-        GenerationCard.playsInlineAttr := true
-      )
-    else
-      img(
-        src := output.url,
-        GenerationCard.loadingAttr := "lazy",
-        alt := RecordedParameters.promptOf(generation).take(80)
-      )
+    img(
+      src := (
+        if (GenerationMediaViewer.isVideo(output))
+          GenerationMediaViewer.stillUrl(output)
+        else output.url
+      ),
+      GenerationCard.loadingAttr := "lazy",
+      alt := RecordedParameters.promptOf(generation).take(80)
+    )
 
   lazy val element: HtmlElement = div(
     cls := "card bg-card gallery-card cursor-pointer" +

@@ -5,7 +5,9 @@ import drift.shared.*
 
 import java.nio.file.Files
 
+import sttp.model.StatusCode
 import sttp.shared.Identity
+import sttp.tapir.{FileRange, RangeValue}
 import sttp.tapir.server.ServerEndpoint
 
 def generationEndpoints(
@@ -49,16 +51,36 @@ def generationEndpoints(
       .map((width, height) => OutputSize(width, height))
       .toRight(())
   },
-  getOutputFile.serverLogic[Identity] { (date, fileName) =>
+  getOutputFile.serverLogic[Identity] { (date, fileName, range) =>
     val file = manager.outputsRoot.resolve(date).resolve(fileName).normalize()
     if (file.startsWith(manager.outputsRoot) && Files.isRegularFile(file)) {
       val extension = fileName.lastIndexOf('.') match {
         case -1 => ""
         case i  => fileName.substring(i + 1).toLowerCase
       }
-      Right(
-        (Files.readAllBytes(file), GenerationManager.mimeTypeFor(extension))
-      )
-    } else Left(())
+      val contentType = GenerationManager.mimeTypeFor(extension)
+      val size = Files.size(file)
+      ByteRanges.of(range, size) match {
+        case ByteRanges.Request.Whole =>
+          Right(
+            (StatusCode.Ok, contentType, None, size, FileRange(file.toFile))
+          )
+        case ByteRanges.Request.Part(first, last) =>
+          Right(
+            (
+              StatusCode.PartialContent,
+              contentType,
+              Some(s"bytes $first-$last/$size"),
+              last - first + 1,
+              FileRange(
+                file.toFile,
+                Some(RangeValue(Some(first), Some(last), size))
+              )
+            )
+          )
+        case ByteRanges.Request.Unsatisfiable =>
+          Left((StatusCode.RangeNotSatisfiable, Some(s"bytes */$size")))
+      }
+    } else Left((StatusCode.NotFound, None))
   }
 )

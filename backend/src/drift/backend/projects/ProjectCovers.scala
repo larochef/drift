@@ -1,6 +1,6 @@
 package drift.backend.projects
 
-import drift.backend.images.Thumbnail
+import drift.backend.images.{Thumbnail, VideoFrames}
 import drift.backend.sdserver.GenerationHistory
 import drift.backend.storage.StorageService
 import drift.shared.*
@@ -36,9 +36,10 @@ final class ProjectCovers(
     maxSide: Int = ProjectCovers.DefaultMaxSide
 ) {
 
-  /** An image is scaled once and held as JPEG bytes. A video is the output
-    * itself, read when asked for: there is no transcoder to shrink it, and
-    * holding every project's clip in memory would cost more than the read.
+  /** An image is scaled once and held as JPEG bytes; a video too, from its
+    * first frame (read by ffmpeg): the list shows stills, only the players load
+    * videos (bug 37). `thumbnail` is empty only for a video ffmpeg could not
+    * read, served as it is.
     */
   final private case class Entry(
       source: Path,
@@ -164,7 +165,14 @@ final class ProjectCovers(
 
   private def entryOf(source: Path, mimeType: String): Option[Entry] =
     if (mimeType.startsWith("video/"))
-      Option.when(Files.isRegularFile(source))(Entry(source, mimeType, None))
+      Option.when(Files.isRegularFile(source))(
+        VideoFrames
+          .first(source)
+          .map(frame =>
+            Entry(source, "image/jpeg", Some(Thumbnail.jpeg(frame, maxSide)))
+          )
+          .getOrElse(Entry(source, mimeType, None))
+      )
     else
       // Scaled once and held: a cover is small, and the alternative is
       // decoding a multi-megabyte PNG on every visit to the list.

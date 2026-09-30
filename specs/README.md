@@ -21,7 +21,7 @@ in [`../docs/`](../docs/README.md).
 | [07](07-launch-and-supervision.md) | Launching and supervising `sd-server` | done |
 | [08](08-inference-ui.md) | Inference UI (txt2img, img2img, edit, video) | done |
 | [09](09-lora-management.md) | LoRA management | done |
-| [10](10-generation-time-upscaling.md) | Generation-time upscaling (hires + VAE tiling) | done |
+| [10](10-generation-time-upscaling.md) | Generation-time upscaling (hires + VAE tiling) | done; ESRGAN to move out of the generation form |
 | [11](11-status-websocket.md) | Status WebSocket | done |
 | [12](12-gallery.md) | Gallery and history | done |
 | [13](13-log-streaming.md) | Log streaming and progress feedback | done |
@@ -75,10 +75,12 @@ in [`../docs/`](../docs/README.md).
   generating and editing, and its defaults settled against the vendor's numbers.
 - `33`, `34`: a live pass — SenseNova U1.5 from its official shards, and the
   official 8-step LoRA on it.
-- `42`: steps 10–15 of the runner; step 14 has MiniMax H3 and LTX 2.5 (no soundtracks, no image conditions) and Wan 2.2 A14B (no LoRAs, no 5B); HunyuanVideo and the audio decoders next.
+- `42`: steps 10–15 of the runner; step 14 has MiniMax H3 and LTX 2.5 (with their soundtracks; no image conditions) and Wan 2.2 A14B (no LoRAs, no 5B); video LoRAs (Wan 2.2's high/low-noise pairs first) and HunyuanVideo next.
 - Ideas not specced: parameter sweeps (one prompt × configurations), timings
   and a loud CPU-fallback warning, Civitai example → form, assistant autopilot,
-  a disk view.
+  a disk view, continuing a video (its last frame, read by ffmpeg, becomes the
+  init image of a new generation with the same parameters, from the detail's
+  actions; an image-to-video configuration takes it).
 
 ## Conventions
 

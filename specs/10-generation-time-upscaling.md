@@ -1,6 +1,6 @@
 # 10 — Generation-time upscaling
 
-**Status:** done
+**Status:** done; the ESRGAN side is to be removed (Remaining)
 **Depends on:** 08
 
 sd-cpp's highres-fix driven from the generation form, with the upscaler weights
@@ -61,3 +61,14 @@ fetched and managed by drift. Post-hoc upscaling of an existing image is `15`.
   (15 min), not by count, while connection-refused still fails fast. Without
   this the finished output is lost.
 - The Civitai token is sent only to civitai.com hosts.
+
+## Remaining
+
+- **ESRGAN leaves the generation form.** Upscaling with a model is post
+  processing (15), not part of generating: the **Upscaler** select keeps the
+  latent modes only, the model upscalers go from it (and from the recipes that
+  seed it), and launches no longer pass `--hires-upscalers-dir`. The upscaler
+  store stays, for 15's ESRGAN upscale. Code: `frontend/.../generate/`
+  (`HiresSection`, `GenerationFormState`, `RecipeSeeding`,
+  `GenerationSubmission`), `backend/.../session/LaunchArguments.scala`; the
+  runner's `ImageOptions` can drop the flag from what it accepts.

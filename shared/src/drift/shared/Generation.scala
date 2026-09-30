@@ -606,10 +606,28 @@ val getOutputSize: PublicEndpoint[(String, String), Unit, OutputSize, Any] =
     .errorOut(statusCode(StatusCode.NotFound))
     .out(jsonBody[OutputSize])
 
-val getOutputFile
-    : PublicEndpoint[(String, String), Unit, (Array[Byte], String), Any] =
+/** A persisted output, streamed from disk. A `Range` header (one range of
+  * bytes) gets `206` with just those bytes and their `Content-Range`, which a
+  * video player needs to reach a webm's index at the end and a large image
+  * (16k² is near 1 GB) to be fetched in parts; without one, the whole file.
+  * The errors: `404`, or `416` with a `Content-Range` of the size alone for a
+  * range past the end.
+  */
+val getOutputFile: PublicEndpoint[
+  (String, String, Option[String]),
+  (StatusCode, Option[String]),
+  (StatusCode, String, Option[String], Long, FileRange),
+  Any
+] =
   generationBase.get
     .in("outputs" / path[String] / path[String])
-    .errorOut(statusCode(StatusCode.NotFound))
-    .out(byteArrayBody)
+    .in(header[Option[String]]("Range"))
+    .errorOut(statusCode.and(header[Option[String]]("Content-Range")))
+    .out(statusCode)
     .out(header[String]("Content-Type"))
+    .out(header[Option[String]]("Content-Range"))
+    .out(header("Accept-Ranges", "bytes"))
+    // explicit: without it, a range that ends before the file does leaves the
+    // client waiting for more
+    .out(header[Long]("Content-Length"))
+    .out(fileRangeBody)

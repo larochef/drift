@@ -21,8 +21,9 @@ import scala.collection.mutable
   * × 32 pixels × 8 frames) and the audio (128 per latent, 25 a second),
   * denoised together by Euler steps on the distilled checkpoint's σ list (8
   * steps) or `linspace(1, 1/N, N)` through the resolution's shift; the video
-  * latents through the conv VAE. The audio is denoised, not decoded (a silent
-  * video). The frame rate is a model input (the RoPE's time); frames round down
+  * latents through the conv VAE; the audio latents through the audio VAE and
+  * its vocoders into 48 kHz stereo, when it is given (else the video is
+  * silent). The frame rate is a model input (the RoPE's time); frames round down
   * to `8n + 1`, sides up to multiples of 32.
   */
 final class LtxPipeline(
@@ -30,12 +31,15 @@ final class LtxPipeline(
     diffusionModel: Path,
     vae: Path,
     textEncoder: Path,
-    defaultFps: Int
+    defaultFps: Int,
+    audioVae: Option[Path]
 ) extends VideoPipeline {
 
   def family: String = "LTX 2.5"
   def fps: Int = defaultFps
   def sizeMultiple: Int = 32
+  override def makesSoundtrack: Boolean = true
+  override def decodesSoundtrack: Boolean = audioDecoder.isDefined
 
   def alignedFrames(frames: Int): Int = math.max(frames - 1, 8) / 8 * 8 + 1
 
@@ -51,6 +55,7 @@ final class LtxPipeline(
   private val (connectorSource, videoConnector, audioConnector) =
     Ltx2.connectors(ops, diffusionModel)
   private val decoder = LtxVideoVae.open(ops, vae)
+  private val audioDecoder = audioVae.map(LtxAudio.open(ops, _))
   private val TextRows = 1024
   private val DistilledSigmas =
     Array(1.0f, 0.99375f, 0.9875f, 0.98125f, 0.975f, 0.909375f, 0.725f,
@@ -107,7 +112,10 @@ final class LtxPipeline(
     try {
       val (videoText, audioText) = text(request.prompt)
       held ++= Seq(videoText, audioText)
-      val guided = request.cfgScale != 1f
+      val audioCfgScale = request.audioCfgScale.getOrElse(request.cfgScale)
+      val guided = request.cfgScale != 1f || audioCfgScale != 1f
+      val (modalityScale, audioModalityScale) =
+        (request.modalityScale, request.audioModalityScale)
       val negative = Option.when(guided) {
         val (v, a) = text(request.negativePrompt)
         held ++= Seq(v, a)
@@ -141,6 +149,13 @@ final class LtxPipeline(
           keep(ops.allocate(DType.F32, audio.shape))
         )
       )
+      val isolatedOut =
+        Option.when(modalityScale != 1f || audioModalityScale != 1f)(
+          (
+            keep(ops.allocate(DType.F32, video.shape)),
+            keep(ops.allocate(DType.F32, audio.shape))
+          )
+        )
       val schedule = sigmas(request.steps, layout.videoTokens)
       val steps = schedule.length - 1
       (0 until steps).foreach { i =>
@@ -158,20 +173,69 @@ final class LtxPipeline(
         for {
           (v, a) <- negative
           (ov, oa) <- others
-        } {
-          transformer.velocity(layout, video, audio, v, a, timestep, ov, oa)
-          // v = uncond + scale × (cond − uncond)
-          Seq(ov -> videoVelocity, oa -> audioVelocity).foreach {
-            (other, velocity) =>
-              ops.scale(other, 1 - request.cfgScale, other)
-              ops.scale(velocity, request.cfgScale, velocity)
-              ops.add(velocity, other, velocity)
+        } transformer.velocity(layout, video, audio, v, a, timestep, ov, oa)
+        isolatedOut.foreach((iv, ia) =>
+          transformer.velocity(
+            layout,
+            video,
+            audio,
+            videoText,
+            audioText,
+            timestep,
+            iv,
+            ia,
+            isolated = true
+          )
+        )
+        // v = cond + (cfg − 1)(cond − uncond) + (m − 1)(cond − isolated),
+        // per stream (diffusers' LTX 2 guider, in velocities: its x0 is affine
+        // in them at one σ)
+        Seq(
+          (videoVelocity, others.map(_._1), isolatedOut.map(_._1), request.cfgScale, modalityScale),
+          (audioVelocity, others.map(_._2), isolatedOut.map(_._2), audioCfgScale, audioModalityScale)
+        ).foreach { (velocity, uncond, isolated, cfg, modality) =>
+          ops.scale(velocity, cfg + modality - 1, velocity)
+          uncond.foreach { other =>
+            ops.scale(other, 1 - cfg, other)
+            ops.add(velocity, other, velocity)
+          }
+          isolated.foreach { other =>
+            ops.scale(other, 1 - modality, other)
+            ops.add(velocity, other, velocity)
           }
         }
-        ops.scale(videoVelocity, schedule(i + 1) - schedule(i), videoVelocity)
-        ops.add(video, videoVelocity, video)
-        ops.scale(audioVelocity, schedule(i + 1) - schedule(i), audioVelocity)
-        ops.add(audio, audioVelocity, audio)
+        val (sigma, next) = (schedule(i), schedule(i + 1))
+        if (!request.ancestral || next == 0f)
+          Seq(video -> videoVelocity, audio -> audioVelocity).foreach {
+            (x, velocity) =>
+              ops.scale(velocity, next - sigma, velocity)
+              ops.add(x, velocity, x)
+          }
+        else {
+          // ComfyUI's Euler ancestral for flows (η 1): Euler down to σ↓ =
+          // σ'² / σ, rescaled to σ' and renoised
+          val down = next * next / sigma
+          val renoise = math
+            .sqrt(
+              next * next - down * down * (1 - next) * (1 - next) /
+                ((1 - down) * (1 - down))
+            )
+            .toFloat
+          Seq(video -> videoVelocity, audio -> audioVelocity).foreach {
+            (x, velocity) =>
+              ops.scale(velocity, down - sigma, velocity)
+              ops.add(x, velocity, x)
+              ops.scale(x, (1 - next) / (1 - down), x)
+              val noise = ops.fromFloats(
+                x.shape,
+                Array.fill(x.shape.elementCount.toInt)(
+                  Images.gaussian(random) * renoise
+                )
+              )
+              ops.add(x, noise, x)
+              ops.release(noise)
+          }
+        }
         progress(i + 1, steps)
       }
       val perFrame = layout.height * layout.width
@@ -189,11 +253,24 @@ final class LtxPipeline(
       println(
         f"decoded ${images.size} frames in ${(System.nanoTime() - started) / 1e9}%.1f s"
       )
-      Video(images.toSeq, rate, None)
+      val soundtrack = audioDecoder.map { audioDecoder =>
+        val started = System.nanoTime()
+        val samples = audioDecoder.decode(ops.toFloats(audio))
+        println(
+          f"decoded ${samples.length.toDouble / audioDecoder.channels / audioDecoder.sampleRate}%.2f s of sound in ${(System.nanoTime() - started) / 1e9}%.1f s"
+        )
+        Soundtrack.fitted(
+          samples,
+          audioDecoder.channels,
+          audioDecoder.sampleRate
+        )
+      }
+      Video(images.toSeq, rate, soundtrack)
     } finally held.foreach(ops.release)
   }
 
   def close(): Unit = {
+    audioDecoder.foreach(_.close())
     decoder.close()
     audioConnector.release()
     videoConnector.release()

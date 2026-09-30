@@ -1,6 +1,6 @@
 # 42 — drift runner: an inference engine for Strix Halo
 
-**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1 draws; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX silent); groom each later step before building it
+**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1 draws; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX with their soundtracks); groom each later step before building it
 **Depends on:** 06 (runtimes, TheRock), 07 (launch and supervision), 16 (parameter resolution), 17 and 18 (the chat runtime and its sessions), 41 (text projects)
 
 drift's own runner replaces sd-cpp and llama.cpp for one machine: Strix Halo
@@ -1893,8 +1893,7 @@ on the old tool.
         19.2 s rising to 23.2 s as the laptop throttles (≈ 19 TFLOPS: 285
         TFLOP of GEMMs and 78 of attention a step). Text 11.4 s → about 1 s;
         video decode 66.4 s → 41.7 s; loading 1.9 s.
-      - **Left:** the soundtrack (the audio latents are denoised, the BigVGAN
-        audio decoder is not ported: the videos are silent); keyframes
+      - **Left:** keyframes
         (`fl2va`) and references (`ref2va`); a step cache.
     - **Done 2026-09-30: Wan 2.2 A14B, text to video and I2V**
       (`text/Unigram`, `models/Umt5`, `models/Wan`, `models/WanVideoVae`,
@@ -1996,10 +1995,79 @@ on the old tool.
         files; 512 × 512, 64 frames → 57, 8 steps, 16 fps): a clean,
         coherent clip in **71 s**: steps of 5.3–8 s, decode 21.7 s, loading
         19 s.
-      - **Left:** the soundtrack (the audio latents are denoised, the audio VAE
-        and vocoder not ported), image to video and conditions, the
+      - **Left:** image to video and conditions, the
         diffusion decoder (LTX 2.5's default in diffusers), LoRAs, the
         rescaled guider.
+    - **Done 2026-09-30: the soundtracks of MiniMax H3 and LTX 2.5**
+      (`models/BigVgan`, `models/MiniMaxH3Audio`, `models/LtxAudio`), from
+      the configuration's `--audio-vae`; without it the videos stay silent
+      and the runner says so. diffusers 0.40 (`AutoencoderKLMiniMaxH3Audio`,
+      `AutoencoderKLLTX2Audio`, `LTX2VocoderWithBWE`) is the reference.
+      - **New ops:** `conv1d` (im2col then a GEMM with F32 output; BF16 or
+        F32 operands), `overlapAdd` (a transposed convolution's second half:
+        the input times the weight regrouped `[out × taps, in]`, then summed
+        into place), `antiAliasedSnake` (×2 upsampling by the stored
+        Kaiser-sinc filter, SnakeBeta, filtered back down, in one kernel).
+        `HipBlas.gemm` takes an output type apart from the inputs'.
+      - **BigVGAN**, shared: both files use the original names (H3's
+        `ups.i.0` and `activations`, LTX's `ups.i` and `acts1`/`acts2`), their
+        weight norms folded; the upsampling rates are the files' configs,
+        not tensors (H3 5, 5, 2 × 5; LTX 5, 2 × 5, its extension 6, 5, 2, 2,
+        2). F32 weights and patches: a vocoder moves its waveform by 10% for
+        a 0.2% change of its input, so it adds no rounding of its own, and
+        F32 costs nothing measurable here.
+      - **H3:** the audio rows channel-major, each channel denormalized by the
+        file's `latents_mean`/`latents_std`, `dec_in_proj`, BigVGAN ×800 to
+        32 kHz, clamped; the model is mono, so stereo is two decodes.
+      - **LTX:** the packed rows denormalized by the per-channel statistics,
+        unpacked to `[L, 16 bins, 8 channels]`; the mel decoder causal in time
+        (a zero row before, the usual 3×3 padding, upsamplers dropping their
+        first row), pixel norms, to `[4L − 3, 64, 2]`; the vocoder to 16 kHz;
+        the bandwidth extension: each channel's causal STFT (the file's basis,
+        512 taps, hop 80) and log-mel on the host, the second BigVGAN ×240,
+        plus the ×3 Hann resampler (computed, not stored), clamped: 48 kHz.
+      - **Checks.** Tiny decoders (`fixtures/tiny_diffusion.py`
+        `minimax_h3_audio`, `ltx_audio`) to 0.43% and 0.31% (`Cpu`, BF16
+        weights then), 0.52% and 0.60% (`Hip`). On the released files with
+        random latents (`gpuTest` `SoundtrackCheck` against diffusers on the
+        CPU): H3 to 0.0016% RMS; LTX's mel to 0.18%, its vocoders on the same
+        mel to 0.0016%; the whole LTX chain differs by 9% RMS, which is
+        diffusers' own spread for a 0.2% change of the mel (waveform phase).
+      - **Live.** MiniMax H3 (640 × 352, 56 frames, 20 steps, the pruned Q4_K):
+        2.3 s of 32 kHz sound decoded in 0.3 s, a clean song and guitar.
+        LTX 2.5 (512², 57 frames at 16 fps, 8 steps): 3.5 s of 48 kHz sound
+        in 0.8 s; François heard the birds and the outdoor sound of the
+        prompt, but with "robotic" parts and noise H3's lacks.
+      - **LTX's robotic sound was the prompt.** Every stage matches diffusers
+        on the released files: the text features and connectors to 0.2%
+        (`gpuTest` `LtxTextCheck`), one step of the transformer to 0.11% on
+        the audio against diffusers in F32 (`LtxStepCheck`; the video 5.9%,
+        diffusers' own BF16 run 21.6%), the decoder above. LTX 2.5 is trained
+        on single-paragraph captions of about 150–220 words that describe
+        the sound (ComfyUI's official workflow always rewrites the prompt
+        with its Gemma enhancer, `TextGenerateLTX2Prompt`). A one-line prompt
+        naming sounds in passing ("barks … birds chirping …") left the audio
+        near silence (−48 to −53 dB RMS at 16 or 24 fps; Euler ancestral −116
+        dB at 16 fps), which the vocoder turns robotic; the same scene as a
+        caption gave −18 dB and the sounds it names, which François found as
+        good as what Civitai shows for LTX 2.5. A short prompt with a quoted
+        line of speech does speak (−23 to −25 dB, the caption −15 to −17),
+        and the frame rate (16 or 24 fps) changes neither: what matters is
+        how clearly the prompt describes the sound.
+      - **No clamp: the track is fitted.** Long captions make LTX's audio
+        hotter than full scale (182 samples at the clamp in 4 s of speech),
+        and the references' per-sample clamp to [−1, 1] saturates it, which
+        François heard. `Soundtrack.fitted` scales the whole stereo track
+        down when its peak passes 0.97 (room for Vorbis' overshoot), for both
+        models; the decoders no longer clamp.
+      - **Also added while looking:** request knobs `audio_cfg_scale`,
+        `modality_scale` and `audio_modality_scale` (the modality guidance,
+        a pass with the streams isolated, as diffusers and ComfyUI) and
+        `sample_params.sample_method` `euler_a` (ComfyUI's Euler ancestral for
+        flows); drift sends none of them. The modality guidance made the
+        short prompt's sound louder but more robotic.
+      - **Left:** an LTX caption writer in the prompt library (ComfyUI's LTX
+        2.4+ system prompt), so a short idea reaches the model as a caption.
 
 **Tooling.**
 

@@ -66,7 +66,8 @@ object ImageMain {
               options.llm,
               options.t5xxl,
               options.tokenizer,
-              options.fps
+              options.fps,
+              options.audioVae
             )
           else
             ImagePipeline.open(
@@ -90,12 +91,15 @@ object ImageMain {
               println(
                 s"--guidance ${options.guidance.get} accepted and ignored: $family has no guidance embedding"
               )
-          case _: VideoPipeline =>
-            options.audioVae.foreach(file =>
-              println(
-                s"--audio-vae $file accepted: the runner does not decode $family's soundtrack yet, its videos are silent"
+          case video: VideoPipeline =>
+            if (video.makesSoundtrack && !video.decodesSoundtrack)
+              println(s"no --audio-vae: $family's videos are silent")
+            if (!video.makesSoundtrack)
+              options.audioVae.foreach(file =>
+                println(
+                  s"--audio-vae $file accepted and ignored: $family makes no soundtrack"
+                )
               )
-            )
         }
         new ImageServer(options, pipeline).start()
         println(s"listening on http://${options.host}:${options.port}")

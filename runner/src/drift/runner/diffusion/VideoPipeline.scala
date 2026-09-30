@@ -35,11 +35,49 @@ final case class VideoRequest(
     /** The frame rate, for the models that read it (LTX); the others run at
       * their own.
       */
-    fps: Option[Int] = None
+    fps: Option[Int] = None,
+    /** The audio's CFG scale, for the models with a soundtrack (LTX), else
+      * `cfgScale`.
+      */
+    audioCfgScale: Option[Float] = None,
+    /** The modality guidance's scales (LTX): above 1, each step also runs the
+      * streams isolated from each other and pushes the video (`modalityScale`)
+      * and the audio (`audioModalityScale`) away from that pass.
+      */
+    modalityScale: Float = 1f,
+    audioModalityScale: Float = 1f,
+    /** Euler ancestral (fresh noise at every step, ComfyUI's flow variant)
+      * rather than Euler, for the models that take it (LTX).
+      */
+    ancestral: Boolean = false
 )
 
 /** A soundtrack: `samples` interleaved over `channels`, in [−1, 1]. */
 final case class Soundtrack(samples: Array[Float], channels: Int, rate: Int)
+
+object Soundtrack {
+
+  /** The loudest a sample may be: a little under full scale, the room the
+    * webm's Vorbis encoding overshoots by.
+    */
+  private val Ceiling = 0.97f
+
+  /** A decoder's raw `samples` as a soundtrack: when their peak passes the
+    * ceiling, every sample scaled down by the same factor. The references
+    * clamp each sample to [−1, 1] instead, which flattens a hot track's peaks
+    * into audible saturation (LTX 2.5 on long captions: hundreds of samples at
+    * the clamp).
+    */
+  def fitted(samples: Array[Float], channels: Int, rate: Int): Soundtrack = {
+    val peak = samples.foldLeft(0f)((m, s) => math.max(m, math.abs(s)))
+    val factor = if (peak > Ceiling) Ceiling / peak else 1f
+    Soundtrack(
+      if (factor == 1f) samples else samples.map(_ * factor),
+      channels,
+      rate
+    )
+  }
+}
 
 /** A generated video: its frames at `fps`, and a soundtrack when the model
   * makes one and its audio decoder is loaded.
@@ -64,6 +102,14 @@ trait VideoPipeline extends AutoCloseable {
 
   /** Whether requests may carry an init image (the first frame). */
   def takesInitImage: Boolean = false
+
+  /** Whether the model denoises a soundtrack beside the frames. */
+  def makesSoundtrack: Boolean = false
+
+  /** Whether the soundtrack is decoded (its audio VAE loaded): the videos have
+    * sound.
+    */
+  def decodesSoundtrack: Boolean = false
 
   /** The frames a request of `frames` gets: the next count the model takes. */
   def alignedFrames(frames: Int): Int
@@ -94,7 +140,9 @@ object VideoPipeline {
     * VAE, the Qwen3-VL text encoder (`--llm`) and Qwen3's `tokenizer.json`;
     * Wan, which takes the Wan 2.1 VAE, UMT5 (`--t5xxl`) and its
     * `tokenizer.json`, and a high-noise expert for Wan 2.2 A14B; LTX 2.5, which
-    * takes its conv VAE and its Gemma 4 text encoder (`--llm`).
+    * takes its conv VAE and its Gemma 4 text encoder (`--llm`). MiniMax H3 and
+    * LTX 2.5 decode their soundtrack with an `audioVae` (LTX's with its
+    * vocoder), else their videos are silent.
     */
   def open(
       ops: Ops,
@@ -104,7 +152,8 @@ object VideoPipeline {
       textEncoderFile: Option[Path],
       t5File: Option[Path],
       tokenizer: Option[Path],
-      fps: Option[Int]
+      fps: Option[Int],
+      audioVae: Option[Path]
   ): VideoPipeline = {
     def needed(file: Option[Path], flag: String, what: String) =
       file.getOrElse(
@@ -123,7 +172,8 @@ object VideoPipeline {
             "--llm",
             "MiniMax H3's Qwen3-VL text encoder"
           ),
-          needed(tokenizer, "--tokenizer", "Qwen3's tokenizer.json")
+          needed(tokenizer, "--tokenizer", "Qwen3's tokenizer.json"),
+          audioVae
         )
       case Some(Family.Wan) =>
         new WanPipeline(
@@ -144,7 +194,8 @@ object VideoPipeline {
             "--llm",
             "LTX 2.5's Gemma 4 text encoder (with its projections)"
           ),
-          fps.getOrElse(24)
+          fps.getOrElse(24),
+          audioVae
         )
       case None =>
         throw new IllegalArgumentException(

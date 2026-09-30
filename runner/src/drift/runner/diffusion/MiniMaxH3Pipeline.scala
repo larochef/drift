@@ -18,21 +18,25 @@ import scala.collection.mutable
   * together, one forward per step (the model is guidance-distilled), each
   * modality down its own schedule (`linspace(1, 0)` through a flow shift of 12
   * for the video, 3 for the audio); the video latents decoded by the ViT VAE in
-  * its released tiling. The audio is denoised but not decoded yet (no
-  * soundtrack). A request's frames round up to the `17n + 5` the VAE decodes,
-  * its sides up to multiples of 32; the model runs at 24 fps.
+  * its released tiling; the audio latents, one stereo channel after the other,
+  * each decoded by the audio VAE (BigVGAN) into 32 kHz, when it is given (else
+  * the video is silent). A request's frames round up to the `17n + 5` the VAE
+  * decodes, its sides up to multiples of 32; the model runs at 24 fps.
   */
 final class MiniMaxH3Pipeline(
     ops: Ops,
     diffusionModel: Path,
     vae: Path,
     textEncoder: Path,
-    tokenizerFile: Path
+    tokenizerFile: Path,
+    audioVae: Option[Path]
 ) extends VideoPipeline {
 
   def family: String = "MiniMax H3"
   def fps: Int = 24
   def sizeMultiple: Int = 32
+  override def makesSoundtrack: Boolean = true
+  override def decodesSoundtrack: Boolean = audioDecoder.isDefined
 
   def alignedFrames(frames: Int): Int = {
     var aligned = math.max(frames, 5)
@@ -46,6 +50,7 @@ final class MiniMaxH3Pipeline(
   private val encoder = Qwen3.open(ops, textEncoder)
   private val transformer = MiniMaxH3.open(ops, diffusionModel)
   private val decoder = MiniMaxH3Vae.open(ops, vae)
+  private val audioDecoder = audioVae.map(MiniMaxH3Audio.open(ops, _))
   private val TextLayer = 50
   private val AudioShift = 3.0
   private val AudioLatentsPerSecond = 40
@@ -210,11 +215,36 @@ final class MiniMaxH3Pipeline(
       println(
         f"decoded ${images.size} frames in ${(System.nanoTime() - started) / 1e9}%.1f s"
       )
-      Video(images.toSeq.take(frames), fps, None)
+      Video(images.toSeq.take(frames), fps, audioDecoder.map(soundtrack(audio, _)))
     } finally held.foreach(ops.release)
   }
 
+  /** The stereo soundtrack of the audio rows (`[2L, width]`, channel-major):
+    * each channel decoded alone, interleaved.
+    */
+  private def soundtrack(audio: Tensor, audioDecoder: MiniMaxH3Audio) = {
+    val started = System.nanoTime()
+    val rows = ops.toFloats(audio)
+    val channels = MiniMaxH3Layout.AudioChannels
+    val perChannel = rows.length / channels
+    require(
+      audio.shape.dimensions.last == audioDecoder.channels,
+      s"audio rows of ${audio.shape.dimensions.last} for a decoder of ${audioDecoder.channels} channels"
+    )
+    val tracks = (0 until channels).map(c =>
+      audioDecoder.decode(rows.slice(c * perChannel, (c + 1) * perChannel))
+    )
+    val samples = Array.tabulate(tracks.head.length * channels)(i =>
+      tracks(i % channels)(i / channels)
+    )
+    println(
+      f"decoded ${tracks.head.length.toDouble / audioDecoder.sampleRate}%.2f s of sound in ${(System.nanoTime() - started) / 1e9}%.1f s"
+    )
+    Soundtrack.fitted(samples, channels, audioDecoder.sampleRate)
+  }
+
   def close(): Unit = {
+    audioDecoder.foreach(_.close())
     decoder.close()
     transformer.close()
     encoder.close()

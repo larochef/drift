@@ -21,6 +21,8 @@ final class VaeWeights(ops: Ops, source: WeightSource) {
 
   def has(name: String): Boolean = source.has(name)
 
+  def shape(name: String): Shape = source.shape(name)
+
   /** A tensor's values on the host, as floats. */
   def values(name: String): Array[Float] = {
     val tensor = source(name)
@@ -47,6 +49,10 @@ final class VaeWeights(ops: Ops, source: WeightSource) {
     }
     keep(ops.fromBytes(DType.BF16, shape, bytes))
   }
+
+  /** Floats as they are, uploaded in `shape`. */
+  def f32(shape: Shape, floats: Array[Float]): Tensor =
+    keep(ops.fromFloats(shape, floats))
 
   def floats(values: Array[Float]): Tensor =
     keep(ops.fromFloats(Shape.of(values.length), values))

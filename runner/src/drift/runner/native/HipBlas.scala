@@ -125,6 +125,20 @@ final class HipBlas(hip: HipRuntime) extends AutoCloseable {
       n: Int,
       k: Int,
       dataType: Int
+  ): Unit = gemm(a, b, c, m, n, k, dataType, dataType)
+
+  /** `gemm` with `a` and `b` of `dataType` and `c` of `outputType`: `RealF32`
+    * keeps the sums unrounded, on untuned kernels.
+    */
+  def gemm(
+      a: MemorySegment,
+      b: MemorySegment,
+      c: MemorySegment,
+      m: Int,
+      n: Int,
+      k: Int,
+      dataType: Int,
+      outputType: Int
   ): Unit = {
     val arena = Arena.ofConfined()
     try {
@@ -148,7 +162,7 @@ final class HipBlas(hip: HipRuntime) extends AutoCloseable {
           k,
           zero,
           c,
-          dataType,
+          outputType,
           n,
           Compute32F,
           GemmDefault

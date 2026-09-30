@@ -171,6 +171,55 @@ trait Ops extends AutoCloseable {
       replicate: Boolean = false
   ): Unit
 
+  /** A 1-D convolution over time, channels-last: `x` `[T, in]`, `weight` `[out,
+    * in × taps]` (a `[out][in][taps]` kernel flattened; BF16 or F32 on the
+    * GPU, its patches of the same type, the sums F32), taps
+    * `dilation` samples apart, zeros `padLeft` before and `padRight` after `x`,
+    * `bias` F32 `[out]` when given, `out` `[(T + padLeft + padRight −
+    * dilation × (taps − 1) − 1) / stride + 1, out]`.
+    */
+  def conv1d(
+      x: Tensor,
+      weight: Tensor,
+      bias: Option[Tensor],
+      taps: Int,
+      dilation: Int,
+      stride: Int,
+      padLeft: Int,
+      padRight: Int,
+      out: Tensor
+  ): Unit
+
+  /** A transposed 1-D convolution's overlap-add: `columns` `[T, out × taps]`
+    * (the input times the weight regrouped as `[out × taps, in]`), `out`
+    * `[(T − 1) × stride − 2 × pad + taps, out]` with `out[t × stride + k −
+    * pad, o] = Σ columns[t, o × taps + k] + bias[o]`.
+    */
+  def overlapAdd(
+      columns: Tensor,
+      taps: Int,
+      stride: Int,
+      pad: Int,
+      bias: Tensor,
+      out: Tensor
+  ): Unit
+
+  /** BigVGAN's anti-aliased SnakeBeta over time, channels-last (`x` and `out`
+    * `[T, C]`): each channel upsampled ×2 (a transposed convolution by
+    * `upFilter`, times 2, replicate-padded by 5 then cropped by 15 at both
+    * ends), then `u + inverseMagnitude × sin²(frequency × u)`, then filtered by
+    * `downFilter` at stride 2 (replicate-padded by 5 before, 6 after). The two
+    * filters F32 `[12]`, `frequency` and `inverseMagnitude` F32 `[C]`.
+    */
+  def antiAliasedSnake(
+      x: Tensor,
+      frequency: Tensor,
+      inverseMagnitude: Tensor,
+      upFilter: Tensor,
+      downFilter: Tensor,
+      out: Tensor
+  ): Unit
+
   /** Rotary embedding from precomputed angles, pairs of adjacent values: pair
     * `m` of every head of token `t` (values `2m`, `2m + 1`) turns by the angle
     * whose cosine and sine are `cosines[t, m]` and `sines[t, m]`; the values
@@ -817,6 +866,95 @@ object Ops {
     )
     (height, width, in, outChannels)
   }
+
+  /** `conv1d`'s `(T, in, out length, out channels)`. */
+  def checkConv1d(
+      x: Tensor,
+      weight: Tensor,
+      bias: Option[Tensor],
+      taps: Int,
+      dilation: Int,
+      stride: Int,
+      padLeft: Int,
+      padRight: Int,
+      out: Tensor
+  ): (Int, Int, Int, Int) = {
+    requireF32("conv1d", (Seq(x, out) ++ bias)*)
+    require(
+      x.shape.rank == 2 && out.shape.rank == 2,
+      s"conv1d takes [T, C], not ${x.shape}"
+    )
+    val Seq(length, in) = x.shape.dimensions.map(_.toInt)
+    val Seq(outChannels, columns) = weight.shape.dimensions.map(_.toInt)
+    require(
+      taps > 0 && dilation > 0 && stride > 0 && padLeft >= 0 && padRight >= 0,
+      s"conv1d: $taps taps, dilation $dilation, stride $stride, pads $padLeft/$padRight"
+    )
+    val span = length + padLeft + padRight - dilation * (taps - 1) - 1
+    require(span >= 0, s"conv1d: $length samples under $taps taps")
+    val outLength = span / stride + 1
+    require(
+      columns == in * taps && bias.forall(_.shape == Shape.of(outChannels)) &&
+        out.shape == Shape.of(outLength, outChannels),
+      s"conv1d: x ${x.shape}, weight ${weight.shape}, $taps taps, out ${out.shape}"
+    )
+    (length, in, outLength, outChannels)
+  }
+
+  /** `overlapAdd`'s `(T, out length, out channels)`. */
+  def checkOverlapAdd(
+      columns: Tensor,
+      taps: Int,
+      stride: Int,
+      pad: Int,
+      bias: Tensor,
+      out: Tensor
+  ): (Int, Int, Int) = {
+    requireF32("overlapAdd", columns, bias, out)
+    val Seq(length, width) = columns.shape.dimensions.map(_.toInt)
+    val outChannels = width / taps
+    val outLength = (length - 1) * stride - 2 * pad + taps
+    require(
+      width % taps == 0 && pad >= 0 && outLength > 0 &&
+        bias.shape == Shape.of(outChannels) &&
+        out.shape == Shape.of(outLength, outChannels),
+      s"overlapAdd: columns ${columns.shape}, $taps taps, stride $stride, pad $pad, out ${out.shape}"
+    )
+    (length, outLength, outChannels)
+  }
+
+  /** `antiAliasedSnake`'s `(T, C)`. */
+  def checkAntiAliasedSnake(
+      x: Tensor,
+      frequency: Tensor,
+      inverseMagnitude: Tensor,
+      upFilter: Tensor,
+      downFilter: Tensor,
+      out: Tensor
+  ): (Int, Int) = {
+    requireF32(
+      "antiAliasedSnake",
+      x,
+      frequency,
+      inverseMagnitude,
+      upFilter,
+      downFilter,
+      out
+    )
+    requireSameShape("antiAliasedSnake", x, out)
+    val Seq(length, channels) = x.shape.dimensions.map(_.toInt)
+    require(
+      frequency.shape == Shape.of(channels) &&
+        inverseMagnitude.shape == Shape.of(channels) &&
+        upFilter.shape == Shape.of(SnakeTaps) &&
+        downFilter.shape == Shape.of(SnakeTaps),
+      s"antiAliasedSnake: x ${x.shape}, filters ${upFilter.shape} and ${downFilter.shape}"
+    )
+    (length, channels)
+  }
+
+  /** The taps of BigVGAN's anti-aliasing filters. */
+  val SnakeTaps = 12
 
   /** Returns `(tokens, heads, D, pairs)`. */
   def checkRopeTable(

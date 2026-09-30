@@ -132,9 +132,10 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     distilled for 4 steps and takes no other count.
   - **MiniMax H3** makes videos from text, in a bit less time than sd-cpp
     even though sd-cpp skips about half the steps with its step cache: an
-    864 × 480 clip of 56 frames in 20 steps takes under 8 minutes. The
-    videos are **silent** for now: the soundtrack the model makes is not
-    decoded yet (the audio VAE is accepted and noted). It takes Qwen3's
+    864 × 480 clip of 56 frames in 20 steps takes under 8 minutes. With
+    the configuration's **audio VAE** the videos have their soundtrack
+    (32 kHz stereo, about a second to decode); without it they are silent.
+    It takes Qwen3's
     `tokenizer.json` as the configuration's **tokenizer** (the text encoder's
     file has none; drift downloads it with the other files), and **ffmpeg**
     installed, which encodes the webm. First and last frames and references
@@ -149,9 +150,11 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     overcooked. LoRAs, end frames and the 5B model are not supported yet.
   - **LTX 2.5** makes videos from text with the official distilled files, a
     512 × 512 clip of 57 frames in about 70 seconds. sd-cpp currently crashes
-    on these files, so the runner is the way to use them. The videos are
-    **silent** for now, and it reads `--fps` (the frame rate is part of what
-    the model sees). Image to video and LoRAs are not supported yet.
+    on these files, so the runner is the way to use them. With the
+    configuration's **audio VAE** (the official file, which holds the
+    vocoder too) the videos have their soundtrack, 48 kHz stereo, in about
+    two seconds; without it they are silent. It reads `--fps` (the frame
+    rate is part of what the model sees). Image to video and LoRAs are not supported yet.
   - **None** does masks, hires fix or VAE tiling yet; the runner says so
     when a request asks for them.
   - **Images differ from sd-cpp's** for the same seed: the runner follows

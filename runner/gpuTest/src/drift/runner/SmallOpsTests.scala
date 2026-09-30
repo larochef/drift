@@ -286,6 +286,65 @@ object SmallOpsTests extends TestSuite {
         }.toArray
       }
     }
+    test("1-D convolutions: dilated, strided, and a transposed one's overlap-add") {
+      // [T, in]; the weight [out, in × taps] scaled to keep sums near 1
+      againstCpu(
+        Seq(Shape.of(37, 16), Shape.of(300, 3)),
+        Tolerance(5e-2, 2e-2)
+      ) { (ops, shape) =>
+        val Seq(length, in) = shape.dimensions
+        def weight(out: Long, columns: Long) = {
+          val bf16 = ops.allocate(DType.BF16, Shape.of(out, columns))
+          ops.convert(
+            ops.fromFloats(
+              Shape.of(out, columns),
+              TestData.gaussian(2, (out * columns).toInt).map(_ * 0.1f)
+            ),
+            bf16
+          )
+          bf16
+        }
+        val x = input(ops, shape, 1)
+        val bias = input(ops, Shape.of(8), 3)
+        // 7 taps at dilation 3, "same"; 12 at stride 5 padded 7 before
+        val same = ops.allocate(DType.F32, Shape.of(length, 8))
+        ops.conv1d(x, weight(8, in * 7), Some(bias), 7, 3, 1, 9, 9, same)
+        val strided =
+          ops.allocate(DType.F32, Shape.of((length + 7 - 12) / 5 + 1, 8))
+        ops.conv1d(x, weight(8, in * 12), None, 12, 1, 5, 7, 0, strided)
+        // a transposed convolution of 9 taps at stride 5 into 8 channels
+        val columns = ops.allocate(DType.F32, Shape.of(length, 8 * 9))
+        ops.conv1d(x, weight(72, in), None, 1, 1, 1, 0, 0, columns)
+        val upsampled = ops.allocate(DType.F32, Shape.of(length * 5, 8))
+        ops.overlapAdd(columns, 9, 5, 2, bias, upsampled)
+        Seq(same, strided, upsampled).flatMap(ops.toFloats).toArray
+      }
+    }
+    test("BigVGAN's anti-aliased SnakeBeta") {
+      againstCpu(
+        Seq(Shape.of(1, 5), Shape.of(3, 7), Shape.of(257, 96)),
+        Tolerance(1e-4, 1e-4)
+      ) {
+        (ops, shape) =>
+          val channels = Shape.of(shape.last)
+          val out = ops.allocate(DType.F32, shape)
+          ops.antiAliasedSnake(
+            input(ops, shape, 1),
+            ops.fromFloats(
+              channels,
+              TestData.gaussian(2, shape.last.toInt).map(v => math.exp(0.3 * v).toFloat)
+            ),
+            ops.fromFloats(
+              channels,
+              TestData.gaussian(3, shape.last.toInt).map(v => math.exp(-0.3 * v).toFloat)
+            ),
+            input(ops, Shape.of(12), 4),
+            input(ops, Shape.of(12), 5),
+            out
+          )
+          ops.toFloats(out)
+      }
+    }
     test("group norm over pixels, then patches packed and columns joined") {
       againstCpu(
         Seq(Shape.of(3000, 64), Shape.of(25, 32)),

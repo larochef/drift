@@ -553,6 +553,111 @@ final class CpuOps extends Ops {
     }
   }
 
+  def conv1d(
+      x: Tensor,
+      weight: Tensor,
+      bias: Option[Tensor],
+      taps: Int,
+      dilation: Int,
+      stride: Int,
+      padLeft: Int,
+      padRight: Int,
+      out: Tensor
+  ): Unit = {
+    val (length, in, _, outChannels) = Ops.checkConv1d(
+      x,
+      weight,
+      bias,
+      taps,
+      dilation,
+      stride,
+      padLeft,
+      padRight,
+      out
+    )
+    val input = reader(x)
+    val kernel =
+      weight.dtype.decode(segment(weight), weight.shape.elementCount.toInt)
+    val biases = bias.map(reader)
+    fill(out) { index =>
+      val (t, o) = (index / outChannels, (index % outChannels).toInt)
+      var sum = biases.fold(0.0)(_(o))
+      for {
+        c <- 0 until in
+        k <- 0 until taps
+      } {
+        val s = t * stride + k * dilation - padLeft
+        if (s >= 0 && s < length)
+          sum += kernel((o * in + c) * taps + k) * input(s * in + c)
+      }
+      sum
+    }
+  }
+
+  def overlapAdd(
+      columns: Tensor,
+      taps: Int,
+      stride: Int,
+      pad: Int,
+      bias: Tensor,
+      out: Tensor
+  ): Unit = {
+    val (length, _, outChannels) =
+      Ops.checkOverlapAdd(columns, taps, stride, pad, bias, out)
+    val (input, biases) = (reader(columns), reader(bias))
+    fill(out) { index =>
+      val (p, o) = (index / outChannels, (index % outChannels).toInt)
+      var sum = biases(o)
+      (0 until taps).foreach { k =>
+        val shifted = p + pad - k
+        if (shifted >= 0 && shifted % stride == 0 && shifted / stride < length)
+          sum += input((shifted / stride) * outChannels * taps + o * taps + k)
+      }
+      sum
+    }
+  }
+
+  def antiAliasedSnake(
+      x: Tensor,
+      frequency: Tensor,
+      inverseMagnitude: Tensor,
+      upFilter: Tensor,
+      downFilter: Tensor,
+      out: Tensor
+  ): Unit = {
+    val (length, channels) = Ops.checkAntiAliasedSnake(
+      x,
+      frequency,
+      inverseMagnitude,
+      upFilter,
+      downFilter,
+      out
+    )
+    val input = reader(x)
+    val (frequencies, inverses) = (reader(frequency), reader(inverseMagnitude))
+    val (up, down) = (reader(upFilter), reader(downFilter))
+    val taps = Ops.SnakeTaps
+    def clamp(i: Long, limit: Long) = math.min(math.max(i, 0L), limit - 1)
+    // the upsampled, activated value n of channel c
+    def activated(n: Long, c: Int): Double = {
+      var u = 0.0
+      (0 until taps).foreach { k =>
+        val q = n + 15 - k
+        if (q % 2 == 0)
+          u += up(k) * input(clamp(q / 2 - 5, length) * channels + c)
+      }
+      u *= 2
+      val sine = math.sin(frequencies(c) * u)
+      u + inverses(c) * sine * sine
+    }
+    fill(out) { index =>
+      val (t, c) = (index / channels, (index % channels).toInt)
+      (0 until taps).foldLeft(0.0)((sum, j) =>
+        sum + down(j) * activated(clamp(2 * t + j - 5, 2L * length), c)
+      )
+    }
+  }
+
   def upsample2x(x: Tensor, out: Tensor): Unit = {
     val (_, width, channels) = Ops.checkUpsample2x(x, out)
     val input = reader(x)

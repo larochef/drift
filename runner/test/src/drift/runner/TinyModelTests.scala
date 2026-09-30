@@ -190,6 +190,22 @@ object TinyModelTests extends TestSuite {
         assert(error < 4e-2) // BF16 weights
       } finally ops.close()
     }
+    test("MiniMax H3's audio decoder: BigVGAN, one channel at a time") {
+      val ops = new CpuOps
+      try {
+        val error = TinyAudioCase.minimaxH3Error(ops)
+        println(f"  worst sample error: ${error * 100}%.4f%% of the largest")
+        assert(error < 2e-2) // BF16 weights
+      } finally ops.close()
+    }
+    test("LTX 2.5's audio decoder, vocoder and bandwidth extension") {
+      val ops = new CpuOps
+      try {
+        val error = TinyAudioCase.ltxError(ops)
+        println(f"  worst sample error: ${error * 100}%.4f%% of the largest")
+        assert(error < 2e-2) // BF16 weights
+      } finally ops.close()
+    }
     test("The Wan 2.1 VAE's decoder on one image") {
       val ops = new CpuOps
       try {

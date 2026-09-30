@@ -298,7 +298,9 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
   /** Velocities of one step: `video` (`[frames × h × w, channels]`) and `audio`
     * (`[audioFrames, channels]`) at `timestep` (σ × 1000), given the prompt's
     * connector rows `text` (`[L, hidden]`) and `audioText` (`[L,
-    * audioHidden]`), into `videoVelocity` and `audioVelocity`.
+    * audioHidden]`), into `videoVelocity` and `audioVelocity`. `isolated`
+    * skips the audio-to-video and video-to-audio attentions (diffusers'
+    * `isolate_modalities`): each stream alone.
     */
   def velocity(
       layout: Ltx2Layout,
@@ -308,7 +310,8 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
       audioText: Tensor,
       timestep: Float,
       videoVelocity: Tensor,
-      audioVelocity: Tensor
+      audioVelocity: Tensor,
+      isolated: Boolean = false
   ): Unit = {
     val (nv, na, nt) = (
       layout.videoTokens.toLong,
@@ -591,69 +594,76 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
           audioOutput
         )
         ops.gatedAdd(a, audioOutput, row(audioMods, 8))
-        // audio to video and video to audio, from the streams as they are now
-        val crossVideo = keep(ops.allocate(DType.F32, Shape.of(5, f)))
-        ops.add(b.cross.rows(0, 4), crossOut.view(4, f), crossVideo.rows(0, 4))
-        ops.add(
-          b.cross.rows(4, 1),
-          crossGateOut.view(1, f),
-          crossVideo.rows(4, 1)
-        )
-        val crossAudio = keep(ops.allocate(DType.F32, Shape.of(5, fa)))
-        ops.add(
-          b.audioCross.rows(0, 4),
-          audioCrossOut.view(4, fa),
-          crossAudio.rows(0, 4)
-        )
-        ops.add(
-          b.audioCross.rows(4, 1),
-          audioCrossGateOut.view(1, fa),
-          crossAudio.rows(4, 1)
-        )
-        ops.rmsNorm(x, videoOnes, Epsilon, 0f, normed)
-        ops.rmsNorm(a, audioOnes, Epsilon, 0f, normedAudio)
-        val (videoQuery, audioKey) =
-          (queriesIn.prefix(nv, f), keysIn.prefix(na, fa))
-        // a2v: (scale 0, shift 1) on both sides
-        ops.modulate(normed, row(crossVideo, 0), row(crossVideo, 1), videoQuery)
-        ops.modulate(
-          normedAudio,
-          row(crossAudio, 0),
-          row(crossAudio, 1),
-          audioKey
-        )
-        attend(
-          b.audioToVideo,
-          videoQuery,
-          audioKey,
-          c.audioHeads,
-          c.crossHead,
-          Some((crossVideoCos, crossVideoSin)),
-          Some((crossAudioCos, crossAudioSin)),
-          out
-        )
-        ops.gatedAdd(x, out, row(crossVideo, 4))
-        // v2a: (scale 2, shift 3) on both sides
-        val (audioQuery, videoKey) =
-          (queriesIn.prefix(na, fa), keysIn.prefix(nv, f))
-        ops.modulate(
-          normedAudio,
-          row(crossAudio, 2),
-          row(crossAudio, 3),
-          audioQuery
-        )
-        ops.modulate(normed, row(crossVideo, 2), row(crossVideo, 3), videoKey)
-        attend(
-          b.videoToAudio,
-          audioQuery,
-          videoKey,
-          c.audioHeads,
-          c.crossHead,
-          Some((crossAudioCos, crossAudioSin)),
-          Some((crossVideoCos, crossVideoSin)),
-          audioOutput
-        )
-        ops.gatedAdd(a, audioOutput, row(crossAudio, 4))
+        // audio to video and video to audio, from the streams as they are now;
+        // none when the modalities are isolated (the modality guidance's pass)
+        if (!isolated) {
+          val crossVideo = keep(ops.allocate(DType.F32, Shape.of(5, f)))
+          ops.add(b.cross.rows(0, 4), crossOut.view(4, f), crossVideo.rows(0, 4))
+          ops.add(
+            b.cross.rows(4, 1),
+            crossGateOut.view(1, f),
+            crossVideo.rows(4, 1)
+          )
+          val crossAudio = keep(ops.allocate(DType.F32, Shape.of(5, fa)))
+          ops.add(
+            b.audioCross.rows(0, 4),
+            audioCrossOut.view(4, fa),
+            crossAudio.rows(0, 4)
+          )
+          ops.add(
+            b.audioCross.rows(4, 1),
+            audioCrossGateOut.view(1, fa),
+            crossAudio.rows(4, 1)
+          )
+          ops.rmsNorm(x, videoOnes, Epsilon, 0f, normed)
+          ops.rmsNorm(a, audioOnes, Epsilon, 0f, normedAudio)
+          val (videoQuery, audioKey) =
+            (queriesIn.prefix(nv, f), keysIn.prefix(na, fa))
+          // a2v: (scale 0, shift 1) on both sides
+          ops.modulate(normed, row(crossVideo, 0), row(crossVideo, 1), videoQuery)
+          ops.modulate(
+            normedAudio,
+            row(crossAudio, 0),
+            row(crossAudio, 1),
+            audioKey
+          )
+          attend(
+            b.audioToVideo,
+            videoQuery,
+            audioKey,
+            c.audioHeads,
+            c.crossHead,
+            Some((crossVideoCos, crossVideoSin)),
+            Some((crossAudioCos, crossAudioSin)),
+            out
+          )
+          ops.gatedAdd(x, out, row(crossVideo, 4))
+          // v2a: (scale 2, shift 3) on both sides
+          val (audioQuery, videoKey) =
+            (queriesIn.prefix(na, fa), keysIn.prefix(nv, f))
+          ops.modulate(
+            normedAudio,
+            row(crossAudio, 2),
+            row(crossAudio, 3),
+            audioQuery
+          )
+          ops.modulate(normed, row(crossVideo, 2), row(crossVideo, 3), videoKey)
+          attend(
+            b.videoToAudio,
+            audioQuery,
+            videoKey,
+            c.audioHeads,
+            c.crossHead,
+            Some((crossAudioCos, crossAudioSin)),
+            Some((crossVideoCos, crossVideoSin)),
+            audioOutput
+          )
+          ops.gatedAdd(a, audioOutput, row(crossAudio, 4))
+          Seq(crossVideo, crossAudio).foreach { t =>
+            held -= t
+            ops.release(t)
+          }
+        }
         // MLPs
         ops.rmsNorm(x, videoOnes, Epsilon, 0f, normed)
         ops.modulate(normed, row(videoMods, 4), row(videoMods, 3), normed)
@@ -672,9 +682,7 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
           videoMods,
           audioMods,
           promptVectors,
-          audioPromptVectors,
-          crossVideo,
-          crossAudio
+          audioPromptVectors
         ).foreach { t =>
           held -= t
           ops.release(t)

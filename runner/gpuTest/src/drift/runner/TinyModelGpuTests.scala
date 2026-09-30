@@ -282,6 +282,22 @@ object TinyModelGpuTests extends TestSuite {
         assert(error < 4e-2)
       } finally ops.close()
     }
+    test("MiniMax H3's audio decoder") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val error = TinyAudioCase.minimaxH3Error(ops)
+        println(f"  worst sample error ${error * 100}%.4f%% of the largest")
+        assert(error < 4e-2) // BF16 weights and BF16 convolution inputs
+      } finally ops.close()
+    }
+    test("LTX 2.5's audio decoder, vocoder and bandwidth extension") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val error = TinyAudioCase.ltxError(ops)
+        println(f"  worst sample error ${error * 100}%.4f%% of the largest")
+        assert(error < 4e-2) // BF16 weights and BF16 convolution inputs
+      } finally ops.close()
+    }
     test("The Wan 2.1 VAE's decoder") {
       val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
       try {

@@ -1141,11 +1141,108 @@ def ltx_video_vae():
     print(f"ltx_video_vae: {len(tensors)} tensors, frames {tuple(x.shape)}")
 
 
+def randomize_snakes(module):
+    """SnakeBeta's log-scale α and β off their zeros, so exp(·) is exercised."""
+    with torch.no_grad():
+        for name, parameter in module.named_parameters():
+            if name.endswith("act.alpha") or name.endswith("act.beta"):
+                parameter.copy_(0.3 * torch.randn_like(parameter))
+
+
+def minimax_h3_audio():
+    """MiniMax H3's audio decoder (diffusers' `AutoencoderKLMiniMaxH3Audio`:
+    `dec_in_proj` then BigVGAN), shrunk to 800 → 10 samples a latent (strides
+    5 and 2, kernels 9 and 4), its weight norms folded as the released file
+    has them; two channels of 6 latents, decoded one after the other."""
+    from diffusers import AutoencoderKLMiniMaxH3Audio
+    channels = 8
+    mean, std = (0.1 * torch.randn(channels)).tolist(), (0.5 + torch.rand(channels)).tolist()
+    model = AutoencoderKLMiniMaxH3Audio(
+        encoder_dim=4, encoder_rates=(2, 5), latent_dim=16, latent_channels=channels, num_attention_heads=2,
+        decoder_dim=32, decoder_rates=(5, 2), decoder_kernel_sizes=(9, 4),
+        latents_mean=mean, latents_std=std).eval().float()
+    for module in model.modules():
+        if hasattr(module, "weight_g"):
+            torch.nn.utils.remove_weight_norm(module)
+    randomize_snakes(model.decoder)
+    with torch.no_grad():
+        model.decoder.conv_post.weight.mul_(0.3)
+    z = torch.randn(2, channels, 6)
+    with torch.no_grad():
+        latents = z * torch.tensor(std).view(1, -1, 1) + torch.tensor(mean).view(1, -1, 1)
+        waveform = model.decode(latents, return_dict=False)[0]  # [2, 1, samples]
+    tensors = {n: v for n, v in model.state_dict().items() if n.startswith(("decoder.", "dec_in_proj."))}
+    tensors["latents_mean"], tensors["latents_std"] = torch.tensor(mean), torch.tensor(std)
+    folder = out / "minimax_h3_audio"
+    folder.mkdir(parents=True, exist_ok=True)
+    save_file({n: v.detach().float().contiguous() for n, v in tensors.items()}, folder / "model.safetensors")
+    save_file({"latents": z.permute(0, 2, 1).reshape(-1, channels).contiguous(),  # channel-major rows
+               "waveform": waveform[:, 0].contiguous()}, folder / "expected.safetensors")
+    print(f"minimax_h3_audio: {len(tensors)} tensors, waveform {tuple(waveform.shape)} |max| {waveform.abs().max():.3f}")
+
+
+def ltx_audio_original_name(name):
+    """diffusers' LTX 2 vocoder names → the original ones (the official audio
+    file's `vocoder.*`)."""
+    for old, new in [(r"^vocoder\.", "vocoder.vocoder."), (r"^bwe_generator\.", "vocoder.bwe_generator."),
+                     (r"^mel_stft\.", "vocoder.mel_stft."), (r"\.conv_in\.", ".conv_pre."),
+                     (r"\.upsamplers\.", ".ups."), (r"\.resnets\.", ".resblocks."), (r"\.act_out\.", ".act_post."),
+                     (r"\.conv_out\.", ".conv_post."), (r"\.downsample\.filter$", ".downsample.lowpass.filter")]:
+        name = re.sub(old, new, name)
+    return name
+
+
+def ltx_audio():
+    """LTX 2.5's audio decoder and vocoder, shrunk: diffusers'
+    `AutoencoderKLLTX2Audio` (pixel norms, causal in time, 16 mel bins from 4
+    latent ones of 4 channels) and `LTX2VocoderWithBWE` (the vocoder ×10 by
+    strides 5 and 2; the bandwidth extension's STFT of 32 taps at a hop of 10,
+    8 mel bins, ×30 by strides 6 and 5, onto the ×3 Hann resampler), the STFT
+    basis and filter bank random (zeros at init, read from the file), under
+    the official file's names; 5 latent frames."""
+    from diffusers import AutoencoderKLLTX2Audio
+    from diffusers.pipelines.ltx2.vocoder import LTX2VocoderWithBWE
+    vae = AutoencoderKLLTX2Audio(base_channels=16, output_channels=2, ch_mult=(1, 2, 4), num_res_blocks=2,
+                                 latent_channels=4, norm_type="pixel", causality_axis="height",
+                                 mel_bins=16).eval().float()
+    vocoder = LTX2VocoderWithBWE(
+        in_channels=32, hidden_channels=32, out_channels=2, upsample_kernel_sizes=[11, 4], upsample_factors=[5, 2],
+        bwe_in_channels=16, bwe_hidden_channels=16, bwe_out_channels=2, bwe_upsample_kernel_sizes=[12, 11],
+        bwe_upsample_factors=[6, 5], filter_length=32, hop_length=10, window_length=32, num_mel_channels=8,
+        input_sampling_rate=16000, output_sampling_rate=48000).eval().float()
+    randomize_snakes(vocoder)
+    with torch.no_grad():
+        vocoder.mel_stft.stft_fn.forward_basis.copy_(0.2 * torch.randn_like(vocoder.mel_stft.stft_fn.forward_basis))
+        vocoder.mel_stft.mel_basis.copy_(torch.rand_like(vocoder.mel_stft.mel_basis))
+        vocoder.vocoder.conv_out.weight.mul_(0.3)
+        vocoder.bwe_generator.conv_out.weight.mul_(0.3)
+    width = 16  # 4 channels × 4 latent mel bins, packed
+    mean, std = 0.1 * torch.randn(width), 0.5 + torch.rand(width)
+    z = torch.randn(1, 5, width)
+    with torch.no_grad():
+        latents = (z * std + mean).unflatten(2, (-1, 4)).transpose(1, 2)  # [1, 4, L, 4]
+        mel = vae.decode(latents, return_dict=False)[0]  # [1, 2, T, 16]
+        low = vocoder.vocoder(mel)  # [1, 2, samples]
+        waveform = vocoder(mel)  # [1, 2, 3 × samples]
+    tensors = {f"audio_vae.{n}": v for n, v in vae.state_dict().items() if n.startswith("decoder.")}
+    tensors["audio_vae.per_channel_statistics.mean-of-means"] = mean
+    tensors["audio_vae.per_channel_statistics.std-of-means"] = std
+    tensors.update({ltx_audio_original_name(n): v for n, v in vocoder.state_dict().items()})
+    folder = out / "ltx_audio"
+    folder.mkdir(parents=True, exist_ok=True)
+    save_file({n: v.detach().float().contiguous() for n, v in tensors.items()}, folder / "model.safetensors")
+    save_file({"latents": z[0].contiguous(), "mel": mel[0].permute(1, 2, 0).contiguous(),
+               "low": low[0].t().contiguous(), "waveform": waveform[0].t().contiguous()},
+              folder / "expected.safetensors")
+    print(f"ltx_audio: {len(tensors)} tensors, mel {tuple(mel.shape)}, waveform {tuple(waveform.shape)} "
+          f"|max| {waveform.abs().max():.3f}")
+
+
 families = {"krea2": krea2, "wan_vae": wan_vae, "flux2": flux2, "flux2_dev": flux2_dev, "flux2_vae": flux2_vae,
             "minimax_h3": minimax_h3, "minimax_h3_vae": minimax_h3_vae, "umt5": umt5, "wan": wan,
             "wan_video_vae": wan_video_vae, "gemma4_text": gemma4_text,
             "ltx_connectors": ltx_connectors, "ltx_transformer": ltx_transformer,
-            "ltx_video_vae": ltx_video_vae,
+            "ltx_video_vae": ltx_video_vae, "minimax_h3_audio": minimax_h3_audio, "ltx_audio": ltx_audio,
             "qwen_image21": qwen_image21, "qwen_image21_vae": qwen_image21_vae}
 for family in sys.argv[1:] or families:
     families[family]()

@@ -445,6 +445,11 @@ final class ImageServer(
         .map(_.num.toFloat)
         .getOrElse(options.moeBoundary.toFloat),
       fps = field("fps").map(_.num.toInt).orElse(options.fps),
+      audioCfgScale = field("audio_cfg_scale").map(_.num.toFloat),
+      ancestral = sample.get("sample_method").exists(_.strOpt.contains("euler_a")),
+      modalityScale = field("modality_scale").map(_.num.toFloat).getOrElse(1f),
+      audioModalityScale =
+        field("audio_modality_scale").map(_.num.toFloat).getOrElse(1f),
       initImage = initImage.map { image =>
         def rounded(side: Int) =
           (side + pipeline.sizeMultiple - 1) / pipeline.sizeMultiple * pipeline.sizeMultiple

@@ -80,9 +80,9 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
 8-bit inputs as in the fork that made the format.
 
 - **Images: Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, HiDream O1 and
-  PiD.** A second runtime, **drift runner, images (gfx1151)**, runs Krea 2,
-  FLUX.2 [klein] 9B, FLUX.2 [dev], Qwen Image 2.1, HiDream O1 and PiD 1.5
-  configurations in
+  PiD; video: MiniMax H3, Wan 2.2 A14B and LTX 2.5.** A second runtime, **drift runner, images (gfx1151)**, runs Krea 2,
+  FLUX.2 [klein] 9B, FLUX.2 [dev], Qwen Image 2.1, HiDream O1, PiD 1.5,
+  MiniMax H3, Wan 2.2 14B and LTX 2.5 configurations in
   place of sd-cpp: pick
   it in the launch control. It tells them apart by the checkpoint, and reads
   the checkpoints the way sd-cpp does: bare or with ComfyUI's
@@ -130,6 +130,28 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     run: FLUX.2, FLUX.1 and Qwen Image, each with its own VAE (FLUX.1's takes
     Z-Image's or FLUX.1's `ae`, Qwen Image's the Qwen Image VAE). It is
     distilled for 4 steps and takes no other count.
+  - **MiniMax H3** makes videos from text, in a bit less time than sd-cpp
+    even though sd-cpp skips about half the steps with its step cache: an
+    864 × 480 clip of 56 frames in 20 steps takes under 8 minutes. The
+    videos are **silent** for now: the soundtrack the model makes is not
+    decoded yet (the audio VAE is accepted and noted). It takes Qwen3's
+    `tokenizer.json` as the configuration's **tokenizer** (the text encoder's
+    file has none; drift downloads it with the other files), and **ffmpeg**
+    installed, which encodes the webm. First and last frames and references
+    are not supported yet.
+  - **Wan 2.2 14B** makes videos from text, and from a first frame with the
+    I2V experts, in about half sd-cpp's time. It takes UMT5's
+    `tokenizer.json` as the configuration's **tokenizer**. Unlike sd-cpp, it
+    applies the **high-noise CFG scale**: sd-cpp ignores it whenever the
+    low-noise CFG is 1, so a configuration that looked right on sd-cpp with
+    a high-noise CFG of 3.5 was really running at 1. Step-distilled experts
+    (the "fast" finetunes) want 1 there; at 3.5 their videos come out
+    overcooked. LoRAs, end frames and the 5B model are not supported yet.
+  - **LTX 2.5** makes videos from text with the official distilled files, a
+    512 × 512 clip of 57 frames in about 70 seconds. sd-cpp currently crashes
+    on these files, so the runner is the way to use them. The videos are
+    **silent** for now, and it reads `--fps` (the frame rate is part of what
+    the model sees). Image to video and LoRAs are not supported yet.
   - **None** does masks, hires fix or VAE tiling yet; the runner says so
     when a request asks for them.
   - **Images differ from sd-cpp's** for the same seed: the runner follows

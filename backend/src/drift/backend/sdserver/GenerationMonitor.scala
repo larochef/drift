@@ -11,10 +11,9 @@ import com.github.plokhotnyuk.jsoniter_scala.core.*
 import com.typesafe.scalalogging.Logger
 import ox.sleep
 
-/** Follows a submitted job to its end: one fork per job polls the
-  * native job every second, mirrors its state into the generation, and persists
-  * the result the moment it completes — whether or not a browser is still
-  * watching.
+/** Follows a submitted job to its end: one fork per job polls the native job
+  * every second, mirrors its state into the generation, and persists the result
+  * the moment it completes — whether or not a browser is still watching.
   */
 final private[sdserver] class GenerationMonitor(
     registry: GenerationRegistry,

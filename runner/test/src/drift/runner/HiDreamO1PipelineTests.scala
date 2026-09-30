@@ -4,8 +4,8 @@ import utest.*
 
 import drift.runner.diffusion.HiDreamO1Pipeline
 
-/** HiDream O1's host-side pieces against the official `models/pipeline.py`:
-  * the distilled schedule and the `(C p1 p2)` patch layout.
+/** HiDream O1's host-side pieces against the official `models/pipeline.py`: the
+  * distilled schedule and the `(C p1 p2)` patch layout.
   */
 object HiDreamO1PipelineTests extends TestSuite {
   val tests = Tests {

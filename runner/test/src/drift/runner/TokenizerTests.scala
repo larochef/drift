@@ -5,7 +5,7 @@ import utest.*
 
 import java.nio.file.Path
 
-import drift.runner.text.{Tokenizer, TokenizerJson}
+import drift.runner.text.{Tokenizer, TokenizerJson, Unigram}
 
 /** The runner's tokenizers against HuggingFace's own (the Rust library, through
   * DJL) on the models' official `tokenizer.json`: the same ids for the corpus
@@ -85,6 +85,35 @@ object TokenizerTests extends TestSuite {
     test("Qwen 3.6") { againstReference("Qwen/Qwen3.6-35B-A3B") }
     test("Qwen 3.8 Flash Next") { againstReference("Qwen/Qwen3.8-Flash-Next") }
     test("Gemma 4") { againstReference("google/gemma-4-26b-a4b-it") }
+    test("UMT5, Unigram (Wan's text encoder)") {
+      val path = TokenizerFiles.json("google/umt5-xxl")
+      val ours = Unigram.load(path)
+      val theirs = referenceAt(path)
+      try {
+        val mismatches = texts.filter { text =>
+          !ours
+            .encode(text, addSpecial = true)
+            .sameElements(theirs.encode(text).getIds.map(_.toInt))
+        }
+        mismatches.take(40).foreach { text =>
+          println(s"  UMT5 differs on \"${text
+              .take(40)
+              .flatMap(c =>
+                if (c < ' ' || c > '~') f"\\u${c.toInt}%04x" else c.toString
+              )}\"")
+          println(
+            s"    ours:   ${ours.encode(text, addSpecial = true).take(20).mkString(" ")}"
+          )
+          println(
+            s"    theirs: ${theirs.encode(text).getIds.take(20).mkString(" ")}"
+          )
+        }
+        println(
+          s"  UMT5: ${texts.size - mismatches.size}/${texts.size} texts encode the same"
+        )
+        assert(mismatches.isEmpty)
+      } finally theirs.close()
+    }
     test("gpt-oss") { againstReference("openai/gpt-oss-20b") }
     test("Mistral Small's Tekken (FLUX.2 [dev]'s text encoder)") {
       val path = TokenizerFiles.tekkenJson

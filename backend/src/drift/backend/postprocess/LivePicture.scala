@@ -3,7 +3,7 @@ package drift.backend.postprocess
 import drift.shared.*
 
 import java.awt.image.BufferedImage
-import java.nio.file.{Files, Path, StandardCopyOption}
+import java.nio.file.*
 import javax.imageio.ImageIO
 import scala.util.control.NonFatal
 
@@ -17,8 +17,8 @@ import ox.channels.{Channel, ChannelClosed}
   *
   * Painted on a fork of its own in the job's scope, never on the job's thread:
   * a finished tile is posted to its mailbox by the file it was written to, and
-  * read, blended and encoded there, one piece of work after another, so a
-  * slow encode of a 16384² picture costs the next tile nothing. The tiles are
+  * read, blended and encoded there, one piece of work after another, so a slow
+  * encode of a 16384² picture costs the next tile nothing. The tiles are
   * painted in the order they are handed over — the job's own — with the same
   * ramps as the job's blend, so the picture is what the result would be if the
   * job ended now: the source under the tiles still to come, and the job's
@@ -27,8 +27,8 @@ import ox.channels.{Channel, ChannelClosed}
   *
   * Two copies are kept. The full-size one is only ever read on the painter, and
   * written to `fullSizeFile` when asked for, once per tile count. The screen's
-  * one (`PostProcessPicture.ScreenSide`) is brought up to date around each
-  * tile as it is painted in, so what the gallery polls costs a small encode and
+  * one (`PostProcessPicture.ScreenSide`) is brought up to date around each tile
+  * as it is painted in, so what the gallery polls costs a small encode and
   * never a pass over the full picture — at 16384² that pass took longer than a
   * tile.
   */
@@ -111,8 +111,9 @@ final private[postprocess] class LivePicture(
             attempt(
               // The screen's copy is drawn into on the painter alone, which
               // this is.
-              lock.synchronized(canvas.zip(screen)).foreach { (picture, shown) =>
-                store(current(picture), shown)
+              lock.synchronized(canvas.zip(screen)).foreach {
+                (picture, shown) =>
+                  store(current(picture), shown)
               }
             )
             close()
@@ -127,10 +128,10 @@ final private[postprocess] class LivePicture(
       // Whoever still waits is answered: nothing more is coming.
       repeatWhile {
         mailbox.tryReceiveOrClosed() match {
-          case Some(Work.FullSize(reply))    => reply.send(None); true
-          case Some(Work.Store(_, reply))    => reply.send(()); true
-          case Some(Work.Paint(_, _))        => true
-          case None | (_: ChannelClosed)     => false
+          case Some(Work.FullSize(reply)) => reply.send(None); true
+          case Some(Work.Store(_, reply)) => reply.send(()); true
+          case Some(Work.Paint(_, _))     => true
+          case None | (_: ChannelClosed)  => false
         }
       }
     }
@@ -170,8 +171,8 @@ final private[postprocess] class LivePicture(
 
   /** The file holding the picture as it stands at full size, written on the
     * painter — after the tiles already handed over, and before the next — or
-    * found there already when no tile has landed since. Blocks until then.
-    * None before the base is ready, or once closed.
+    * found there already when no tile has landed since. Blocks until then. None
+    * before the base is ready, or once closed.
     */
   def fullSize(): Option[Path] = {
     val reply = Channel.buffered[Option[Path]](1)
@@ -298,8 +299,8 @@ final private[postprocess] class LivePicture(
     }
   }
 
-  /** On the painter: `fullSizeFile`, written unless it already holds the
-    * tiles painted so far.
+  /** On the painter: `fullSizeFile`, written unless it already holds the tiles
+    * painted so far.
     */
   private def writeFullSize(): Option[Path] = {
     val (picture, version) = lock.synchronized((canvas, painted))

@@ -69,6 +69,52 @@ final class VaeWeights(ops: Ops, source: WeightSource) {
     Convolution(bf16(Shape.of(out, in * 9L), spatial), floats(s"$prefix.bias"))
   }
 
+  /** A causal 3×3×3 convolution as its three temporal slices (the oldest
+    * frame's first), each a 3×3 one; the bias rides on the newest. Output row
+    * `r` is the stored row `rows(r)`.
+    */
+  def conv3x3x3(
+      prefix: String,
+      rows: Int => Int = identity
+  ): Seq[Convolution] = {
+    val dimensions = source(s"$prefix.weight").shape.dimensions.map(_.toInt)
+    val (out, in, depth) = (dimensions(0), dimensions(1), dimensions(2))
+    val all = values(s"$prefix.weight")
+    val storedBias = values(s"$prefix.bias")
+    val bias = floats(Array.tabulate(out)(r => storedBias(rows(r))))
+    val zero = floats(new Array[Float](out))
+    (0 until depth).map { t =>
+      val slice = Array.tabulate(out * in * 9) { i =>
+        val (oi, k) = (i / 9, i % 9)
+        all((rows(oi / in) * in + oi % in) * depth * 9 + t * 9 + k)
+      }
+      Convolution(
+        bf16(Shape.of(out, in * 9L), slice),
+        if (t == depth - 1) bias else zero
+      )
+    }
+  }
+
+  /** A causal temporal convolution (`[out, in, 3, 1, 1]`) as its three 1×1
+    * slices, the oldest frame's first; the bias rides on the newest.
+    */
+  def conv3x1x1(prefix: String): Seq[Convolution] = {
+    val dimensions = source(s"$prefix.weight").shape.dimensions.map(_.toInt)
+    val (out, in, depth) = (dimensions(0), dimensions(1), dimensions(2))
+    val all = values(s"$prefix.weight")
+    val bias = floats(s"$prefix.bias")
+    val zero = floats(new Array[Float](out))
+    (0 until depth).map { t =>
+      Convolution(
+        bf16(
+          Shape.of(out, in),
+          Array.tabulate(out * in)(i => all(i * depth + t))
+        ),
+        if (t == depth - 1) bias else zero
+      )
+    }
+  }
+
   /** A 1×1 convolution (a linear) and its bias. */
   def conv1x1(prefix: String): Convolution = {
     val dimensions = source(s"$prefix.weight").shape.dimensions

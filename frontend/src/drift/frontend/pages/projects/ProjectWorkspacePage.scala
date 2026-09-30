@@ -2,11 +2,7 @@ package drift.frontend.pages.projects
 
 import drift.frontend.Page
 import drift.frontend.components.*
-import drift.frontend.pages.assistant.{
-  AssistantPanel,
-  AssistantSessionFacts,
-  AssistantTurns
-}
+import drift.frontend.pages.assistant.*
 import drift.frontend.pages.gallery.GenerationDetailHost
 import drift.frontend.pages.generate.GenerationPanel
 import drift.frontend.services.*

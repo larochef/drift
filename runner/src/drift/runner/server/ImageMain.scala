@@ -1,6 +1,6 @@
 package drift.runner.server
 
-import drift.runner.diffusion.ImagePipeline
+import drift.runner.diffusion.{ImagePipeline, VideoPipeline}
 import drift.runner.native.HipRuntime
 import drift.runner.ops.{HipOps, MatVecInputs}
 
@@ -26,7 +26,10 @@ object ImageMain {
       "pid-flux2",
       "pid-flux1",
       "pid-qwen-image",
-      "hidream-o1"
+      "hidream-o1",
+      "minimax-h3",
+      "wan-2.2-14b",
+      "ltx-2.5"
     )
 
   def main(arguments: Array[String]): Unit = {
@@ -35,9 +38,10 @@ object ImageMain {
       RunnerIdentity.modelKinds(ModelKinds)
     if (arguments.contains("--help") || arguments.contains("-h")) {
       println(
-        s"$Version: sd-server's native API on drift's own engine (Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, PiD, HiDream O1)\n" +
+        s"$Version: sd-server's native API on drift's own engine (Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, PiD, HiDream O1; MiniMax H3, Wan 2.2 A14B and LTX 2.5 video)\n" +
           "  --diffusion-model FILE  --vae FILE  --llm FILE  (or --model FILE, one file)  --tokenizer FILE  --listen-ip HOST  --listen-port PORT\n" +
-          "  -W WIDTH  -H HEIGHT  --steps N  --cfg-scale S  --guidance G  --flow-shift MU  -s SEED"
+          "  -W WIDTH  -H HEIGHT  --steps N  --cfg-scale S  --guidance G  --flow-shift MU  -s SEED  --video-frames N  --audio-vae FILE\n" +
+          "  --high-noise-diffusion-model FILE  --t5xxl FILE  --high-noise-steps N  --high-noise-cfg-scale S  --moe-boundary B  --fps N"
       )
       sys.exit(0)
     }
@@ -52,21 +56,47 @@ object ImageMain {
         println(s"device: ${hip.deviceName} (${hip.rocmRoot})")
         val ops = new HipOps(hip, MatVecInputs.Float)
         val started = System.nanoTime()
-        val pipeline = ImagePipeline.open(
-          ops,
-          options.diffusionModel,
-          options.vae,
-          options.llm,
-          options.tokenizer,
-          options.llmVision
-        )
+        val pipeline: ImagePipeline | VideoPipeline =
+          if (VideoPipeline.holds(ops, options.diffusionModel))
+            VideoPipeline.open(
+              ops,
+              options.diffusionModel,
+              options.highNoiseModel,
+              options.vae,
+              options.llm,
+              options.t5xxl,
+              options.tokenizer,
+              options.fps
+            )
+          else
+            ImagePipeline.open(
+              ops,
+              options.diffusionModel,
+              options.vae,
+              options.llm,
+              options.tokenizer,
+              options.llmVision
+            )
+        val family = pipeline match {
+          case image: ImagePipeline => image.family
+          case video: VideoPipeline => video.family
+        }
         println(
-          f"${pipeline.family} loaded in ${(System.nanoTime() - started) / 1e9}%.1f s"
+          f"$family loaded in ${(System.nanoTime() - started) / 1e9}%.1f s"
         )
-        if (options.guidance.isDefined && !pipeline.takesGuidance)
-          println(
-            s"--guidance ${options.guidance.get} accepted and ignored: ${pipeline.family} has no guidance embedding"
-          )
+        pipeline match {
+          case image: ImagePipeline =>
+            if (options.guidance.isDefined && !image.takesGuidance)
+              println(
+                s"--guidance ${options.guidance.get} accepted and ignored: $family has no guidance embedding"
+              )
+          case _: VideoPipeline =>
+            options.audioVae.foreach(file =>
+              println(
+                s"--audio-vae $file accepted: the runner does not decode $family's soundtrack yet, its videos are silent"
+              )
+            )
+        }
         new ImageServer(options, pipeline).start()
         println(s"listening on http://${options.host}:${options.port}")
     }

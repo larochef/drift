@@ -36,9 +36,13 @@ object GenerationImportsTests extends TestSuite {
       assert(GenerationHistory.isGenerationId(imported.id))
       assert(output.fileName == s"${imported.id}-0.jpeg")
       assert(output.mimeType == "image/jpeg")
-      assert(Files.isRegularFile(root.resolve(output.date).resolve(output.fileName)))
+      assert(
+        Files.isRegularFile(root.resolve(output.date).resolve(output.fileName))
+      )
       val sidecar = readFromArray[Generation](
-        Files.readAllBytes(root.resolve(output.date).resolve(s"${imported.id}.json"))
+        Files.readAllBytes(
+          root.resolve(output.date).resolve(s"${imported.id}.json")
+        )
       )
       assert(sidecar == imported)
       assert(sidecar.importedFileName.contains("holiday.jpg"))
@@ -46,7 +50,9 @@ object GenerationImportsTests extends TestSuite {
     test("the format comes from the bytes, not the name or the mime type") {
       val root = Files.createTempDirectory("drift-imports")
       val imported = GenerationImports(root)
-        .importImage(ImageImport("mislabelled.jpg", dataUrl("png", "image/jpeg")))
+        .importImage(
+          ImageImport("mislabelled.jpg", dataUrl("png", "image/jpeg"))
+        )
         .toOption
         .get
       assert(imported.outputs.head.format == "png")

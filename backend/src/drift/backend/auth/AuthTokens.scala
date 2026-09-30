@@ -1,7 +1,7 @@
 package drift.backend.auth
 
 import drift.backend.storage.StorageService
-import drift.shared.{AuthProvider, AuthToken, AuthTokenSelection}
+import drift.shared.*
 
 /** Resolves the token the download paths should send, live per request — a
   * token saved in Settings works without a server restart, which is the whole

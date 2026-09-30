@@ -3,7 +3,7 @@ package drift.backend.postprocess
 import drift.shared.*
 
 import java.awt.image.BufferedImage
-import java.nio.file.{Files, Path, StandardCopyOption}
+import java.nio.file.*
 import javax.imageio.ImageIO
 import scala.jdk.CollectionConverters.*
 import scala.util.Using
@@ -61,8 +61,8 @@ final private[postprocess] class JobFiles(
   private def scaledPictureOf(id: String, side: Int): Path =
     logsRoot.resolve(s"postprocess-$id-picture-$side.png")
 
-  /** Where a running job's picture is written at full size when it is asked
-    * for (`LivePicture.fullSize`).
+  /** Where a running job's picture is written at full size when it is asked for
+    * (`LivePicture.fullSize`).
     */
   def livePictureFileOf(id: String): Path =
     logsRoot.resolve(s"postprocess-$id-picture-live.png")

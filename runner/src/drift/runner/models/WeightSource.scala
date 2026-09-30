@@ -2,7 +2,7 @@ package drift.runner.models
 
 import drift.runner.formats.*
 import drift.runner.ops.Ops
-import drift.runner.tensor.{DType, MappedFile, Shape, Tensor}
+import drift.runner.tensor.*
 
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout.JAVA_BYTE
@@ -108,7 +108,9 @@ object WeightSource {
         .map(ModelConfig.read)
       // by the stored name, which a tensor keeps
       val placed =
-        stored.values.map((tensor, mapped, scale) => tensor.name -> (mapped, scale)).toMap
+        stored.values
+          .map((tensor, mapped, scale) => tensor.name -> (mapped, scale))
+          .toMap
       val dequantized = mutable.Map.empty[String, Tensor]
       new WeightSource(
         stored.view.mapValues(_._1).toMap,

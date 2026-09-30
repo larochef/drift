@@ -133,11 +133,13 @@ final private[postprocess] class PostProcessJobs(
     Option(pictures.get(id))
       .flatMap(live =>
         side.fold(
-          live.fullSize().flatMap(file =>
-            // Gone if the job ended since.
-            try Some(Files.readAllBytes(file))
-            catch { case NonFatal(_) => None }
-          )
+          live
+            .fullSize()
+            .flatMap(file =>
+              // Gone if the job ended since.
+              try Some(Files.readAllBytes(file))
+              catch { case NonFatal(_) => None }
+            )
         )(live.forScreen)
       )
       .orElse(files.storedPicture(id, side))
@@ -516,19 +518,21 @@ final private[postprocess] class PostProcessJobs(
     // and the lines pass through the job's log on the way, which is what puts
     // a bar on screen while sd-cli draws it.
     val error = AtomicReference(Option.empty[String])
-    try supervised {
-      val drained = fork(
-        ProcessOutput.drain(s"postprocess-${job.id}", process, logFile) {
-          line =>
-            noteLine(job, line)
-            // sd-cpp pads its level names: "[ERROR  ]". Only this run's lines
-            // are looked at, since a job's log may already hold earlier ones.
-            if (line.contains("[ERROR"))
-              error.compareAndSet(None, Some(LogProgress.clean(line))).discard
-        }
-      )
-      judge(process, error, drained)
-    } finally Option(cancellations.get(job.id)).foreach(_.process.set(None))
+    try
+      supervised {
+        val drained = fork(
+          ProcessOutput.drain(s"postprocess-${job.id}", process, logFile) {
+            line =>
+              noteLine(job, line)
+              // sd-cpp pads its level names: "[ERROR  ]". Only this run's lines
+              // are looked at, since a job's log may already hold earlier ones.
+              if (line.contains("[ERROR"))
+                error.compareAndSet(None, Some(LogProgress.clean(line))).discard
+          }
+        )
+        judge(process, error, drained)
+      }
+    finally Option(cancellations.get(job.id)).foreach(_.process.set(None))
   }
 
   /** How a finished `sd-cli` run is judged: the exit code alone proves nothing

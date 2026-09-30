@@ -4,9 +4,9 @@ import drift.shared.*
 
 import java.awt.image.BufferedImage
 
-/** What becomes of the picture a tiled job paints before it is written: kept
-  * as painted, or — a partial redraw or edit — pasted back into the source it
-  * was cut from. Known by what it is rather than as a function, so the picture
+/** What becomes of the picture a tiled job paints before it is written: kept as
+  * painted, or — a partial redraw or edit — pasted back into the source it was
+  * cut from. Known by what it is rather than as a function, so the picture
   * shown while the job runs (`LivePicture`) can be finished one tile at a time.
   */
 sealed private[postprocess] trait PictureFinish {
@@ -22,8 +22,8 @@ sealed private[postprocess] trait PictureFinish {
   /** Where `part` of the painted picture lands in the result. */
   def placed(part: ImageRegion): ImageRegion
 
-  /** The result's pixels over `part` of it, row by row — `part` in the
-    * result's own pixels.
+  /** The result's pixels over `part` of it, row by row — `part` in the result's
+    * own pixels.
     */
   def pixels(painted: BufferedImage, part: ImageRegion): Array[Int]
 }

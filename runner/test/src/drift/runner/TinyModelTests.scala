@@ -105,6 +105,91 @@ object TinyModelTests extends TestSuite {
         assert(error < 2e-3) // the F16 key-value cache of the main attention
       } finally ops.close()
     }
+    test("MiniMax H3's packed t2va layout") {
+      val error = TinyMiniMaxH3Case.layoutError()
+      assert(error < 1e-5) // the fixture's positions are F32
+
+    }
+    test("MiniMax H3's transformer: the text refined, then one velocity") {
+      val ops = new CpuOps
+      try {
+        val error = TinyMiniMaxH3Case.velocityError(ops)
+        println(f"  worst velocity error: ${error * 100}%.4f%% of the largest")
+        assert(error < 2e-3) // the F16 key-value cache of the attention
+      } finally ops.close()
+    }
+    test("MiniMax H3's video VAE: two chunks of four tiles") {
+      val ops = new CpuOps
+      try {
+        val error = TinyMiniMaxH3Case.framesError(ops)
+        println(f"  worst pixel error: $error%.5f")
+        assert(error < 2e-3)
+      } finally ops.close()
+    }
+    test("UMT5's encoder (Wan's text encoder)") {
+      val ops = new CpuOps
+      try {
+        val error = TinyWanCase.umt5Error(ops)
+        println(
+          f"  worst hidden-state error: ${error * 100}%.4f%% of the largest"
+        )
+        assert(error < 1e-4)
+      } finally ops.close()
+    }
+    test(
+      "Wan's I2V transformer: the text's keys and values, then one velocity"
+    ) {
+      val ops = new CpuOps
+      try {
+        val error = TinyWanCase.velocityError(ops)
+        println(f"  worst velocity error: ${error * 100}%.4f%% of the largest")
+        assert(error < 2e-3) // the F16 key-value caches
+      } finally ops.close()
+    }
+    test("The Wan 2.1 VAE on video: causal streams both ways") {
+      val ops = new CpuOps
+      try {
+        val (encoded, decoded) = TinyWanCase.videoVaeErrors(ops)
+        println(
+          f"  worst latent error ${encoded * 100}%.4f%%, frame error ${decoded * 100}%.4f%% of the largest"
+        )
+        assert(encoded < 4e-2 && decoded < 4e-2) // BF16 weights, as for images
+      } finally ops.close()
+    }
+    test("Gemma 4's text model (LTX 2.5's text encoder): every hidden state") {
+      val ops = new CpuOps
+      try {
+        val error = TinyLtxCase.gemmaError(ops)
+        println(
+          f"  worst hidden-state error: ${error * 100}%.4f%% of the largest"
+        )
+        assert(error < 1e-4)
+      } finally ops.close()
+    }
+    test("LTX 2.5's text features and connectors") {
+      val ops = new CpuOps
+      try {
+        val error = TinyLtxCase.connectorsError(ops)
+        println(f"  worst connector error: ${error * 100}%.4f%% of the largest")
+        assert(error < 2e-3) // the F16 key-value cache
+      } finally ops.close()
+    }
+    test("LTX 2.5's joint audio and video transformer: one step") {
+      val ops = new CpuOps
+      try {
+        val error = TinyLtxCase.transformerError(ops)
+        println(f"  worst velocity error: ${error * 100}%.4f%% of the largest")
+        assert(error < 2e-3) // the F16 key-value caches
+      } finally ops.close()
+    }
+    test("LTX 2.5's conv VAE decoder: residuals and depth-to-space") {
+      val ops = new CpuOps
+      try {
+        val error = TinyLtxCase.vaeError(ops)
+        println(f"  worst frame error: ${error * 100}%.4f%% of the largest")
+        assert(error < 4e-2) // BF16 weights
+      } finally ops.close()
+    }
     test("The Wan 2.1 VAE's decoder on one image") {
       val ops = new CpuOps
       try {

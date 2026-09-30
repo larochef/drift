@@ -69,7 +69,8 @@ final class HiDreamO1Pipeline(ops: Ops, modelFile: Path, tokenizerFile: Path)
       extends AutoCloseable {
     private val ids = tokens(text)
     val start: Int = ids.length - 1
-    val sequence: Sequence = model.newSequence(ids.length, gridHeight, gridWidth)
+    val sequence: Sequence =
+      model.newSequence(ids.length, gridHeight, gridWidth)
     try model.prefill(ids.init, sequence)
     catch {
       case error: Throwable =>
@@ -88,7 +89,8 @@ final class HiDreamO1Pipeline(ops: Ops, modelFile: Path, tokenizerFile: Path)
       request.width % patch == 0 && request.height % patch == 0,
       s"${request.width} × ${request.height}: HiDream O1 takes multiples of $patch"
     )
-    val (gridHeight, gridWidth) = (request.height / patch, request.width / patch)
+    val (gridHeight, gridWidth) =
+      (request.height / patch, request.width / patch)
     val count = gridHeight * gridWidth
     val values = count * model.patchValues
     val guided = request.cfgScale > 1f
@@ -130,7 +132,13 @@ final class HiDreamO1Pipeline(ops: Ops, modelFile: Path, tokenizerFile: Path)
       val steps = request.steps - first
       (first until request.steps).foreach { i =>
         val (sigma, next) = (sigmas(i), sigmas(i + 1))
-        model.predict(z, 1 - sigma, conditional.start, conditional.sequence, clean)
+        model.predict(
+          z,
+          1 - sigma,
+          conditional.start,
+          conditional.sequence,
+          clean
+        )
         for {
           prompt <- unconditional
           x <- other
@@ -150,7 +158,8 @@ final class HiDreamO1Pipeline(ops: Ops, modelFile: Path, tokenizerFile: Path)
         } else {
           ops.scale(clean, 1 - next, z)
           if (next > 0) {
-            val noise = ops.fromFloats(shape, clippedNoise(random, values, next))
+            val noise =
+              ops.fromFloats(shape, clippedNoise(random, values, next))
             try ops.add(z, noise, z)
             finally ops.release(noise)
           }
@@ -177,9 +186,9 @@ final class HiDreamO1Pipeline(ops: Ops, modelFile: Path, tokenizerFile: Path)
 object HiDreamO1Pipeline {
 
   /** The Dev checkpoint's 28 timesteps (`DEFAULT_TIMESTEPS`), σ × 1000. */
-  val DistilledTimesteps: IndexedSeq[Int] = IndexedSeq(999, 987, 974, 960, 945,
-    929, 913, 895, 877, 857, 836, 814, 790, 764, 737, 707, 675, 640, 602, 560,
-    515, 464, 409, 347, 278, 199, 110, 8)
+  val DistilledTimesteps: IndexedSeq[Int] =
+    IndexedSeq(999, 987, 974, 960, 945, 929, 913, 895, 877, 857, 836, 814, 790,
+      764, 737, 707, 675, 640, 602, 560, 515, 464, 409, 347, 278, 199, 110, 8)
 
   /** The starting noise's deviation and the flash scheduler's (the official
     * `noise_scale_start` and `_end`), unguided.
@@ -236,8 +245,8 @@ object HiDreamO1Pipeline {
     noise
   }
 
-  /** Channels-last pixels (`[H, W, 3]`) as patches, each channel-major: row
-    * `l` holds patch `l`'s `(C p1 p2)` values.
+  /** Channels-last pixels (`[H, W, 3]`) as patches, each channel-major: row `l`
+    * holds patch `l`'s `(C p1 p2)` values.
     */
   def patches(pixels: Array[Float], width: Int, height: Int): Array[Float] =
     reorder(pixels, width, height, toPatches = true)

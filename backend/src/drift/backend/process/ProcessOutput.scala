@@ -27,9 +27,9 @@ import com.typesafe.scalalogging.Logger
 object ProcessOutput {
   private val logger = Logger("drift.backend.process.ProcessOutput")
 
-  /** Starts draining in a fork of `background` named `name`: every line (or
-    * bar redraw) goes to `onLine`, and `onDone` runs once the stream has
-    * ended, whatever the reason.
+  /** Starts draining in a fork of `background` named `name`: every line (or bar
+    * redraw) goes to `onLine`, and `onDone` runs once the stream has ended,
+    * whatever the reason.
     */
   def capture(
       name: String,
@@ -48,41 +48,41 @@ object ProcessOutput {
   def drain(name: String, process: Process, logFile: Path)(
       onLine: String => Unit
   ): Unit = {
-        val reader =
-          InputStreamReader(process.getInputStream, StandardCharsets.UTF_8)
-        try {
-          val writer = Files.newBufferedWriter(
-            logFile,
-            StandardCharsets.UTF_8,
-            StandardOpenOption.CREATE,
-            StandardOpenOption.APPEND
-          )
-          try {
-            val chunk = new Array[Char](4096)
-            val pending = StringBuilder()
-            var read = reader.read(chunk)
-            while (read != -1) {
-              // Mirrored verbatim, carriage returns and escapes included, so
-              // the file reads exactly as the terminal would have shown it.
-              writer.write(chunk, 0, read)
-              writer.flush()
-              var index = 0
-              while (index < read) {
-                chunk(index) match {
-                  case '\n' | '\r' =>
-                    onLine(pending.toString)
-                    pending.clear()
-                  case character => pending.append(character)
-                }
-                index += 1
-              }
-              read = reader.read(chunk)
+    val reader =
+      InputStreamReader(process.getInputStream, StandardCharsets.UTF_8)
+    try {
+      val writer = Files.newBufferedWriter(
+        logFile,
+        StandardCharsets.UTF_8,
+        StandardOpenOption.CREATE,
+        StandardOpenOption.APPEND
+      )
+      try {
+        val chunk = new Array[Char](4096)
+        val pending = StringBuilder()
+        var read = reader.read(chunk)
+        while (read != -1) {
+          // Mirrored verbatim, carriage returns and escapes included, so
+          // the file reads exactly as the terminal would have shown it.
+          writer.write(chunk, 0, read)
+          writer.flush()
+          var index = 0
+          while (index < read) {
+            chunk(index) match {
+              case '\n' | '\r' =>
+                onLine(pending.toString)
+                pending.clear()
+              case character => pending.append(character)
             }
-            onLine(pending.toString)
-          } finally writer.close()
-        } catch {
-          case NonFatal(err) =>
-            logger.warn(s"$name: reading the output stopped: ${err.getMessage}")
-        } finally reader.close()
+            index += 1
+          }
+          read = reader.read(chunk)
+        }
+        onLine(pending.toString)
+      } finally writer.close()
+    } catch {
+      case NonFatal(err) =>
+        logger.warn(s"$name: reading the output stopped: ${err.getMessage}")
+    } finally reader.close()
   }
 }

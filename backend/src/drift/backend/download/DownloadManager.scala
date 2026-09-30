@@ -1,9 +1,9 @@
 package drift.backend.download
 
+import drift.backend.{Background, WorkQueue}
 import drift.backend.cache.{CacheEntry, ModelCache}
 import drift.backend.routes.CivitaiClient
 import drift.backend.storage.StorageService
-import drift.backend.{Background, WorkQueue}
 import drift.shared.*
 
 import java.net.URI

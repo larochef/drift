@@ -1,9 +1,9 @@
 package drift.backend.upscale
 
+import drift.backend.{Background, WorkQueue}
 import drift.backend.download.{DownloadOutcome, Downloader}
 import drift.backend.routes.CivitaiClient
 import drift.backend.storage.StorageService
-import drift.backend.{Background, WorkQueue}
 import drift.shared.*
 
 import java.net.URI
@@ -276,7 +276,7 @@ final class UpscalerManager(
                   error = Some(Option(err.getMessage).getOrElse(err.toString))
                 )
             }
-}
+        }
     }
   }
 

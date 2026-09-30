@@ -144,9 +144,9 @@ val uploadAssistantAttachment: PublicEndpoint[
     .errorOut(stringBody)
     .out(jsonBody[UploadedAttachment])
 
-/** A finished reply's Markdown as HTML (`specs/20`): the body is the reply,
-  * the answer what the backend's commonmark rendered and jsoup cleaned — the
-  * model cards' pipeline, so the page never renders Markdown itself.
+/** A finished reply's Markdown as HTML (`specs/20`): the body is the reply, the
+  * answer what the backend's commonmark rendered and jsoup cleaned — the model
+  * cards' pipeline, so the page never renders Markdown itself.
   */
 val renderAssistantMarkdown: PublicEndpoint[String, Unit, String, Any] =
   assistantBase.post

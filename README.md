@@ -17,6 +17,10 @@ file in [`specs/`](specs/README.md).
 - [Mill](https://mill-build.org) — the version is pinned in `.mill-version`; the
   `./mill` wrapper fetches it
 - Node.js and npm, for the frontend build
+- [FFmpeg](https://ffmpeg.org), on the `PATH`, for video models on the drift
+  runner (MiniMax H3, Wan 2.2, LTX 2.5): it encodes their frames into the webm
+  drift saves. Images, and videos made by sd-cpp, don't need it; without it, a
+  video job on the runner fails with a message saying so
 
 ## Quick start
 
@@ -75,7 +79,18 @@ build.mill   Mill build definition
 - **Vite** — frontend dev server and bundler
 - **commonmark** and **jsoup** — rendering model cards from the browsers
 
+## Models and your responsibility
+
+drift doesn't own, make or distribute any model. It downloads weights on your
+behalf from the places you point it to (HuggingFace, ModelScope, Civitai) or
+reads the files you already have. Each model comes with its own licence and
+terms of use, set by its authors. Before downloading or using a model, make sure
+you comply with its licence and use it only in the ways its terms allow; that
+responsibility is yours, and so is what you generate with it.
+
 ## Licence
 
-Copyright 2026 François Laroche. Licensed under the
-[Apache License, Version 2.0](LICENSE).
+Copyright 2026 François Laroche. drift's own code is licensed under the
+[Apache License, Version 2.0](LICENSE). That licence covers drift only, not the
+models it runs or the tools it installs (stable-diffusion.cpp, llama.cpp,
+FFmpeg), which keep their own.

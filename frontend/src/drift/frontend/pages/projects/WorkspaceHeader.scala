@@ -2,11 +2,7 @@ package drift.frontend.pages.projects
 
 import drift.frontend.Page
 import drift.frontend.components.Component
-import drift.frontend.services.{
-  LaunchPrerequisites,
-  ProjectService,
-  SessionService
-}
+import drift.frontend.services.*
 import drift.frontend.services.ProjectService.Command
 import drift.shared.*
 

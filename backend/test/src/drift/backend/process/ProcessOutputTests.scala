@@ -10,8 +10,8 @@ import ox.channels.Channel
 import utest.*
 
 /** A child process's output (`ProcessOutput`): mirrored verbatim to its log,
-  * handed over line by line — sd-cpp's bar redraws, ended by a carriage
-  * return, included — and done once the stream ends.
+  * handed over line by line — sd-cpp's bar redraws, ended by a carriage return,
+  * included — and done once the stream ends.
   */
 object ProcessOutputTests extends TestSuite {
 

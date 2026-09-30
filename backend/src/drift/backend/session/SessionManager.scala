@@ -46,8 +46,7 @@ final class SessionManager(
       * launch (`specs/10-generation-time-upscaling.md`).
       */
     upscaleRoot: Path,
-    /** Where each session is watched, its output drained and its server
-      * reaped.
+    /** Where each session is watched, its output drained and its server reaped.
       */
     background: Background
 ) {
@@ -425,11 +424,11 @@ final class SessionManager(
 
   // -------------------------------------------------------------- supervision
 
-  /** One fork per session: flips `starting` to `ready` when the server
-    * answers on its port, and reaps a died process into `failed` with the log
-    * tail attached — whichever state it was in — rather than leaving it
-    * apparently live. Readiness is an HTTP probe — `/sdcpp/v1/capabilities` for
-    * sd-server, `/health` for llama-server — never a parse of the log
+  /** One fork per session: flips `starting` to `ready` when the server answers
+    * on its port, and reaps a died process into `failed` with the log tail
+    * attached — whichever state it was in — rather than leaving it apparently
+    * live. Readiness is an HTTP probe — `/sdcpp/v1/capabilities` for sd-server,
+    * `/health` for llama-server — never a parse of the log
     * (`specs/13-log-streaming.md`).
     */
   private def monitor(
@@ -461,8 +460,7 @@ final class SessionManager(
     while (true) {
       if (!process.isAlive) {
         if (entry.stopRequested.get())
-          entry.session =
-            entry.session.copy(status = SessionStatus.Stopped)
+          entry.session = entry.session.copy(status = SessionStatus.Stopped)
         else {
           val tail = SessionOutput.tail(logFile)
           // The line that reads like the reason goes first: on a failed
@@ -520,8 +518,8 @@ final class SessionManager(
   // --------------------------------------------------------------------- stop
 
   /** SIGTERM now, SIGKILL after a grace period. The session is marked `stopped`
-    * immediately — the process is doomed either way — and the monitor
-    * knows not to reinterpret the exit as a crash.
+    * immediately — the process is doomed either way — and the monitor knows not
+    * to reinterpret the exit as a crash.
     */
   def stop(sessionId: String): Option[Session] =
     entries.asScala.values.find(_.session.id == sessionId).map { entry =>
@@ -543,9 +541,9 @@ final class SessionManager(
     * interrupt one (`specs/08-inference-ui.md`), and the generation form's
     * **Restart** — a LoRA installed since the launch is only listed by a new
     * server. The relaunch waits for the old process to be gone, so the port it
-    * holds is free by the time the new one binds; it runs on a fork of its
-    * own, since a load takes minutes and the answer is due now. Answers with
-    * the session as it stands, stopped.
+    * holds is free by the time the new one binds; it runs on a fork of its own,
+    * since a load takes minutes and the answer is due now. Answers with the
+    * session as it stands, stopped.
     */
   def restart(sessionId: String): Option[Session] =
     entries.asScala.values.find(_.session.id == sessionId).map { entry =>

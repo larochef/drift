@@ -296,9 +296,12 @@ final class CpuOps extends Ops {
       k: Tensor,
       v: Tensor,
       scale: Float,
-      out: Tensor
+      out: Tensor,
+      bias: Option[Tensor]
   ): Unit = {
     val (s, b, heads, kvHeads, d) = Ops.checkShortAttention(q, k, v, out)
+    bias.foreach(t => Ops.checkAttentionBias(t, heads, s))
+    val biases = bias.map(reader)
     val (queries, keys, values, target) =
       (reader(q), reader(k), reader(v), segment(out))
     for {
@@ -314,7 +317,9 @@ final class CpuOps extends Ops {
           .map(i =>
             queries((row * heads + h) * d + i) * keys(keyAt(other) * d + i)
           )
-          .sum * scale
+          .sum * scale + biases.fold(0.0)(table =>
+          table((h.toLong * s + position) * s + other)
+        )
       }
       val largest = scores.max
       val weights = scores.map(score => math.exp(score - largest))
@@ -407,19 +412,34 @@ final class CpuOps extends Ops {
       x: Tensor,
       cosines: Tensor,
       sines: Tensor,
-      out: Tensor
+      out: Tensor,
+      halves: Boolean
   ): Unit = {
-    val (_, heads, d, pairs) = Ops.checkRopeTable(x, cosines, sines, out)
-    val (input, cos, sin) = (reader(x), reader(cosines), reader(sines))
+    val (_, heads, d, pairs, perHead) =
+      Ops.checkRopeTable(x, cosines, sines, out)
+    val (input, cosAt, sinAt) = (reader(x), reader(cosines), reader(sines))
     fill(out) { index =>
       val dim = (index % d).toInt
-      val token = index / (heads.toLong * d)
-      val m = dim / 2
-      if (m >= pairs) input(index)
-      else {
-        val (c, s) = (cos(token * pairs + m), sin(token * pairs + m))
-        val (a, b) = (input(index - dim % 2), input(index - dim % 2 + 1))
-        if (dim % 2 == 0) a * c - b * s else a * s + b * c
+      // the table's row: the token's, or the token's head's
+      val token =
+        if (perHead) index / d else index / (heads.toLong * d)
+      val (cos, sin) = (cosAt, sinAt)
+      if (halves) {
+        if (dim >= 2 * pairs) input(index)
+        else {
+          val m = dim % pairs
+          val (c, s) = (cos(token * pairs + m), sin(token * pairs + m))
+          val (a, b) = (input(index - dim + m), input(index - dim + m + pairs))
+          if (dim < pairs) a * c - b * s else b * c + a * s
+        }
+      } else {
+        val m = dim / 2
+        if (m >= pairs) input(index)
+        else {
+          val (c, s) = (cos(token * pairs + m), sin(token * pairs + m))
+          val (a, b) = (input(index - dim % 2), input(index - dim % 2 + 1))
+          if (dim % 2 == 0) a * c - b * s else a * s + b * c
+        }
       }
     }
   }

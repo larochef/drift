@@ -416,6 +416,32 @@
     "builtIn": true
   },
   {
+    "id": "qwen3-tokenizer",
+    "familyId": "qwen3-tokenizer",
+    "label": "Qwen3 tokenizer.json",
+    "source": {
+      "type": "huggingface",
+      "repo": "Qwen/Qwen3-4B",
+      "filename": "tokenizer.json"
+    },
+    "format": "json",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "umt5-tokenizer",
+    "familyId": "umt5-tokenizer",
+    "label": "UMT5 tokenizer.json",
+    "source": {
+      "type": "huggingface",
+      "repo": "google/umt5-xxl",
+      "filename": "tokenizer.json"
+    },
+    "format": "json",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
     "id": "h3-text-encoder-unsloth",
     "familyId": "qwen3-vl-32b",
     "label": "qwen3vl_32b_minimax_h3-Q4_K_M",

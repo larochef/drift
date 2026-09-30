@@ -96,19 +96,23 @@ object RecordedParameters {
       s"${((completed - from) / 1000).max(0)}s"
     }
 
-  /** Label → value, in reading order — the seed the output at `outputIndex`
-    * of a batch was made with.
+  /** Label → value, in reading order — the seed the output at `outputIndex` of
+    * a batch was made with.
     */
   def rows(generation: Generation, outputIndex: Int): List[(String, String)] =
     generation.derivation
       .map(derivedRows)
       .orElse(
         generation.imageParameters.map(p =>
-          imageRows(p.copy(seed = generation.seedOf(outputIndex).getOrElse(p.seed)))
+          imageRows(
+            p.copy(seed = generation.seedOf(outputIndex).getOrElse(p.seed))
+          )
         )
       )
       .orElse(generation.videoParameters.map(videoRows))
-      .orElse(generation.importedFileName.map(name => List("Imported file" -> name)))
+      .orElse(
+        generation.importedFileName.map(name => List("Imported file" -> name))
+      )
       .getOrElse(List.empty)
 
   private def derivedRows(d: Derivation): List[(String, String)] =

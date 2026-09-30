@@ -18,8 +18,7 @@ object HistoryService {
     case LoadGeneration(generationId: String)
     case Delete(date: String, generationId: String)
 
-    /** An image from outside drift, as a gallery entry of its own
-      * (`specs/30`).
+    /** An image from outside drift, as a gallery entry of its own (`specs/30`).
       */
     case Import(image: ImageImport)
   }

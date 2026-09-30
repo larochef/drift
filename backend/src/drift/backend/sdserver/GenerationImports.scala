@@ -80,18 +80,19 @@ object GenerationImports {
     * tiled jobs use.
     */
   def formatOf(bytes: Array[Byte]): Option[String] =
-    Using.resource(ImageIO.createImageInputStream(ByteArrayInputStream(bytes))) {
-      stream =>
-        val readers = ImageIO.getImageReaders(stream)
-        Option
-          .when(readers.hasNext)(readers.next())
-          .map { reader =>
-            try reader.getFormatName.toLowerCase
-            finally reader.dispose()
-          }
-          .collect {
-            case "png"         => "png"
-            case "jpeg" | "jpg" => "jpeg"
-          }
+    Using.resource(
+      ImageIO.createImageInputStream(ByteArrayInputStream(bytes))
+    ) { stream =>
+      val readers = ImageIO.getImageReaders(stream)
+      Option
+        .when(readers.hasNext)(readers.next())
+        .map { reader =>
+          try reader.getFormatName.toLowerCase
+          finally reader.dispose()
+        }
+        .collect {
+          case "png"          => "png"
+          case "jpeg" | "jpg" => "jpeg"
+        }
     }
 }

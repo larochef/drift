@@ -56,7 +56,8 @@
       "diffusion": "minimax-h3-fl2va-pruned-q4-k",
       "vae": "minimax-h3-video-vae",
       "audio-vae": "minimax-h3-audio-vae",
-      "llm": "h3-text-encoder-unsloth"
+      "llm": "h3-text-encoder-unsloth",
+      "tokenizer": "qwen3-tokenizer"
     },
     "overriddenParameters": {},
     "removedParameters": [],

@@ -390,8 +390,8 @@ class GalleryPage(
     )
   )
 
-  /** Whether the next import to land opens in the detail view: one picked
-    * image is there to be worked on; several are left in the grid.
+  /** Whether the next import to land opens in the detail view: one picked image
+    * is there to be worked on; several are left in the grid.
     */
   private var openImported = false
 
@@ -501,7 +501,7 @@ class GalleryPage(
     // A gone generation cannot stay ticked; the detail's own closing is the
     // host's job.
     historyService.events --> Observer[Event] {
-      case Event.Deleted(id) => selection.update(_ - id)
+      case Event.Deleted(id)          => selection.update(_ - id)
       case Event.Imported(generation) =>
         if (openImported)
           openDetail.set(Some(GenerationDetailHost.Open(generation.id, 0)))

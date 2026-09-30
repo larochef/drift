@@ -1,8 +1,8 @@
 package drift.backend.lora
 
+import drift.backend.{Background, WorkQueue}
 import drift.backend.download.*
 import drift.backend.storage.StorageService
-import drift.backend.{Background, WorkQueue}
 import drift.shared.*
 
 import java.nio.file.*
@@ -145,7 +145,7 @@ final private[lora] class LoraDownloads(
                   error = Some(Option(err.getMessage).getOrElse(err.toString))
                 )
             }
-}
+        }
     }
   }
 

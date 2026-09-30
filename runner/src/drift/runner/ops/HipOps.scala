@@ -719,9 +719,11 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
       k: Tensor,
       v: Tensor,
       scale: Float,
-      out: Tensor
+      out: Tensor,
+      bias: Option[Tensor]
   ): Unit = {
     val (s, b, heads, kvHeads, d) = Ops.checkShortAttention(q, k, v, out)
+    bias.foreach(b => Ops.checkAttentionBias(b, heads, s))
     val waves = s.toLong * b * heads
     launch(
       kernel(attentionKernels, "short_attention_f32"),
@@ -736,7 +738,8 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
       I32(heads),
       I32(kvHeads),
       I32(d),
-      F32(scale)
+      F32(scale),
+      Pointer(bias.fold(MemorySegment.NULL)(pointer))
     )
   }
 
@@ -857,11 +860,16 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
       x: Tensor,
       cosines: Tensor,
       sines: Tensor,
-      out: Tensor
+      out: Tensor,
+      halves: Boolean
   ): Unit = {
-    val (tokens, heads, d, pairs) = Ops.checkRopeTable(x, cosines, sines, out)
+    val (tokens, heads, d, pairs, perHead) =
+      Ops.checkRopeTable(x, cosines, sines, out)
     launch(
-      kernel(ropeKernels, "rope_table_f32"),
+      kernel(
+        ropeKernels,
+        if (halves) "rope_table_halves_f32" else "rope_table_f32"
+      ),
       (x.shape.elementCount + 255) / 256,
       256,
       Pointer(pointer(x)),
@@ -871,7 +879,8 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
       I32(tokens),
       I32(heads),
       I32(d),
-      I32(pairs)
+      I32(pairs),
+      I32(if (perHead) 1 else 0)
     )
   }
 
@@ -1457,7 +1466,9 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
     } else halfGemm(x, weight, out, m, n, k)
   }
 
-  /** Weights dequantized to F16 (unless stored so), x and the result in F16. */
+  /** Weights dequantized to F16 (unless stored so), x and the result in F16;
+    * with `wideProducts`, quantized weights to BF16 and all three in BF16.
+    */
   private def halfGemm(
       x: Tensor,
       weight: Tensor,
@@ -1466,6 +1477,7 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
       n: Int,
       k: Int
   ): Unit = {
+    val wide = wideProducts && weight.dtype != DType.F16
     val weightBytes = 2L * n * k
     val xHalf = scratch(0, weightBytes + 2L * m * k + 2L * m * n)
     val outHalf = offset(xHalf, 2L * m * k + weightBytes)
@@ -1473,8 +1485,12 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
       if (weight.dtype == DType.F16) pointer(weight)
       else {
         val target = offset(xHalf, 2L * m * k)
+        val precision = if (wide) "bf16_" else ""
         launch(
-          kernel(matvecKernels, s"dequantize_${weight.dtype.name.toLowerCase}"),
+          kernel(
+            matvecKernels,
+            s"dequantize_$precision${weight.dtype.name.toLowerCase}"
+          ),
           (n + 7L) / 8,
           256,
           Pointer(pointer(weight)),
@@ -1484,9 +1500,15 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
         )
         target
       }
-    convertAt(pointer(x), xHalf, m.toLong * k, 0)
-    blas.gemm(xHalf, weightHalf, outHalf, m, n, k)
-    convertAt(outHalf, pointer(out), m.toLong * n, 2)
+    if (wide) {
+      convertAt(pointer(x), xHalf, m.toLong * k, 1)
+      blas.gemm(xHalf, weightHalf, outHalf, m, n, k, HipBlas.RealBF16)
+      convertAt(outHalf, pointer(out), m.toLong * n, 3)
+    } else {
+      convertAt(pointer(x), xHalf, m.toLong * k, 0)
+      blas.gemm(xHalf, weightHalf, outHalf, m, n, k)
+      convertAt(outHalf, pointer(out), m.toLong * n, 2)
+    }
   }
 
   // ---- attention ---------------------------------------------------------------------

@@ -539,9 +539,11 @@ extern "C" __global__ void __launch_bounds__(256)
 // sequence b is row s * B + b), query head h reading key head h / (heads /
 // kv_heads). One wave per (position, sequence, head), lanes across D, an
 // online softmax over the S keys. For text-fusion blocks (S of 12 across a
-// token's layers, or one sequence of the prompt's tokens).
+// token's layers, or one sequence of the prompt's tokens). bias, when not
+// null, is added to the scaled scores: [heads][S][S] (T5's relative positions).
 extern "C" __global__ void short_attention_f32(const float* q, const float* k, const float* v, float* out, int S,
-                                               int B, int heads, int kv_heads, int D, float scale) {
+                                               int B, int heads, int kv_heads, int D, float scale,
+                                               const float* bias) {
   const long long wave = (long long)blockIdx.x * (blockDim.x / 32) + threadIdx.x / 32;
   const int lane = threadIdx.x % 32;
   if (wave >= (long long)S * B * heads) return;
@@ -550,7 +552,7 @@ extern "C" __global__ void short_attention_f32(const float* q, const float* k, c
   const int b = row % B;
   const int kv = h / (heads / kv_heads);
   const float* query = q + (row * heads + h) * D;
-  float acc[8] = {};  // D <= 256
+  float acc[16] = {};  // D <= 512
   float running_max = -INFINITY, total = 0.0f;
   for (int s = 0; s < S; ++s) {
     const long long key_row = (long long)s * B + b;
@@ -558,7 +560,8 @@ extern "C" __global__ void short_attention_f32(const float* q, const float* k, c
     float dot = 0.0f;
     for (int d = lane; d < D; d += 32) dot += query[d] * key[d];
     for (int offset = 16; offset > 0; offset /= 2) dot += __shfl_xor(dot, offset, 32);
-    const float score = dot * scale;
+    const float score =
+        dot * scale + (bias ? bias[((long long)h * S + row / B) * S + s] : 0.0f);
     const float new_max = fmaxf(running_max, score);
     const float correction = expf(running_max - new_max), weight = expf(score - new_max);
     total = total * correction + weight;

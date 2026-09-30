@@ -58,8 +58,8 @@ val deleteHistoryGeneration
     .in("history" / path[String]("date") / path[String]("generationId"))
     .out(jsonBody[Boolean])
 
-/** An image from outside drift, brought into the gallery so it can be
-  * upscaled, redrawn or edited like one drift made
+/** An image from outside drift, brought into the gallery so it can be upscaled,
+  * redrawn or edited like one drift made
   * (`specs/30-gallery-ergonomics-and-image-import.md`). `data` is a
   * `data:image/...;base64,` URL, the shape input images already travel in.
   */

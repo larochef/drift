@@ -6,8 +6,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import scala.jdk.CollectionConverters.*
 
-import ox.discard
 import ox.channels.{Channel, Source}
+import ox.discard
 
 /** One session's captured output (`specs/13-log-streaming.md`).
   *
@@ -95,8 +95,8 @@ final class SessionLog(capacity: Int = SessionLog.DefaultCapacity) {
 
   /** Follows the log from now on, until the session is over — the source is
     * then done. It is bounded: a subscriber that stops draining loses lines
-    * rather than growing without limit, since a stalled browser must never
-    * hold the reader up.
+    * rather than growing without limit, since a stalled browser must never hold
+    * the reader up.
     */
   def subscribe(): (Long, Source[LogLine]) = {
     val id = nextSubscriberId.incrementAndGet()
@@ -109,8 +109,7 @@ final class SessionLog(capacity: Int = SessionLog.DefaultCapacity) {
   def unsubscribe(id: Long): Unit =
     Option(subscribers.remove(id)).foreach(_.doneOrClosed().discard)
 
-  /** The session is over: every follower's source is done, so its stream
-    * ends.
+  /** The session is over: every follower's source is done, so its stream ends.
     */
   def close(): Unit = {
     closed = true

@@ -809,6 +809,23 @@ __device__ void dequantize(const uint8_t* weight, __half* out, int rows, int col
   });
 }
 
+// As dequantize, into BF16 (rounded to nearest even): the range of F32 for
+// activations past F16's (MiniMax H3's MLP).
+template <typename T, int TRIP>
+__device__ void dequantize_bf16(const uint8_t* weight, uint16_t* out, int rows, int cols) {
+  const int row = blockIdx.x * WAVES_PER_BLOCK + threadIdx.x / WAVE;
+  if (row >= rows) return;
+  uint16_t* target = out + (long long)row * cols;
+  walk_row<T, TRIP>(weight, row, cols, [&](const typename T::Part& p, int element) {
+#pragma unroll
+    for (int j = 0; j < 32; ++j) {
+      unsigned int bits = __float_as_uint(T::value(p, j));
+      bits += 0x7FFFu + ((bits >> 16) & 1u);
+      target[element + j] = (uint16_t)(bits >> 16);
+    }
+  });
+}
+
 // Rows ids[i] of an embedding table, as F32: one wave per id.
 template <typename T, int TRIP>
 __device__ void gather(const uint8_t* weight, const int* ids, float* out, int count, int cols) {
@@ -869,6 +886,10 @@ __device__ void gather(const uint8_t* weight, const int* ids, float* out, int co
   extern "C" __global__ void __launch_bounds__(WAVE * WAVES_PER_BLOCK)                              \
       dequantize_##name(const uint8_t* weight, __half* out, int rows, int cols) {                   \
     dequantize<type, 4096>(weight, out, rows, cols);                                                \
+  }                                                                                                 \
+  extern "C" __global__ void __launch_bounds__(WAVE * WAVES_PER_BLOCK)                              \
+      dequantize_bf16_##name(const uint8_t* weight, uint16_t* out, int rows, int cols) {            \
+    dequantize_bf16<type, 4096>(weight, out, rows, cols);                                           \
   }                                                                                                 \
   extern "C" __global__ void __launch_bounds__(WAVE * WAVES_PER_BLOCK)                              \
       gather_##name(const uint8_t* weight, const int* ids, float* out, int count, int cols) {       \

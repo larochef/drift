@@ -1,12 +1,7 @@
 package drift.frontend.pages.projects
 
 import drift.frontend.Page
-import drift.frontend.components.{
-  BrowserModal,
-  Component,
-  ErrorBanner,
-  Showcase
-}
+import drift.frontend.components.*
 import drift.frontend.services.ProjectService
 import drift.frontend.services.ProjectService.Command
 import drift.shared.*

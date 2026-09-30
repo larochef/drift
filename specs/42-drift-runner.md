@@ -1,6 +1,6 @@
 # 42 — drift runner: an inference engine for Strix Halo
 
-**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1 draws; groom each later step before building it
+**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1 draws; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX silent); groom each later step before building it
 **Depends on:** 06 (runtimes, TheRock), 07 (launch and supervision), 16 (parameter resolution), 17 and 18 (the chat runtime and its sessions), 41 (text projects)
 
 drift's own runner replaces sd-cpp and llama.cpp for one machine: Strix Halo
@@ -1841,6 +1841,165 @@ on the old tool.
         mergers, which ComfyUI's file does not carry), UniPC.
 14. **Video and audio.** Wan 2.2 (cross-attention, two experts), LTX,
     HunyuanVideo, MiniMax; the causal 3-D VAE and the audio VAE.
+    - **Done 2026-09-30: MiniMax H3, text to video** (`models/MiniMaxH3`,
+      `models/MiniMaxH3Vae`, `diffusion/MiniMaxH3Pipeline`,
+      `server/VideoFiles`). diffusers 0.40 (`MiniMaxH3Transformer3DModel`,
+      `AutoencoderKLMiniMaxH3`, the `t2va` modular blocks, `MiniMaxH3Scheduler`)
+      is the reference; sd-cpp (`minimax_h3.hpp`) for the pruned files' AdaLN
+      curve table, which diffusers lacks.
+      - **Text.** The prompt tokenized bare (Qwen3's `tokenizer.json`, passed
+        as `--tokenizer`: the text encoder's GGUF has no metadata and no
+        vocabulary), Qwen3-VL-32B's residual stream after layer 50. The GGUF
+        holds transformers' names and is cut after layer 50 without a final
+        norm; `Qwen3Config.fromWeights` reads its shape (θ 5 000 000).
+      - **DiT.** 50 single-stream blocks of 5376 over one packed sequence
+        `[text | audio | video]`, 56 heads of 128 (wider than the stream),
+        q/k RMS norms, a rotate-half RoPE on each head's first 96 values over
+        (t, h, w) with fractional positions (`MiniMaxH3Layout`: latent frames
+        span 5/3 × (1, 4, 4, 4, 4), the spatial axes centred and scaled to the
+        aspect), SwiGLU of 14336 (`fc1` = [gate; value]). Each row is
+        modulated by its (timestep, modality) row: text and video at the
+        video's t, audio at its own. The pruned files replace the time MLP by
+        a table of 1025 points of 8 (`adaln_t_table`, interpolated, no SiLU),
+        projected on the host; the full files' time MLP runs on the GPU.
+        Q4_K weights go through BF16 GEMMs (`Ops.wideProducts`: dequantized to
+        BF16, not F16; sd-cpp prescales the MLP by 1/128 against F16's range).
+      - **New ops:** `ropeTable(halves = true)` (transformers' `rotate_half`
+        from an angle table), `dequantize_bf16_*`.
+      - **Sampler.** t = 1 − σ, the velocity points to the data, one pass per
+        step (guidance-distilled). `--steps N` runs N evaluations over
+        `linspace(1, 0, N + 1)` shifted by 12 (video) and 3 (audio); sd-cpp's
+        default is 20. CFG above 1 runs the negative prompt as for images.
+      - **VAE.** The ViT decoder (36 blocks of 2048, 4 registers and a zero
+        token, layer-scaled residuals), in the released tiling: chunks of 7
+        latent frames (5 new, 5 frames cross-faded), 256-pixel tiles
+        overlapping by at least 64, blended. The latent statistics,
+        `post_quant_conv` and the embedding fold into one affine at load
+        (inputs padded to 32 channels); the per-head qkv is regrouped at load.
+        F16 products, as the released recipe.
+      - **Output.** `vid_gen` on the image server (`ImageServer` takes an
+        image or a video pipeline), one webm encoded by **ffmpeg** (VP8; a
+        dependency of the runner's videos, to weigh with the distribution
+        questions). Frames round up to `17n + 5`, sides to multiples of 32;
+        24 fps whatever is asked.
+      - **Checks.** A tiny diffusers transformer over the pipeline's own
+        layout matches to 0.0047% (`Cpu`) and 0.18% (`Hip`, BF16 products);
+        the layout's positions to F32 rounding; a tiny VAE over two chunks of
+        four tiles to 6·10⁻⁵ (`Cpu`) and 8·10⁻⁴ (`Hip`) of a pixel.
+      - **Live** (864 × 480, 56 frames, seed 42, the pruned Q4_K and the
+        Q4_K_M text encoder): a clean, coherent clip. **470 s against
+        sd-cpp's 500 s**, sd-cpp with drift's default spectrum cache (it
+        computed 11 of 20 steps at 38.2 s each, 420 s), the runner all 20 at
+        19.2 s rising to 23.2 s as the laptop throttles (≈ 19 TFLOPS: 285
+        TFLOP of GEMMs and 78 of attention a step). Text 11.4 s → about 1 s;
+        video decode 66.4 s → 41.7 s; loading 1.9 s.
+      - **Left:** the soundtrack (the audio latents are denoised, the BigVGAN
+        audio decoder is not ported: the videos are silent); keyframes
+        (`fl2va`) and references (`ref2va`); a step cache.
+    - **Done 2026-09-30: Wan 2.2 A14B, text to video and I2V**
+      (`text/Unigram`, `models/Umt5`, `models/Wan`, `models/WanVideoVae`,
+      `diffusion/WanPipeline`). diffusers 0.40 (`WanTransformer3DModel`,
+      `AutoencoderKLWan`, `WanPipeline`, `WanImageToVideoPipeline`) and
+      transformers (`UMT5EncoderModel`) are the references; sd-cpp's
+      `vid_gen` for the two experts' schedule.
+      - **Text.** UMT5-XXL (transformers' names; ComfyUI's fp8 as BF16):
+        pre-norm blocks, no score scaling, each block's own relative-position
+        bias (32 buckets, bidirectional, 128 apart), gated GELU. Its tokenizer
+        is the new `Unigram` (Metaspace, Viterbi over the pieces, unknown runs
+        fused, `</s>` appended), passed as `--tokenizer` (UMT5's
+        `tokenizer.json`); it matches HuggingFace's on the whole corpus. The
+        prompt's rows, then zeros up to 512, as diffusers and Wan's own code
+        pad them. `shortAttention` takes an additive bias for it.
+      - **DiT.** 40 blocks of 5120, heads of 128 (the files record no head
+        count), self-attention with RMS norms across the heads and an
+        interleaved 3-axis RoPE (22/21/21 pairs), cross-attention to the text
+        (keys and values made once per prompt and expert, `WanText`), GELU
+        MLP, AdaLN from the timestep's six vectors plus each block's table.
+        Latents live as 2 × 2 patch rows, channel-major (`packPatches`); the
+        I2V checkpoints' 20 conditioning channels follow the noise's in each
+        row; the patch embedding is padded to 160 inputs and the head's rows
+        reordered at load. BF16 products (`wideProducts`).
+      - **Experts and schedule** as sd-cpp: one Euler schedule of
+        `--high-noise-steps` + `--steps`, but `linspace(1, 0, N + 1)` through
+        the flow shift, where sd-cpp's discrete one puts N points on 999 → 0
+        and appends 0 (its last step a no-op); so videos are not sd-cpp's
+        frame for frame, the high-noise expert first at `--high-noise-cfg-scale`,
+        or while σ ≥ `--moe-boundary` (0.875) when its steps are not given.
+      - **I2V conditioning.** A mask of 4 (the first latent frame's set with an
+        init image) and the VAE's latents of the init image then zeros, or of
+        zeros alone; without an image it is made once per size and kept.
+      - **VAE.** The Wan 2.1 VAE on video: its causal 3-D convolutions as
+        streams of 3×3 ones over the frame and the two before it (zeros before
+        the first), the decoder's time convolutions doubling frames after the
+        first, the encoder's halving them after the first. Frame by frame,
+        untiled, as diffusers' default.
+      - **Checks.** UMT5 to 0.0001% (`Cpu` and `Hip`); a tiny I2V transformer to
+        0.0073% (`Cpu`) and 0.46% (`Hip`, BF16 products); the video VAE,
+        encoding 9 frames and decoding 3 latent frames through the streams, to
+        0.27% and 0.34% (`Cpu`), 0.25% and 0.55% (`Hip`).
+      - **Live** (François's configuration: the Civitai FASTMOVE V2 Q8 experts
+        (I2V), the uncensored UMT5 fp8, the Wan 2.1 VAE; 832 × 480, 33 frames,
+        4 + 4 steps, seed 42): **302 s against sd-cpp's 603 s**, with the
+        high-noise CFG at 1 on both. Steps 31–36 s (sd-cpp 63), the grey
+        conditioning 17 s once (sd-cpp 29 s every time), decode 35 s (60).
+      - **sd-cpp skips the high-noise CFG** when the low-noise one is 1: it only
+        encodes the negative prompt for the low-noise scale (`video.cpp`,
+        `use_uncond`), so drift's `--high-noise-cfg-scale 3.5` did nothing
+        there. The runner applies it: with it, the step-distilled FASTMOVE
+        finetune comes out overcooked (and each high-noise step costs two
+        passes, 67 s). Upstream's to fix; set the high-noise CFG to 1 for
+        step-distilled experts.
+      - **Left:** Wan 2.2 5B (TI2V, the Wan 2.2 VAE), LoRAs, end images, VAE
+        tiling, the GGUF UMT5 (llama.cpp's names).
+    - **Done 2026-09-30: LTX 2.5, text to video** (`models/Gemma4Text`,
+      `models/LtxText`, `models/Ltx2`, `models/LtxVideoVae`,
+      `diffusion/LtxPipeline`). diffusers 0.40 (`LTX2VideoTransformer3DModel`,
+      `LTX2TextConnectors`, the `LTX25AutoBlocks`) and transformers
+      (`Gemma4UnifiedTextModel`) are the references; sd-cpp crashes on these
+      files (bugs/35), so there is no tool to beat.
+      - **Text.** Gemma 4 12B from the text encoder's file (transformers'
+        names under `model.`; its tokenizer is the file's own `tokenizer_json`
+        tensor, read raw): sliding layers of 8 key heads of 256 and global
+        ones of one 512-wide head that is also the value, the proportional
+        RoPE on a quarter of the global heads, plain-weight RMS norms, value
+        norms, layer scalars, embeddings × √hidden rounded to BF16. Every
+        hidden state (the last one normed), each RMS-normed per token, side
+        by side, scaled and projected per stream (`LtxTextFeatures`, its
+        weight's columns regrouped at load); then the transformer file's
+        connectors: the prompt's rows then learnable registers up to 1024,
+        8 blocks of gated attention with the split 1-D RoPE. The attention
+        runs through `shortAttention`, now up to 512-wide heads, its causal
+        mask an additive bias.
+      - **DiT.** 48 blocks of two streams (video 32 × 128, audio 32 × 64):
+        self-attention, prompt cross-attention (the query modulated and gated,
+        the rows by the prompt AdaLN), audio-to-video and video-to-audio
+        attention (temporal RoPE both sides), GELU MLPs; every attention gated
+        per head by 2σ(logits); nine AdaLN-singles. The split RoPE gives each
+        head its own frequencies: `ropeTable` takes `[tokens, heads, pairs]`
+        tables. Positions are pixel-span middles, time in seconds from the
+        frame rate, so `--fps` is a model input (a value option now, no longer
+        ignored). BF16 weights through BF16 GEMMs.
+      - **Schedule.** The distilled σ list for 8 steps; other counts
+        `linspace(1, 1/N, N)` through the resolution's exponential shift.
+        `--flow-shift` is not read. CFG above 1 runs the negative prompt
+        (plain CFG, not diffusers' rescaled guider).
+      - **VAE.** The conv decoder, its structure from the weights (residual
+        stages, depth-to-space upsamplers ×2 in time, space or both, their
+        strides from their channels), non-causal (edge frames repeated), pixel
+        norms; its channels regrouped at load so the rearrangements are
+        `splitHalves` and `unpackPatches`.
+      - **Checks.** Gemma 4 to 0.0002%; the features and connectors to
+        0.013% (`Cpu`) and 0.017% (`Hip`); the transformer to 0.011% and
+        0.013%; the conv VAE (diffusers' own blocks in the file's order) to
+        0.21% and 0.38%.
+      - **Live** (François's configuration: the official distilled BF16
+        files; 512 × 512, 64 frames → 57, 8 steps, 16 fps): a clean,
+        coherent clip in **71 s**: steps of 5.3–8 s, decode 21.7 s, loading
+        19 s.
+      - **Left:** the soundtrack (the audio latents are denoised, the audio VAE
+        and vocoder not ported), image to video and conditions, the
+        diffusion decoder (LTX 2.5's default in diffusers), LoRAs, the
+        rescaled guider.
 
 **Tooling.**
 

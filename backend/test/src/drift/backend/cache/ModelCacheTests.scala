@@ -10,7 +10,8 @@ import utest.*
   */
 object ModelCacheTests extends TestSuite {
   val tests = Tests {
-    val source = HuggingFace("HiDream-ai/HiDream-O1-Image-Dev", "tokenizer.json")
+    val source =
+      HuggingFace("HiDream-ai/HiDream-O1-Image-Dev", "tokenizer.json")
     test("a file in drift's own tree is present") {
       val drift = Files.createTempDirectory("drift")
       val cache = ModelCache(drift, Files.createTempDirectory("hub"))

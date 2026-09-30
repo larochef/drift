@@ -505,9 +505,8 @@ val resumePostProcessJob: PublicEndpoint[String, Unit, PostProcessJob, Any] =
 object PostProcessPicture {
 
   /** The longest side a tiled job's picture is shown at on the screen — the
-    * outputs' own previews' size. The backend keeps a copy this size up to
-    * date as the tiles land, so fetching it costs no pass over the full
-    * picture.
+    * outputs' own previews' size. The backend keeps a copy this size up to date
+    * as the tiles land, so fetching it costs no pass over the full picture.
     */
   val ScreenSide: Int = 2048
 }
@@ -515,9 +514,9 @@ object PostProcessPicture {
 /** The picture a running or paused tiled job has made so far — its result as it
   * would be if the job ended now, the source under the tiles still to come — at
   * most `side` px on its longest edge (`PostProcessPicture.ScreenSide` at the
-  * most), or at full size without it
-  * (`specs/15-post-hoc-resize.md`). A screen adds `v`, the job's
-  * `paintedTiles`, so a new tile is a new address. 404 while there is none.
+  * most), or at full size without it (`specs/15-post-hoc-resize.md`). A screen
+  * adds `v`, the job's `paintedTiles`, so a new tile is a new address. 404
+  * while there is none.
   */
 val getPostProcessPicture: PublicEndpoint[
   (String, Option[Int], Option[Int]),

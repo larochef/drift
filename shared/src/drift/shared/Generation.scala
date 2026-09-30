@@ -420,8 +420,8 @@ case class Generation(
     error: Option[String] = None,
     /** Set on entries derived from another's output post hoc. */
     derivation: Option[Derivation] = None,
-    /** The name the file had where it came from, on an image imported into
-      * the gallery (`specs/30-gallery-ergonomics-and-image-import.md`); none on
+    /** The name the file had where it came from, on an image imported into the
+      * gallery (`specs/30-gallery-ergonomics-and-image-import.md`); none on
       * anything drift made.
       */
     importedFileName: Option[String],
@@ -445,8 +445,8 @@ case class Generation(
   def seedOf(index: Int): Option[Long] =
     imageParameters.map(_.seed).filter(_ >= 0).map(_ + index)
 
-  /** This generation narrowed to one output of its batch — that image's seed,
-    * a batch of one — which is what reusing that image reproduces.
+  /** This generation narrowed to one output of its batch — that image's seed, a
+    * batch of one — which is what reusing that image reproduces.
     */
   def ofOutput(index: Int): Generation =
     imageParameters match {

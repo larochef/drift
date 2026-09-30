@@ -202,6 +202,86 @@ object TinyModelGpuTests extends TestSuite {
         assert(error < 1e-2)
       } finally ops.close()
     }
+    test("MiniMax H3's transformer, its products in BF16") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      ops.wideProducts = true
+      try {
+        val error = TinyMiniMaxH3Case.velocityError(ops)
+        println(f"  worst velocity error ${error * 100}%.4f%% of the largest")
+        assert(error < 2e-2) // BF16 products
+      } finally ops.close()
+    }
+    test("MiniMax H3's video VAE") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val error = TinyMiniMaxH3Case.framesError(ops)
+        println(f"  worst pixel error $error%.5f")
+        assert(error < 1e-2) // F16 products, as the released recipe
+      } finally ops.close()
+    }
+    test("UMT5's encoder") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val error = TinyWanCase.umt5Error(ops)
+        println(
+          f"  worst hidden-state error ${error * 100}%.4f%% of the largest"
+        )
+        assert(error < 1e-2)
+      } finally ops.close()
+    }
+    test("Wan's I2V transformer, its products in BF16") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      ops.wideProducts = true
+      try {
+        val error = TinyWanCase.velocityError(ops)
+        println(f"  worst velocity error ${error * 100}%.4f%% of the largest")
+        assert(error < 2e-2)
+      } finally ops.close()
+    }
+    test("The Wan 2.1 VAE on video") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val (encoded, decoded) = TinyWanCase.videoVaeErrors(ops)
+        println(
+          f"  worst latent error ${encoded * 100}%.4f%%, frame error ${decoded * 100}%.4f%% of the largest"
+        )
+        assert(encoded < 4e-2 && decoded < 4e-2)
+      } finally ops.close()
+    }
+    test("Gemma 4's text model (LTX 2.5)") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val error = TinyLtxCase.gemmaError(ops)
+        println(
+          f"  worst hidden-state error ${error * 100}%.4f%% of the largest"
+        )
+        assert(error < 1e-2)
+      } finally ops.close()
+    }
+    test("LTX 2.5's text features and connectors") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val error = TinyLtxCase.connectorsError(ops)
+        println(f"  worst connector error ${error * 100}%.4f%% of the largest")
+        assert(error < 1e-2)
+      } finally ops.close()
+    }
+    test("LTX 2.5's joint transformer") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val error = TinyLtxCase.transformerError(ops)
+        println(f"  worst velocity error ${error * 100}%.4f%% of the largest")
+        assert(error < 1e-2)
+      } finally ops.close()
+    }
+    test("LTX 2.5's conv VAE decoder") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val error = TinyLtxCase.vaeError(ops)
+        println(f"  worst frame error ${error * 100}%.4f%% of the largest")
+        assert(error < 4e-2)
+      } finally ops.close()
+    }
     test("The Wan 2.1 VAE's decoder") {
       val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
       try {

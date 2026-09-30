@@ -5,10 +5,11 @@ import java.nio.file.{Path, Paths}
 /** `sd-server`'s flags as drift passes them for an image configuration
   * (`specs/42`, step 12): the checkpoints, the defaults a request starts from
   * (size, steps, CFG scale, distilled guidance, flow shift, seed, prompts), and
-  * where to listen. A whole model in one file (HiDream O1) comes as `--model`,
-  * with no VAE or text encoder of its own. Flags that change how sd-cpp runs but not the image are
-  * accepted with a note; flags asking for what the runner cannot do yet are
-  * refused by name, and so is any unknown flag.
+  * where to listen; a video's frames and its audio VAE. A whole model in one
+  * file (HiDream O1) comes as `--model`, with no VAE or text encoder of its
+  * own. Flags that change how sd-cpp runs but not the image are accepted with a
+  * note; flags asking for what the runner cannot do yet are refused by name,
+  * and so is any unknown flag.
   */
 final case class ImageOptions(
     diffusionModel: Path,
@@ -18,7 +19,8 @@ final case class ImageOptions(
     port: Int,
     width: Int,
     height: Int,
-    steps: Int,
+    /** `--steps`, when given; else the family's default (`ImageServer`). */
+    steps: Option[Int],
     cfgScale: Double,
     /** The distilled guidance scale (`--guidance`), when given: read by the
       * models that embed one (FLUX.2 [dev]), noted and ignored by the others.
@@ -38,6 +40,23 @@ final case class ImageOptions(
       * with reference images.
       */
     llmVision: Option[Path],
+    /** The audio VAE of a model that makes a soundtrack (`--audio-vae`). */
+    audioVae: Option[Path],
+    /** A video's frames (`--video-frames`). */
+    videoFrames: Int,
+    /** Wan 2.2 A14B's high-noise expert (`--high-noise-diffusion-model`). */
+    highNoiseModel: Option[Path],
+    /** A T5 text encoder (`--t5xxl`): Wan's UMT5. */
+    t5xxl: Option[Path],
+    /** The high-noise expert's steps and CFG scale, when given. */
+    highNoiseSteps: Option[Int],
+    highNoiseCfgScale: Option[Double],
+    /** The σ below which the low-noise expert takes over (sd-cpp's 0.875). */
+    moeBoundary: Double,
+    /** The frame rate (`--fps`), which LTX reads; MiniMax H3 and Wan run at
+      * their own.
+      */
+    fps: Option[Int],
     notes: Seq[String]
 )
 
@@ -66,6 +85,8 @@ object ImageOptions {
     "--rng" -> 1,
     "--sampler-rng" -> 1,
     "--vae-format" -> 1, // the runner reads the VAE's layout from its weights
+    "--high-noise-sampling-method" -> 1, // Euler, as for the low-noise steps
+    "--high-noise-scheduler" -> 1,
     "-v" -> 0,
     "--verbose" -> 0,
     "--color" -> 0
@@ -96,11 +117,13 @@ object ImageOptions {
       }
       flag match {
         case "--diffusion-model" | "--model" | "-m" | "--vae" | "--llm" |
-            "--listen-ip" |
-            "--listen-port" | "-W" | "--width" | "-H" | "--height" | "--steps" |
-            "--cfg-scale" | "--guidance" | "--flow-shift" | "-s" | "--seed" |
-            "-p" | "--prompt" | "-n" | "--negative-prompt" |
-            "--lora-model-dir" | "--tokenizer" | "--llm_vision" =>
+            "--listen-ip" | "--listen-port" | "-W" | "--width" | "-H" |
+            "--height" | "--steps" | "--cfg-scale" | "--guidance" |
+            "--flow-shift" | "-s" | "--seed" | "-p" | "--prompt" | "-n" |
+            "--negative-prompt" | "--lora-model-dir" | "--tokenizer" |
+            "--llm_vision" | "--audio-vae" | "--video-frames" |
+            "--high-noise-diffusion-model" | "--t5xxl" | "--high-noise-steps" |
+            "--high-noise-cfg-scale" | "--moe-boundary" | "--fps" =>
           value().foreach(v => values(canonical(flag)) = v)
         case other if NotYet.contains(other) =>
           problem = Some(s"$other is not supported yet: ${NotYet(other)}")
@@ -131,7 +154,7 @@ object ImageOptions {
         values.get("--listen-port").fold(1234)(_.toInt),
         values.get("-W").fold(1024)(_.toInt),
         values.get("-H").fold(1024)(_.toInt),
-        values.get("--steps").fold(4)(_.toInt),
+        values.get("--steps").map(_.toInt),
         values.get("--cfg-scale").fold(1.0)(_.toDouble),
         values.get("--guidance").map(_.toDouble),
         values.get("--flow-shift").fold(1.15)(_.toDouble),
@@ -141,6 +164,14 @@ object ImageOptions {
         values.get("--lora-model-dir").map(Paths.get(_)),
         values.get("--tokenizer").map(Paths.get(_)),
         values.get("--llm_vision").map(Paths.get(_)),
+        values.get("--audio-vae").map(Paths.get(_)),
+        values.get("--video-frames").fold(33)(_.toInt),
+        values.get("--high-noise-diffusion-model").map(Paths.get(_)),
+        values.get("--t5xxl").map(Paths.get(_)),
+        values.get("--high-noise-steps").map(_.toInt).filter(_ >= 0),
+        values.get("--high-noise-cfg-scale").map(_.toDouble),
+        values.get("--moe-boundary").fold(0.875)(_.toDouble),
+        values.get("--fps").map(_.toInt),
         notes.result()
       )
     }

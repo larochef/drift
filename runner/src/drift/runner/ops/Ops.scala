@@ -142,14 +142,17 @@ trait Ops extends AutoCloseable {
 
   /** Attention over many short sequences at once, no mask: `q` and `out`
     * `[S, B, heads, D]`, `k` and `v` `[S, B, kvHeads, D]` (row `s × B + b` is
-    * position `s` of sequence `b`), scores `q·k × scale`.
+    * position `s` of sequence `b`), scores `q·k × scale`, plus `bias` (F32
+    * `[heads, S, S]`, by query then key position) when given: T5's relative
+    * positions.
     */
   def shortAttention(
       q: Tensor,
       k: Tensor,
       v: Tensor,
       scale: Float,
-      out: Tensor
+      out: Tensor,
+      bias: Option[Tensor] = None
   ): Unit
 
   /** A 3×3 convolution, channels-last: `x` `[H, W, in]`, `weight` `[out, in ×
@@ -172,8 +175,25 @@ trait Ops extends AutoCloseable {
     * `m` of every head of token `t` (values `2m`, `2m + 1`) turns by the angle
     * whose cosine and sine are `cosines[t, m]` and `sines[t, m]`; the values
     * past the table's pairs are copied. `x` and `out` `[tokens, heads, D]`.
+    * With `halves`, pair `m` is values `m` and `m + pairs` (transformers'
+    * `rotate_half` over the head's first `2 × pairs` values). Tables of
+    * `[tokens, heads, pairs]` give each head its own angles (LTX 2's "split"
+    * RoPE).
     */
-  def ropeTable(x: Tensor, cosines: Tensor, sines: Tensor, out: Tensor): Unit
+  def ropeTable(
+      x: Tensor,
+      cosines: Tensor,
+      sines: Tensor,
+      out: Tensor,
+      halves: Boolean = false
+  ): Unit
+
+  /** Whether the products of quantized weights over many rows run in BF16
+    * rather than F16 (a backend that converts them): F32's range, for
+    * activations past F16's (MiniMax H3's MLP). One setting for the process,
+    * set by the pipeline that needs it.
+    */
+  @volatile var wideProducts: Boolean = false
 
   /** A channels-last image `[H, W, C]` as rows of patch-ordered pixels
     * `[L × patch², C]`: row `l × patch² + py × patch + px` is pixel `(hs ×
@@ -804,7 +824,7 @@ object Ops {
       cosines: Tensor,
       sines: Tensor,
       out: Tensor
-  ): (Int, Int, Int, Int) = {
+  ): (Int, Int, Int, Int, Boolean) = {
     checkElementwise("ropeTable", x, out)
     requireF32("ropeTable", cosines, sines)
     require(
@@ -813,13 +833,14 @@ object Ops {
     )
     val Seq(tokens, heads, d) = x.shape.dimensions.map(_.toInt)
     val pairs = cosines.shape.last.toInt
+    val perHead = cosines.shape.rank == 3
     require(
-      cosines.shape == Shape
-        .of(tokens, pairs) && sines.shape == cosines.shape &&
-        2 * pairs <= d,
+      (cosines.shape == Shape.of(tokens, pairs) ||
+        cosines.shape == Shape.of(tokens, heads, pairs)) &&
+        sines.shape == cosines.shape && 2 * pairs <= d,
       s"ropeTable: tables ${cosines.shape}, ${sines.shape} for ${x.shape}"
     )
-    (tokens, heads, d, pairs)
+    (tokens, heads, d, pairs, perHead)
   }
 
   /** Returns `(H, W, C)` of the image. */
@@ -1023,10 +1044,18 @@ object Ops {
     val Seq(s, b, heads, d) = q.shape.dimensions.map(_.toInt)
     val Seq(ks, kb, kvHeads, kd) = k.shape.dimensions.map(_.toInt)
     require(
-      ks == s && kb == b && kd == d && heads % kvHeads == 0 && d <= 256,
+      ks == s && kb == b && kd == d && heads % kvHeads == 0 && d <= 512,
       s"shortAttention: q ${q.shape}, k ${k.shape}"
     )
     (s, b, heads, kvHeads, d)
+  }
+
+  def checkAttentionBias(bias: Tensor, heads: Int, s: Int): Unit = {
+    requireF32("shortAttention bias", bias)
+    require(
+      bias.shape == Shape.of(heads, s, s),
+      s"shortAttention: bias ${bias.shape} for $heads heads over $s positions"
+    )
   }
 
   /** Returns the token count. */

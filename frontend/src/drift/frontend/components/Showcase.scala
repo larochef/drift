@@ -2,12 +2,6 @@ package drift.frontend.components
 
 import com.raquo.laminar.api.L.*
 
-/** What drift can make, shown where nothing has been made yet (François,
-  * 2026-09-28): the empty projects page and the empty gallery. Pictures made
-  * with the Krea 2 Turbo starter configuration (`specs/46`), shipped with the
-  * frontend under `public/assets/showcase/` (the static path served); one that
-  * is missing hides its tile rather than showing a broken image.
-  */
 class Showcase {
 
   lazy val element: HtmlElement = div(
@@ -36,7 +30,7 @@ class Showcase {
     ),
     p(
       cls := "text-secondary is-size-7 mt-2",
-      "Made with drift on Krea 2, one of its starter models — hover one " +
+      "Made with drift on Krea 2, one of the starter models — hover one " +
         "for its prompt."
     )
   )
@@ -44,10 +38,6 @@ class Showcase {
 
 object Showcase {
 
-  /** One picture: its file, the style it shows off, and the prompt, for the
-    * tooltip. All made with Krea 2 Turbo, all safe for work, each a different
-    * style (François, 2026-09-28).
-    */
   final case class Picture(
       file: String,
       style: String,

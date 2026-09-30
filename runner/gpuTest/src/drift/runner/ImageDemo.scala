@@ -75,7 +75,9 @@ object ImageDemo {
           cfg,
           guidance,
           seed,
-          options.collectFirst { case ("--shift", s) => s.toDouble }.getOrElse(1.15),
+          options
+            .collectFirst { case ("--shift", s) => s.toDouble }
+            .getOrElse(1.15),
           loras,
           init.map(Images.resized(_, size, size)),
           strength,

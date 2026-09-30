@@ -1,7 +1,7 @@
 package drift.backend.runtime
 
-import drift.backend.storage.StorageService
 import drift.backend.{Background, WorkQueue}
+import drift.backend.storage.StorageService
 import drift.shared.*
 
 import java.nio.file.*
@@ -63,7 +63,11 @@ final private[runtime] class RuntimeInstalls(
   // (François, 2026-09-10). Bandwidth needs no separate rule here: installs
   // fetch through that same `Downloader`, so they share its per-host permits
   // with everything else drift is pulling.
-  private val installs = WorkQueue(background, "drift-runtime-install", RuntimeManager.MaxConcurrentInstalls)
+  private val installs = WorkQueue(
+    background,
+    "drift-runtime-install",
+    RuntimeManager.MaxConcurrentInstalls
+  )
 
   /** Serialises anything that writes the same directory. Two installs may now
     * run together, and two of them wanting the same files is the ordinary case
@@ -424,8 +428,7 @@ final private[runtime] class RuntimeInstalls(
         else
           archives.fetchAndUnpack(
             entry,
-            step =
-              s"${tool.displayName} ${request.releaseTag} ($backendName)",
+            step = s"${tool.displayName} ${request.releaseTag} ($backendName)",
             url = request.asset.downloadUrl,
             archiveName = request.asset.name,
             sha256 = request.asset.sha256,

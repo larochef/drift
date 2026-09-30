@@ -71,11 +71,13 @@ object DownloaderStallTests extends TestSuite {
       val release = CountDownLatch(1)
       val server = silentServer(release)
       val cancelled = AtomicBoolean(false)
-      try supervised {
-        forkDiscard { sleep(500.millis); cancelled.set(true) }
-        val (outcome, took) = fetch(server, () => cancelled.get())
-        assert(outcome == DownloadOutcome.Cancelled, took < 5000)
-      } finally { release.countDown(); server.stop(0) }
+      try
+        supervised {
+          forkDiscard { sleep(500.millis); cancelled.set(true) }
+          val (outcome, took) = fetch(server, () => cancelled.get())
+          assert(outcome == DownloadOutcome.Cancelled, took < 5000)
+        }
+      finally { release.countDown(); server.stop(0) }
     }
   }
 }

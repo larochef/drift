@@ -126,8 +126,8 @@ object ModelDescriptions {
     )
 
   /** An assistant's reply (`specs/20`): Markdown like a card's, cleaned the
-    * same way, but with no front matter to strip — a reply opening on a rule
-    * is prose — and no base, so a relative link is dropped.
+    * same way, but with no front matter to strip — a reply opening on a rule is
+    * prose — and no base, so a relative link is dropped.
     */
   def fromReply(markdown: String): String =
     fromHtml(renderer.render(parser.parse(markdown)), "")

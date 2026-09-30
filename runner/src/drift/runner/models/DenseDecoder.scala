@@ -108,6 +108,38 @@ object Qwen3Config {
     )
   }
 
+  /** Qwen3-VL's language model from its weights alone, transformers' names
+    * without a `config.json` (MiniMax H3's text encoder, a GGUF with no
+    * metadata): RoPE's θ is Qwen3-VL's 5 000 000, RMS norms' ε 10⁻⁶.
+    */
+  def fromWeights(source: WeightSource, prefix: String): DenseConfig = {
+    def dimensions(name: String) =
+      source.shape(s"$prefix$name").dimensions.map(_.toInt)
+    val headDimension = dimensions("layers.0.self_attn.q_norm.weight").head
+    DenseConfig(
+      layers = Iterator
+        .from(0)
+        .takeWhile(i =>
+          source.has(s"${prefix}layers.$i.input_layernorm.weight")
+        )
+        .size,
+      hidden = dimensions("embed_tokens.weight").last,
+      intermediate = dimensions("layers.0.mlp.gate_proj.weight").head,
+      heads =
+        dimensions("layers.0.self_attn.q_proj.weight").head / headDimension,
+      kvHeads =
+        dimensions("layers.0.self_attn.k_proj.weight").head / headDimension,
+      headDimension = headDimension,
+      ropeTheta = 5000000f,
+      ropeSections = RopeSections.Single,
+      ropeLayout = RopeLayout.Neox,
+      rmsEpsilon = 1e-6f,
+      vocabulary = dimensions("embed_tokens.weight").head,
+      queryScale = (1 / math.sqrt(headDimension)).toFloat,
+      style = DenseStyle.Qwen3
+    )
+  }
+
   def fromHuggingFace(config: ModelConfig): DenseConfig =
     DenseConfig(
       layers = config.int("num_hidden_layers"),
@@ -333,8 +365,8 @@ private object DenseNames {
   )
 }
 
-/** A dense decoder (`DenseStyle`: Qwen 3, Gemma 2, Mistral). With `loras`,
-  * each layer's linears take the active updates of their weight's name (less
+/** A dense decoder (`DenseStyle`: Qwen 3, Gemma 2, Mistral). With `loras`, each
+  * layer's linears take the active updates of their weight's name (less
   * `.weight`, as `loraSites` lists them) at run time.
   */
 final class DenseDecoder private[models] (
@@ -415,7 +447,8 @@ final class DenseDecoder private[models] (
   }
 
   private val embedding = source(names.embedding)
-  private val finalNorm = floats(source(names.finalNorm))
+  // a text encoder's file may be cut before it (MiniMax H3's Qwen3-VL)
+  private lazy val finalNorm = floats(source(names.finalNorm))
   // small Qwen 3 models tie the output head to the embeddings
   private val output =
     if (source.has(names.output)) source(names.output) else embedding
@@ -636,7 +669,12 @@ final class DenseDecoder private[models] (
     * final norm, into `out` (like `x`). The rows' keys stay in the sequence
     * until the next call writes over them.
     */
-  def attendAll(x: Tensor, start: Int, sequence: Sequence, out: Tensor): Unit = {
+  def attendAll(
+      x: Tensor,
+      start: Int,
+      sequence: Sequence,
+      out: Tensor
+  ): Unit = {
     val tokens = x.shape.dimensions.head.toInt
     sequence.reserve(start + tokens)
     val w = workspaceFor(tokens, allLogits = false)
@@ -841,6 +879,14 @@ object Qwen3 {
     val source = WeightSource.open(ops, path)
     try {
       source.gguf match {
+        case Some(_) if source.has("model.embed_tokens.weight") =>
+          // transformers' names in a GGUF, no metadata (MiniMax H3's)
+          new DenseDecoder(
+            ops,
+            source,
+            Qwen3Config.fromWeights(source, "model."),
+            DenseNames.HuggingFace
+          )
         case Some(file) =>
           val vocabulary = source(
             DenseNames.Gguf.embedding

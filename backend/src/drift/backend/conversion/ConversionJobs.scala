@@ -1,8 +1,8 @@
 package drift.backend.conversion
 
+import drift.backend.{Background, WorkQueue}
 import drift.backend.process.ProcessOutput
 import drift.backend.runtime.LaunchRuntime
-import drift.backend.{Background, WorkQueue}
 import drift.shared.*
 
 import java.nio.charset.StandardCharsets

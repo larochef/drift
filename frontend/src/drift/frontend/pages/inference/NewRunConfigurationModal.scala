@@ -1,11 +1,7 @@
 package drift.frontend.pages.inference
 
 import drift.frontend.components.*
-import drift.frontend.services.{
-  BrowserServices,
-  LoraService,
-  RunConfigurationService
-}
+import drift.frontend.services.*
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*

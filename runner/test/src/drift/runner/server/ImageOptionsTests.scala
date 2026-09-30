@@ -44,7 +44,7 @@ object ImageOptionsTests extends TestSuite {
       )
       assert(
         options.port == 8123,
-        options.steps == 4,
+        options.steps.contains(4),
         options.cfgScale == 1.0,
         options.width == 1024
       )

@@ -1,6 +1,6 @@
 package drift.frontend.pages.gallery
 
-import drift.frontend.components.{Component, LaunchOrDownload, ScrollLock}
+import drift.frontend.components.*
 import drift.frontend.services.LaunchPrerequisites
 import drift.shared.*
 
@@ -295,7 +295,9 @@ class GenerationDetail(
   private val parameters = GenerationParameters(
     generation,
     configurationLabel,
-    picture.selectedIndex.signal.map(generation.outputs.lift(_).fold(0)(_.index))
+    picture.selectedIndex.signal.map(
+      generation.outputs.lift(_).fold(0)(_.index)
+    )
   )
 
   /** The batch index of the output on screen — not its place in the strip,

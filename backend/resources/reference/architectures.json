@@ -1040,9 +1040,10 @@
     ],
     "promptingNotes": "A video model reading natural language: describe the scene and subject, then what moves and how over the clip, then the camera (static, pan, dolly, orbit). One continuous shot, concrete actions rather than moods.",
     "sizeMultiple": 32,
-    "modelKind": null,
+    "modelKind": "ltx-2.5",
     "runners": [
-      "SdCpp"
+      "SdCpp",
+      "DriftRunner"
     ]
   },
   {
@@ -1083,6 +1084,12 @@
         "familyId": "qwen3-vl-32b",
         "flag": "--llm",
         "required": true
+      },
+      {
+        "name": "tokenizer",
+        "familyId": "qwen3-tokenizer",
+        "flag": "--tokenizer",
+        "required": false
       }
     ],
     "defaultParameters": {
@@ -1102,9 +1109,10 @@
     ],
     "promptingNotes": "A video model reading natural language: describe the scene and subject, then what moves and how over the clip, then the camera (static, pan, dolly, orbit). One continuous shot, concrete actions rather than moods. It also generates the soundtrack: describe the sounds, music and any speech.",
     "sizeMultiple": 32,
-    "modelKind": null,
+    "modelKind": "minimax-h3",
     "runners": [
-      "SdCpp"
+      "SdCpp",
+      "DriftRunner"
     ]
   },
   {
@@ -1144,6 +1152,12 @@
         "familyId": "wan-2.1-vae",
         "flag": "--vae",
         "required": true
+      },
+      {
+        "name": "tokenizer",
+        "familyId": "umt5-tokenizer",
+        "flag": "--tokenizer",
+        "required": false
       }
     ],
     "defaultParameters": {
@@ -1162,9 +1176,10 @@
     ],
     "promptingNotes": "A video model reading natural language: describe the scene and subject, then what moves and how over the clip, then the camera (static, pan, dolly, orbit). One continuous shot, concrete actions rather than moods.",
     "sizeMultiple": 16,
-    "modelKind": null,
+    "modelKind": "wan-2.2-14b",
     "runners": [
-      "SdCpp"
+      "SdCpp",
+      "DriftRunner"
     ]
   },
   {

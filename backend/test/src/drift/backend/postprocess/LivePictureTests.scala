@@ -68,15 +68,17 @@ object LivePictureTests extends TestSuite {
   private def fullSize(live: LivePicture): BufferedImage =
     ImageIO.read(live.fullSize().get.toFile)
 
-  /** Whether `shown` is `expected` but for resampling at the seams of the
-    * parts it was brought up to date by.
+  /** Whether `shown` is `expected` but for resampling at the seams of the parts
+    * it was brought up to date by.
     */
   private def nearly(shown: BufferedImage, expected: BufferedImage): Boolean =
     shown.getWidth == expected.getWidth &&
       shown.getHeight == expected.getHeight && {
         val differences = pixels(shown).zip(pixels(expected)).map { (a, b) =>
           Seq(16, 8, 0)
-            .map(shift => math.abs(((a >> shift) & 0xff) - ((b >> shift) & 0xff)))
+            .map(shift =>
+              math.abs(((a >> shift) & 0xff) - ((b >> shift) & 0xff))
+            )
             .max
         }
         differences.max <= 16 && differences.sum.toDouble / differences.size < 1
@@ -126,7 +128,7 @@ object LivePictureTests extends TestSuite {
       val directory = Files.createTempDirectory("live-picture")
       val painted = Channel.unlimited[Int]
       supervised {
-      val live = picture(painted)
+        val live = picture(painted)
         live.paint(first, written(filled(64, 32, Blue), directory))
         awaitPainted(painted, 1)
         val shown = fullSize(live)
@@ -139,7 +141,7 @@ object LivePictureTests extends TestSuite {
       val directory = Files.createTempDirectory("live-picture")
       val painted = Channel.unlimited[Int]
       supervised {
-      val live = picture(painted)
+        val live = picture(painted)
         val tiles = Map(
           first -> filled(64, 32, Blue),
           second -> filled(64, 32, Green)
@@ -156,7 +158,7 @@ object LivePictureTests extends TestSuite {
     test("scaled for the screen, it keeps the picture's shape") {
       val painted = Channel.unlimited[Int]
       supervised {
-      val live = picture(painted)
+        val live = picture(painted)
         // The base is built on the painter; a paint queued behind it is how a
         // caller knows it is there.
         val directory = Files.createTempDirectory("live-picture")
@@ -171,7 +173,7 @@ object LivePictureTests extends TestSuite {
       val directory = Files.createTempDirectory("live-picture")
       val painted = Channel.unlimited[Int]
       supervised {
-      val live = picture(painted)
+        val live = picture(painted)
         live.paint(first, written(filled(64, 32, Blue), directory))
         awaitPainted(painted, 1)
         val file = live.fullSize().get

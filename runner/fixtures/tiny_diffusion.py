@@ -620,7 +620,532 @@ def qwen_image21_vae():
     print("  names:", sorted({re.sub(r"\.\d+\.", ".N.", n) for n in tensors}))
 
 
+def swap_halves(value):
+    """diffusers' SwiGLU fuses [value; gate], MiniMax H3's files [gate; value]."""
+    first, second = value.chunk(2, dim=0)
+    return torch.cat([second, first], dim=0)
+
+
+def minimax_h3_original(model):
+    """diffusers' MiniMax H3 transformer state → the original names (the GGUFs',
+    ComfyUI's, sd-cpp's; `lora_conversion_utils`' MiniMax H3 map read
+    backwards): fused qkv, fc1 as [gate; value], and the rotary frequencies the
+    files carry."""
+    state = {name: value.detach().float() for name, value in model.state_dict().items()}
+    renames = [
+        (r"^proj_in\.", "video_patch_proj."), (r"^audio_proj_in\.", "audio_patch_proj."),
+        (r"^context_embedder\.", "condition_proj."), (r"^time_embedder\.linear_1\.", "time_embedder.proj_in."),
+        (r"^time_embedder\.linear_2\.", "time_embedder.proj_out."), (r"^norm_out\.linear\.", "final_layer.adaln_proj.linear."),
+        (r"^norm_out\.norm\.", "final_layer.norm."), (r"^proj_out\.", "final_layer.video_out."),
+        (r"^audio_proj_out\.", "final_layer.audio_out."), (r"^token_refiner\.refiner_blocks\.", "token_refiner.blocks."),
+        (r"^transformer_blocks\.", "blocks."), (r"\.attn\.to_out\.0\.", ".attn.out_proj."),
+        (r"\.attn\.norm_q\.", ".attn.q_norm."), (r"\.attn\.norm_k\.", ".attn.k_norm."), (r"\.ff\.net\.2\.", ".mlp.fc2."),
+    ]
+    def renamed(name):
+        for pattern, replacement in renames:
+            name = re.sub(pattern, replacement, name)
+        return name
+    tensors = {}
+    for name, value in state.items():
+        if re.search(r"\.attn\.to_[kv]\.", name):
+            continue
+        if re.search(r"\.attn\.to_q\.", name):
+            prefix = name[: name.index(".attn.to_q.")]
+            value = torch.cat([state[f"{prefix}.attn.to_{p}.weight"] for p in "qkv"], dim=0)
+            tensors[renamed(f"{prefix}.attn.qkv_proj.weight")] = value
+            continue
+        if ".ff.net.0.proj." in name:
+            tensors[renamed(name.replace(".ff.net.0.proj.", ".mlp.fc1."))] = swap_halves(value)
+            continue
+        tensors[renamed(name)] = value
+    tensors["rope.inv_freq"] = model.rope.inv_freq.float()
+    return {name: value.contiguous() for name, value in tensors.items()}
+
+
+def minimax_h3():
+    """MiniMax H3's transformer: two blocks and one text-refiner block of 2
+    heads of 64 (wider than the 64 of the residual stream, as the real 56 × 128
+    over 5376), the first 48 of each head rotated over (t, h, w), over a packed
+    [text | audio | video] sequence as the t2va pipeline lays it out: 5 text
+    tokens, 3 audio latents per stereo channel, 3 latent frames of 4 × 8
+    latents in 2 × 2 patches. The video and audio rows at their own
+    timesteps."""
+    from diffusers import MiniMaxH3Transformer3DModel
+    from diffusers.modular_pipelines.minimax_h3.before_denoise import MiniMaxH3PrepareLayoutStep
+    model = MiniMaxH3Transformer3DModel(
+        num_attention_heads=2, attention_head_dim=64, hidden_size=64, num_layers=2, num_refiner_layers=1,
+        ffn_dim=128, in_channels=8, audio_in_channels=32, patch_size=(1, 2, 2), text_dim=32, freq_dim=32,
+        time_embed_hidden_dim=64, time_embed_dim=32, rope_freq_dim=8, rope_theta=10000.0,
+    ).eval().float()
+    with torch.no_grad():
+        for name, parameter in model.named_parameters():
+            if "norm" in name and name.endswith("weight") and parameter.dim() == 1:
+                parameter.copy_(1 + 0.2 * torch.randn_like(parameter))
+            else:
+                fan_in = parameter.shape[-1] if parameter.dim() > 1 else 16
+                parameter.copy_(torch.randn_like(parameter) / fan_in ** 0.5)
+    text_tokens, frames, latent_h, latent_w, audio_latents = 5, 3, 4, 8, 3
+    tags = torch.ones(text_tokens, dtype=torch.long)
+    positions, token_tags, video_indices, audio_indices, text_indices, _, _ = \
+        MiniMaxH3PrepareLayoutStep.build_packed_sequence(tags, frames, latent_h, latent_w, audio_latents,
+                                                          (1, 2, 2), 2, 2, 0)
+    video_rows = torch.randn(1, frames * (latent_h // 2) * (latent_w // 2), 32)
+    audio_rows = torch.randn(1, 2 * audio_latents, 32)
+    text = torch.randn(1, text_tokens, 32)
+    video_t, audio_t = 0.3, 0.55
+    row_timesteps = torch.full((positions.shape[0],), video_t)
+    row_timesteps[audio_indices] = audio_t
+    timesteps, timestep_indices = torch.unique(row_timesteps, sorted=True, return_inverse=True)
+    with torch.no_grad():
+        video, audio = model(video_rows, audio_rows, text, timesteps, timestep_indices, token_tags,
+                             positions.float(), video_indices, audio_indices, text_indices, return_dict=False)
+    tensors = minimax_h3_original(model)
+    folder = out / "minimax_h3"
+    folder.mkdir(parents=True, exist_ok=True)
+    save_file(tensors, folder / "model.safetensors")
+    save_file({"video_rows": video_rows[0].contiguous(), "audio_rows": audio_rows[0].contiguous(),
+               "text": text[0].contiguous(), "timesteps": torch.tensor([video_t, audio_t]),
+               "positions": positions.float().contiguous(),
+               "video": video[0].float().contiguous(), "audio": audio[0].float().contiguous(),
+               "shape": torch.tensor([text_tokens, frames, latent_h, latent_w, audio_latents], dtype=torch.int32)},
+              folder / "expected.safetensors")
+    print(f"minimax_h3: {len(tensors)} tensors, video {tuple(video.shape)} |max| {video.abs().max():.3f}, "
+          f"audio {tuple(audio.shape)}")
+    print("  names:", sorted({re.sub(r"\.\d+\.", ".N.", n) for n in tensors}))
+
+
+def minimax_h3_vae():
+    """MiniMax H3's video VAE decoder, a ViT of 2 blocks of 2 heads of 64 over
+    8 latent channels, decoding 12 latent frames of 6 × 7 latents (two
+    temporal chunks, cross-faded) in 64-pixel tiles overlapping by 16 (four
+    tiles, blended) into 39 frames of 96 × 112: the released recipe's
+    geometry, shrunk."""
+    from diffusers import AutoencoderKLMiniMaxH3
+    model = AutoencoderKLMiniMaxH3(
+        latent_channels=8, block_out_channels=(8, 8, 8, 8, 8, 8), norm_num_groups=4, decoder_num_layers=2,
+        decoder_num_attention_heads=2, decoder_attention_head_dim=64, decoder_num_register_tokens=4,
+        latents_mean=tuple(0.1 * i for i in range(8)), latents_std=tuple(0.5 + 0.1 * i for i in range(8)),
+    ).eval().float()
+    model.enable_tiling(64, 64, 16, 16)
+    with torch.no_grad():
+        for name, parameter in model.named_parameters():
+            if re.search(r"norm\d?\.weight$|norm_out\.weight$", name):
+                parameter.copy_(1 + 0.2 * torch.randn_like(parameter))
+            elif re.search(r"scale\d$", name):
+                parameter.copy_(0.5 + 0.2 * torch.randn_like(parameter))
+            else:
+                fan_in = parameter[0].numel() if parameter.dim() > 1 else 16
+                parameter.copy_(torch.randn_like(parameter) / fan_in ** 0.5)
+    latents = torch.randn(1, 8, 12, 6, 7)
+    mean = torch.tensor(model.config.latents_mean).view(1, -1, 1, 1, 1)
+    std = torch.tensor(model.config.latents_std).view(1, -1, 1, 1, 1)
+    with torch.no_grad():
+        video = model.decode(latents * std + mean, return_dict=False)[0][0].float()
+    state = {name: value.detach().float() for name, value in model.state_dict().items()
+             if name.startswith("decoder.") or name.startswith("post_quant_conv.")}
+    heads, head = 2, 64
+    tensors = {}
+    for name, value in state.items():
+        if re.search(r"\.attn\.to_[kv]\.", name):
+            continue
+        if ".attn.to_q." in name:
+            prefix, kind = name[: name.index(".attn.to_q.")], name.rsplit(".", 1)[1]
+            parts = [state[f"{prefix}.attn.to_{p}.{kind}"] for p in "qkv"]
+            per_head = [part.reshape(heads, head, *part.shape[1:]) for part in parts]
+            tensors[f"{prefix}.attn.to_qkv.{kind}"] = torch.cat(per_head, dim=1).reshape(3 * heads * head, *parts[0].shape[1:])
+            continue
+        name = name.replace("decoder.proj_in.", "decoder.x_embedder.").replace(".attn.to_out.0.", ".attn.to_out.")
+        if ".ff.net.0.proj." in name:
+            tensors[name.replace(".ff.net.0.proj.", ".ff.w1.")] = swap_halves(value)
+            continue
+        tensors[name.replace(".ff.net.2.", ".ff.w2.")] = value
+    tensors["latents_mean"] = torch.tensor(model.config.latents_mean)
+    tensors["latents_std"] = torch.tensor(model.config.latents_std)
+    folder = out / "minimax_h3_vae"
+    folder.mkdir(parents=True, exist_ok=True)
+    save_file({n: v.contiguous() for n, v in tensors.items()}, folder / "model.safetensors")
+    # the runner's layouts: latents [T, h, w, C], frames [F, H, W, 3] in [0, 1]
+    pixel_mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1, 1)
+    pixel_std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1, 1)
+    frames = (video * pixel_std + pixel_mean).clamp(0, 1)
+    save_file({"latents": latents[0].permute(1, 2, 3, 0).contiguous(),
+               "frames": frames.permute(1, 2, 3, 0).contiguous()}, folder / "expected.safetensors")
+    print(f"minimax_h3_vae: {len(tensors)} tensors, frames {tuple(frames.shape)}")
+    print("  names:", sorted({re.sub(r"\.\d+\.", ".N.", n) for n in tensors}))
+
+
+def umt5():
+    """UMT5's encoder (Wan's text encoder): 2 blocks of 4 heads of 16 over 64,
+    gated GELU of 128, each block's own relative-position bias (32 buckets,
+    128 apart at most), on 23 token ids."""
+    from transformers import UMT5Config, UMT5EncoderModel
+    config = UMT5Config(vocab_size=100, d_model=64, d_kv=16, d_ff=128, num_layers=2, num_heads=4,
+                        relative_attention_num_buckets=32, relative_attention_max_distance=128,
+                        feed_forward_proj="gated-gelu", layer_norm_epsilon=1e-6, dropout_rate=0.0)
+    model = UMT5EncoderModel(config).eval().float()
+    with torch.no_grad():
+        for name, parameter in model.named_parameters():
+            if "layer_norm" in name:
+                parameter.copy_(1 + 0.2 * torch.randn_like(parameter))
+            elif "relative_attention_bias" in name:
+                parameter.copy_(torch.randn_like(parameter))
+            else:
+                fan_in = parameter.shape[-1] if parameter.dim() > 1 else 16
+                parameter.copy_(torch.randn_like(parameter) / fan_in ** 0.5)
+    ids = torch.randint(0, 100, (1, 23))
+    with torch.no_grad():
+        hidden = model(input_ids=ids).last_hidden_state[0].float()
+    tensors = {name: value.detach().float().contiguous() for name, value in model.state_dict().items()
+               if name != "encoder.embed_tokens.weight"}
+    folder = out / "umt5"
+    folder.mkdir(parents=True, exist_ok=True)
+    save_file(tensors, folder / "model.safetensors")
+    save_file({"ids": ids[0].to(torch.int32), "hidden": hidden.contiguous()}, folder / "expected.safetensors")
+    print(f"umt5: {len(tensors)} tensors, hidden {tuple(hidden.shape)}")
+    print("  names:", sorted({re.sub(r"\.\d+\.", ".N.", n) for n in tensors}))
+
+
+def wan_original_name(name):
+    """diffusers' Wan transformer names → the original ones (the GGUFs',
+    ComfyUI's): the cross-attention's norm is `norm3`."""
+    for pattern, replacement in [
+        (r"^condition_embedder\.text_embedder\.linear_1\.", "text_embedding.0."),
+        (r"^condition_embedder\.text_embedder\.linear_2\.", "text_embedding.2."),
+        (r"^condition_embedder\.time_embedder\.linear_1\.", "time_embedding.0."),
+        (r"^condition_embedder\.time_embedder\.linear_2\.", "time_embedding.2."),
+        (r"^condition_embedder\.time_proj\.", "time_projection.1."),
+        (r"\.attn1\.", ".self_attn."), (r"\.attn2\.", ".cross_attn."),
+        (r"\.to_q\.", ".q."), (r"\.to_k\.", ".k."), (r"\.to_v\.", ".v."), (r"\.to_out\.0\.", ".o."),
+        (r"^(blocks\.\d+)\.norm2\.", r"\1.norm3."), (r"\.ffn\.net\.0\.proj\.", ".ffn.0."),
+        (r"\.ffn\.net\.2\.", ".ffn.2."), (r"^(blocks\.\d+)\.scale_shift_table$", r"\1.modulation"),
+        (r"^scale_shift_table$", "head.modulation"), (r"^proj_out\.", "head.head."),
+    ]:
+        name = re.sub(pattern, replacement, name)
+    return name
+
+
+def wan():
+    """Wan 2.2's transformer as the I2V checkpoints have it (36 input
+    channels: the noise, then the mask and the conditioning latents): 2 blocks
+    of 2 heads of 128 (Wan's width, which its files do not record; RoPE 22/21/21
+    pairs), a GELU MLP of 128, text of 32 wide over 8 tokens, on 3 latent
+    frames of 8 × 12 (72 tokens)."""
+    from diffusers import WanTransformer3DModel
+    model = WanTransformer3DModel(
+        patch_size=(1, 2, 2), num_attention_heads=2, attention_head_dim=128, in_channels=36, out_channels=16,
+        text_dim=32, freq_dim=32, ffn_dim=128, num_layers=2, cross_attn_norm=True, eps=1e-6,
+    ).eval().float()
+    with torch.no_grad():
+        for name, parameter in model.named_parameters():
+            if re.search(r"norm\w*\.weight$", name):
+                parameter.copy_(1 + 0.2 * torch.randn_like(parameter))
+            elif "scale_shift_table" in name:
+                parameter.copy_(0.2 * torch.randn_like(parameter))
+            else:
+                fan_in = parameter[0].numel() if parameter.dim() > 1 else 16
+                parameter.copy_(torch.randn_like(parameter) / fan_in ** 0.5)
+    latents = torch.randn(1, 36, 3, 8, 12)
+    text = torch.randn(1, 8, 32)
+    timestep = torch.tensor([750.0])
+    with torch.no_grad():
+        velocity = model(latents, timestep, text, return_dict=False)[0][0].float()
+    tensors = {wan_original_name(name): value.detach().float().contiguous()
+               for name, value in model.state_dict().items()}
+    folder = out / "wan"
+    folder.mkdir(parents=True, exist_ok=True)
+    save_file(tensors, folder / "model.safetensors")
+    # the runner's layouts: latents [T, h, w, C]
+    save_file({"latents": latents[0].permute(1, 2, 3, 0).contiguous(), "text": text[0].contiguous(),
+               "timestep": timestep, "velocity": velocity.permute(1, 2, 3, 0).contiguous()},
+              folder / "expected.safetensors")
+    print(f"wan: {len(tensors)} tensors, velocity {tuple(velocity.shape)}, |max| {velocity.abs().max():.3f}")
+    print("  names:", sorted({re.sub(r"\.\d+\.", ".N.", n) for n in tensors}))
+
+
+def wan_video_vae_original_name(name):
+    """diffusers' `AutoencoderKLWan` names → the original Wan ones (the ComfyUI
+    repackage's), encoder and decoder."""
+    name = re.sub(r"^quant_conv\.", "conv1.", name)
+    name = re.sub(r"^post_quant_conv\.", "conv2.", name)
+    name = re.sub(r"^(encoder|decoder)\.conv_in\.", r"\1.conv1.", name)
+    name = re.sub(r"^(encoder|decoder)\.norm_out\.", r"\1.head.0.", name)
+    name = re.sub(r"^(encoder|decoder)\.conv_out\.", r"\1.head.2.", name)
+    name = re.sub(r"^(encoder|decoder)\.mid_block\.attentions\.0\.", r"\1.middle.1.", name)
+    name = re.sub(r"^(encoder|decoder)\.mid_block\.resnets\.(\d+)\.", lambda m: f"{m[1]}.middle.{2 * int(m[2])}.", name)
+    name = re.sub(r"^encoder\.down_blocks\.", "encoder.downsamples.", name)
+    name = re.sub(r"^decoder\.up_blocks\.(\d+)\.resnets\.(\d+)\.",
+                  lambda m: f"decoder.upsamples.{4 * int(m[1]) + int(m[2])}.", name)
+    name = re.sub(r"^decoder\.up_blocks\.(\d+)\.upsamplers\.0\.",
+                  lambda m: f"decoder.upsamples.{4 * int(m[1]) + 3}.", name)
+    if re.match(r"^(encoder\.downsamples|decoder\.upsamples|encoder\.middle|decoder\.middle)\.\d+\.", name):
+        for diffusers, original in [("norm1.gamma", "residual.0.gamma"), ("conv1.", "residual.2."),
+                                    ("norm2.gamma", "residual.3.gamma"), ("conv2.", "residual.6."),
+                                    ("conv_shortcut.", "shortcut.")]:
+            name = re.sub(r"\." + re.escape(diffusers), "." + original, name)
+    return name
+
+
+def wan_video_vae():
+    """The Wan 2.1 VAE on video, 8 channels at its base: a 9-frame 32 × 32 clip
+    encoded (frame 0 alone, then 4 at a time through the causal caches) to 3
+    latent frames, and 3 latent frames of 4 × 4 decoded to 9 frames (one at a
+    time, each after the first making 4)."""
+    from diffusers import AutoencoderKLWan
+    model = AutoencoderKLWan(base_dim=8, z_dim=16, dim_mult=[1, 2, 4, 4], num_res_blocks=2, attn_scales=[],
+                             temperal_downsample=[False, True, True]).eval().float()
+    with torch.no_grad():
+        for name, parameter in model.named_parameters():
+            if name.endswith("gamma"):
+                parameter.copy_(1 + 0.2 * torch.randn_like(parameter))
+            else:
+                fan_in = parameter[0].numel() if parameter.dim() > 1 else 16
+                parameter.copy_(torch.randn_like(parameter) / fan_in ** 0.5)
+        model.decoder.conv_out.weight.mul_(0.1)
+    mean = torch.tensor(model.config.latents_mean).view(1, 16, 1, 1, 1)
+    std = torch.tensor(model.config.latents_std).view(1, 16, 1, 1, 1)
+    video = torch.rand(1, 3, 9, 32, 32) * 2 - 1
+    latents = torch.randn(1, 16, 3, 4, 4)
+    with torch.no_grad():
+        encoded = (model.encode(video).latent_dist.mode() - mean) / std
+        decoded = model.decode(latents * std + mean, return_dict=False)[0][0].float()
+    tensors = {wan_video_vae_original_name(name): value.detach().float().contiguous()
+               for name, value in model.state_dict().items()}
+    folder = out / "wan_video_vae"
+    folder.mkdir(parents=True, exist_ok=True)
+    save_file(tensors, folder / "model.safetensors")
+    def frames(x):  # [1, C, T, H, W] → [T, H, W, C]
+        return x[0].permute(1, 2, 3, 0).contiguous()
+    save_file({"video": frames(video), "encoded": frames(encoded), "latents": frames(latents),
+               "decoded": decoded.permute(1, 2, 3, 0).contiguous()}, folder / "expected.safetensors")
+    print(f"wan_video_vae: {len(tensors)} tensors, encoded {tuple(encoded.shape)}, decoded {tuple(decoded.shape)}")
+    print("  names:", sorted({re.sub(r"\.\d+\.", ".N.", n) for n in tensors}))
+
+
+def gemma4_text():
+    """Gemma 4's text model as LTX 2.5's text encoder has it (Gemma 4 unified,
+    12B): five sliding layers then a global one, the global layers' heads twice
+    as wide over one key head that is also the value (`attention_k_eq_v`), with
+    the proportional RoPE on a quarter of them; sandwich norms, value norms, a
+    per-layer scalar. Every hidden state out, the last one normed, on 20 token
+    ids."""
+    from transformers.models.gemma4_unified.configuration_gemma4_unified import Gemma4UnifiedTextConfig
+    from transformers.models.gemma4_unified.modeling_gemma4_unified import Gemma4UnifiedTextModel
+    config = Gemma4UnifiedTextConfig(
+        vocab_size=100, hidden_size=64, intermediate_size=128, num_hidden_layers=6, num_attention_heads=2,
+        num_key_value_heads=1, head_dim=32, global_head_dim=64, num_global_key_value_heads=1,
+        attention_k_eq_v=True, sliding_window=1024, layer_types=["sliding_attention"] * 5 + ["full_attention"],
+        rope_parameters={"full_attention": {"partial_rotary_factor": 0.25, "rope_theta": 1000000.0,
+                                            "rope_type": "proportional"},
+                         "sliding_attention": {"rope_theta": 10000.0, "rope_type": "default"}},
+        hidden_size_per_layer_input=0, num_kv_shared_layers=0, enable_moe_block=False)
+    model = Gemma4UnifiedTextModel(config).eval().float()
+    with torch.no_grad():
+        for name, parameter in model.named_parameters():
+            if "norm" in name:
+                parameter.copy_(1 + 0.2 * torch.randn_like(parameter))
+            else:
+                fan_in = parameter.shape[-1] if parameter.dim() > 1 else 16
+                parameter.copy_(torch.randn_like(parameter) / fan_in ** 0.5)
+        for layer in model.layers:
+            layer.layer_scalar.copy_(0.5 + torch.rand(1))
+    ids = torch.randint(0, 100, (1, 20))
+    with torch.no_grad():
+        states = model(input_ids=ids, output_hidden_states=True).hidden_states
+    hidden = torch.stack([s[0] for s in states], dim=0).float()  # [layers + 1, L, hidden]
+    tensors = {"model." + name: value.detach().float().contiguous() for name, value in model.state_dict().items()}
+    folder = out / "gemma4_text"
+    folder.mkdir(parents=True, exist_ok=True)
+    save_file(tensors, folder / "model.safetensors")
+    save_file({"ids": ids[0].to(torch.int32), "hidden": hidden.contiguous()}, folder / "expected.safetensors")
+    print(f"gemma4_text: {len(tensors)} tensors, hidden {tuple(hidden.shape)}")
+    print("  names:", sorted({re.sub(r"\.\d+\.", ".N.", n) for n in tensors}))
+
+
+def ltx_connectors():
+    """LTX 2.5's text features and connectors (diffusers' `LTX2TextConnectors`,
+    per-modality projections): 3 hidden states of 32 per token, left-padded
+    (6 pads, 10 tokens) to 16 rows; video 2 gated heads of 128, audio 2 of 64,
+    2 blocks each, 8 learnable registers, the split RoPE."""
+    from diffusers.pipelines.ltx2.connectors import LTX2TextConnectors
+    model = LTX2TextConnectors(
+        caption_channels=32, text_proj_in_factor=3, video_connector_num_attention_heads=2,
+        video_connector_attention_head_dim=128, video_connector_num_layers=2,
+        video_connector_num_learnable_registers=8, video_gated_attn=True, audio_connector_num_attention_heads=2,
+        audio_connector_attention_head_dim=64, audio_connector_num_layers=2,
+        audio_connector_num_learnable_registers=8, audio_gated_attn=True, rope_type="split",
+        per_modality_projections=True, video_hidden_dim=256, audio_hidden_dim=128, proj_bias=True,
+    ).eval().float()
+    with torch.no_grad():
+        for name, parameter in model.named_parameters():
+            if "norm" in name:
+                parameter.copy_(1 + 0.2 * torch.randn_like(parameter))
+            elif "registers" in name:
+                parameter.copy_(torch.randn_like(parameter))
+            else:
+                fan_in = parameter.shape[-1] if parameter.dim() > 1 else 16
+                parameter.copy_(torch.randn_like(parameter) / fan_in ** 0.5)
+    hidden = torch.randn(1, 16, 32, 3)
+    mask = torch.tensor([[0] * 6 + [1] * 10])
+    with torch.no_grad():
+        video, audio, _ = model(hidden, mask, padding_side="left")
+    def original(name):
+        for pattern, replacement in [
+            (r"^video_text_proj_in\.", "text_embedding_projection.video_aggregate_embed."),
+            (r"^audio_text_proj_in\.", "text_embedding_projection.audio_aggregate_embed."),
+            (r"^(video|audio)_connector\.transformer_blocks\.", r"\1_embeddings_connector.transformer_1d_blocks."),
+            (r"^(video|audio)_connector\.", r"\1_embeddings_connector."),
+            (r"\.norm_q\.", ".q_norm."), (r"\.norm_k\.", ".k_norm."),
+        ]:
+            name = re.sub(pattern, replacement, name)
+        return name
+    tensors = {original(n): v.detach().float().contiguous() for n, v in model.state_dict().items()}
+    folder = out / "ltx_connectors"
+    folder.mkdir(parents=True, exist_ok=True)
+    save_file(tensors, folder / "model.safetensors")
+    # the runner's input: the valid tokens' states, state-major [3 × 10, 32]
+    states = hidden[0, 6:].permute(2, 0, 1).reshape(3 * 10, 32)
+    save_file({"states": states.contiguous(), "video": video[0].contiguous(), "audio": audio[0].contiguous()},
+              folder / "expected.safetensors")
+    print(f"ltx_connectors: {len(tensors)} tensors, video {tuple(video.shape)}, audio {tuple(audio.shape)}")
+    print("  names:", sorted({re.sub(r"\.\d+\.", ".N.", n) for n in tensors}))
+
+
+def ltx_transformer_original_name(name):
+    """diffusers' LTX 2 transformer names → the original ones (the official
+    single files', `convert_ltx2_transformer_to_diffusers` read backwards)."""
+    for pattern, replacement in [
+        (r"^proj_in\.", "patchify_proj."), (r"^audio_proj_in\.", "audio_patchify_proj."),
+        (r"^time_embed\.", "adaln_single."), (r"^audio_time_embed\.", "audio_adaln_single."),
+        (r"^prompt_adaln\.", "prompt_adaln_single."), (r"^audio_prompt_adaln\.", "audio_prompt_adaln_single."),
+        (r"^av_cross_attn_video_scale_shift\.", "av_ca_video_scale_shift_adaln_single."),
+        (r"^av_cross_attn_video_a2v_gate\.", "av_ca_a2v_gate_adaln_single."),
+        (r"^av_cross_attn_audio_scale_shift\.", "av_ca_audio_scale_shift_adaln_single."),
+        (r"^av_cross_attn_audio_v2a_gate\.", "av_ca_v2a_gate_adaln_single."),
+        (r"\.video_a2v_cross_attn_scale_shift_table$", ".scale_shift_table_a2v_ca_video"),
+        (r"\.audio_a2v_cross_attn_scale_shift_table$", ".scale_shift_table_a2v_ca_audio"),
+        (r"\.norm_q\.", ".q_norm."), (r"\.norm_k\.", ".k_norm."),
+    ]:
+        name = re.sub(pattern, replacement, name)
+    return name
+
+
+def ltx_transformer():
+    """LTX 2.5's joint audio and video transformer (diffusers'
+    `LTX2VideoTransformer3DModel` with LTX 2.5's flags: gated attention, the
+    cross-attention AdaLN and prompt modulation, the split RoPE, the cross
+    timestep): 2 blocks, video 2 heads of 128 over 32 latent channels, audio 2
+    heads of 64; 2 latent frames of 3 × 4 at 16 fps, 9 audio latents, 16 text
+    rows each."""
+    from diffusers import LTX2VideoTransformer3DModel
+    model = LTX2VideoTransformer3DModel(
+        in_channels=32, out_channels=32, num_attention_heads=2, attention_head_dim=128, cross_attention_dim=256,
+        gated_attn=True, cross_attn_mod=True, audio_in_channels=32, audio_out_channels=32,
+        audio_num_attention_heads=2, audio_attention_head_dim=64, audio_cross_attention_dim=128,
+        audio_gated_attn=True, audio_cross_attn_mod=True, num_layers=2, caption_channels=32,
+        rope_type="split", use_prompt_embeddings=False, ff_bias=False, audio_ff_bias=True,
+        use_prompt_adaln_single=True, use_keyframes_abs_pos_embedding=True,
+    ).eval().float()
+    with torch.no_grad():
+        for name, parameter in model.named_parameters():
+            if re.search(r"norm_[qk]\.weight$", name):
+                parameter.copy_(1 + 0.2 * torch.randn_like(parameter))
+            elif "scale_shift_table" in name:
+                parameter.copy_(0.2 * torch.randn_like(parameter))
+            else:
+                fan_in = parameter.shape[-1] if parameter.dim() > 1 else 16
+                parameter.copy_(torch.randn_like(parameter) / fan_in ** 0.5)
+    frames, height, width, audio_frames, fps = 2, 3, 4, 9, 16.0
+    video = torch.randn(1, frames * height * width, 32)
+    audio = torch.randn(1, audio_frames, 32)
+    text = torch.randn(1, 16, 256)
+    audio_text = torch.randn(1, 16, 128)
+    t = torch.tensor([640.0])
+    with torch.no_grad():
+        video_out, audio_out = model(video, audio, text, audio_text, timestep=t, audio_timestep=t, sigma=t,
+                                     num_frames=frames, height=height, width=width, fps=fps,
+                                     audio_num_frames=audio_frames, use_cross_timestep=True, return_dict=False)
+    tensors = {ltx_transformer_original_name(n): v.detach().float().contiguous()
+               for n, v in model.state_dict().items()}
+    folder = out / "ltx_transformer"
+    folder.mkdir(parents=True, exist_ok=True)
+    save_file(tensors, folder / "model.safetensors")
+    save_file({"video": video[0].contiguous(), "audio": audio[0].contiguous(), "text": text[0].contiguous(),
+               "audio_text": audio_text[0].contiguous(), "timestep": t,
+               "video_out": video_out[0].float().contiguous(), "audio_out": audio_out[0].float().contiguous(),
+               "shape": torch.tensor([frames, height, width, audio_frames], dtype=torch.int32),
+               "fps": torch.tensor([fps])}, folder / "expected.safetensors")
+    print(f"ltx_transformer: {len(tensors)} tensors, video {tuple(video_out.shape)} |max| {video_out.abs().max():.3f}")
+    print("  names:", sorted({re.sub(r"\.\d+\.", ".N.", n) for n in tensors if not n.startswith("transformer_blocks")}))
+
+
+def ltx_video_vae():
+    """LTX 2.5's convolutional video VAE decoder, shrunk: diffusers' own LTX 2
+    blocks (`LTX2VideoCausalConv3d`, `LTX2VideoResnetBlock3d`,
+    `LTX2VideoUpsampler3d`, `PerChannelRMSNorm`) in the official file's order
+    (the config's `decoder_blocks` reversed: residuals, ×2 everywhere halving
+    the channels, ×2 everywhere, ×2 in time, ×2 in space), non-causal, the
+    decoder's own unpatchify; 3 latent frames of 2 × 2 into 17 frames of 64 × 64,
+    under the original names."""
+    from diffusers.models.autoencoders.autoencoder_kl_ltx2 import (
+        LTX2VideoCausalConv3d, LTX2VideoResnetBlock3d, LTX2VideoUpsampler3d, PerChannelRMSNorm)
+    latent = 32
+    stages = [("res", 128), ("up", 128, (2, 2, 2), 2), ("res", 64), ("up", 64, (2, 2, 2), 1), ("res", 64),
+              ("up", 64, (2, 1, 1), 2), ("res", 32), ("up", 32, (1, 2, 2), 1), ("res", 32)]
+    conv_in = LTX2VideoCausalConv3d(latent, 128, 3)
+    blocks = []
+    for stage in stages:
+        if stage[0] == "res":
+            blocks.append(torch.nn.ModuleList([LTX2VideoResnetBlock3d(stage[1], stage[1])]))
+        else:
+            _, channels, stride, factor = stage
+            blocks.append(LTX2VideoUpsampler3d(channels, channels, stride=stride, residual=False, upscale_factor=factor))
+    conv_out = LTX2VideoCausalConv3d(32, 48, 3)
+    modules = torch.nn.ModuleList([conv_in, *blocks, conv_out]).eval().float()
+    with torch.no_grad():
+        for name, parameter in modules.named_parameters():
+            fan_in = parameter[0].numel() if parameter.dim() > 1 else 16
+            parameter.copy_(torch.randn_like(parameter) / fan_in ** 0.5)
+        conv_out.conv.weight.mul_(0.2)
+    mean, std = 0.1 * torch.randn(latent), 0.5 + torch.rand(latent)
+    z = torch.randn(1, latent, 3, 2, 2)
+    norm = PerChannelRMSNorm()
+    with torch.no_grad():
+        x = conv_in(z * std.view(1, -1, 1, 1, 1) + mean.view(1, -1, 1, 1, 1), causal=False)
+        for block in blocks:
+            if isinstance(block, torch.nn.ModuleList):
+                for resnet in block:
+                    x = resnet(x, causal=False)
+            else:
+                x = block(x, causal=False)
+        x = conv_out(torch.nn.functional.silu(norm(x)), causal=False)
+        b, c, f, h, w = x.shape
+        x = x.reshape(b, -1, 1, 4, 4, f, h, w).permute(0, 1, 5, 2, 6, 4, 7, 3).flatten(6, 7).flatten(4, 5).flatten(2, 3)
+    tensors = {"per_channel_statistics.mean-of-means": mean, "per_channel_statistics.std-of-means": std,
+               "decoder.conv_in.conv.weight": conv_in.conv.weight, "decoder.conv_in.conv.bias": conv_in.conv.bias,
+               "decoder.conv_out.conv.weight": conv_out.conv.weight, "decoder.conv_out.conv.bias": conv_out.conv.bias}
+    for i, block in enumerate(blocks):
+        if isinstance(block, torch.nn.ModuleList):
+            for j, resnet in enumerate(block):
+                for part in ("conv1", "conv2"):
+                    conv = getattr(resnet, part).conv
+                    tensors[f"decoder.up_blocks.{i}.res_blocks.{j}.{part}.conv.weight"] = conv.weight
+                    tensors[f"decoder.up_blocks.{i}.res_blocks.{j}.{part}.conv.bias"] = conv.bias
+        else:
+            tensors[f"decoder.up_blocks.{i}.conv.conv.weight"] = block.conv.conv.weight
+            tensors[f"decoder.up_blocks.{i}.conv.conv.bias"] = block.conv.conv.bias
+    folder = out / "ltx_video_vae"
+    folder.mkdir(parents=True, exist_ok=True)
+    save_file({n: v.detach().float().contiguous() for n, v in tensors.items()}, folder / "model.safetensors")
+    save_file({"latents": z[0].permute(1, 2, 3, 0).contiguous(), "frames": x[0].permute(1, 2, 3, 0).contiguous()},
+              folder / "expected.safetensors")
+    print(f"ltx_video_vae: {len(tensors)} tensors, frames {tuple(x.shape)}")
+
+
 families = {"krea2": krea2, "wan_vae": wan_vae, "flux2": flux2, "flux2_dev": flux2_dev, "flux2_vae": flux2_vae,
+            "minimax_h3": minimax_h3, "minimax_h3_vae": minimax_h3_vae, "umt5": umt5, "wan": wan,
+            "wan_video_vae": wan_video_vae, "gemma4_text": gemma4_text,
+            "ltx_connectors": ltx_connectors, "ltx_transformer": ltx_transformer,
+            "ltx_video_vae": ltx_video_vae,
             "qwen_image21": qwen_image21, "qwen_image21_vae": qwen_image21_vae}
 for family in sys.argv[1:] or families:
     families[family]()

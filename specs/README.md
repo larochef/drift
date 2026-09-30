@@ -53,7 +53,7 @@ in [`../docs/`](../docs/README.md).
 | [39](39-seamless-edit.md) | Edit: change part of a picture by instruction, keep the rest | done in code, not yet run live |
 | [40](40-pause-and-resume.md) | Pausing a tiled job, and resuming it after a restart | done in code, not yet run live |
 | [41](41-text-projects.md) | Text projects: a kept conversation with a raw chat model | done in code, not yet run live |
-| [42](42-drift-runner.md) | drift runner: own inference engine for Strix Halo (HIP kernels, Scala via FFM), chat first with MTP | partial — steps 1–8 of 15 done: Qwen 3 and Qwen 3.6 35B-A3B chat through drift |
+| [42](42-drift-runner.md) | drift runner: own inference engine for Strix Halo (HIP kernels, Scala via FFM), chat first with MTP | partial — steps 1–9 done, 10–13 in part; step 14: MiniMax H3, Wan 2.2 A14B, LTX 2.5 (videos; H3 and LTX silent) |
 | [43](43-runners-per-architecture.md) | Runners per architecture: the drift runner installed from the runtimes page, supported runners and model kind, a runner per configuration | done in code, run on a copy of the configuration |
 | [44](44-generation-progress.md) | Generation progress: batch and image bars, the runner reporting its own progress | planned |
 | [45](45-redraw-steps-and-reference.md) | Redraw: full steps at any strength, a reference at the tile's scale, reference-taking models only | planned |
@@ -74,7 +74,7 @@ in [`../docs/`](../docs/README.md).
   generating and editing, and its defaults settled against the vendor's numbers.
 - `33`, `34`: a live pass — SenseNova U1.5 from its official shards, and the
   official 8-step LoRA on it.
-- `42`: steps 9–15 of the runner; decode speed on Qwen 3.6 (52 tok/s; Vulkan llama.cpp 69) or step 9 (MTP) next.
+- `42`: steps 10–15 of the runner; step 14 has MiniMax H3 and LTX 2.5 (no soundtracks, no image conditions) and Wan 2.2 A14B (no LoRAs, no 5B); HunyuanVideo and the audio decoders next.
 - Ideas not specced: parameter sweeps (one prompt × configurations), timings
   and a loud CPU-fallback warning, Civitai example → form, assistant autopilot,
   a disk view.

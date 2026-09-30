@@ -96,11 +96,15 @@ final class HiDreamO1 private (
 
   /** A sequence for a prompt of `promptTokens` (the timestep token included)
     * and `patches` patches in a `gridHeight × gridWidth` grid, the patches
-    * placed as the official `get_rope_index_fix_point` places them: the
-    * prompt at its slots on all three axes, the patches at (4096, 4096 + row,
-    * 4096 + column).
+    * placed as the official `get_rope_index_fix_point` places them: the prompt
+    * at its slots on all three axes, the patches at (4096, 4096 + row, 4096 +
+    * column).
     */
-  def newSequence(promptTokens: Int, gridHeight: Int, gridWidth: Int): Sequence = {
+  def newSequence(
+      promptTokens: Int,
+      gridHeight: Int,
+      gridWidth: Int
+  ): Sequence = {
     val patches = gridHeight * gridWidth
     val sequence = decoder.newSequence(promptTokens + patches, 64)
     val at = HiDreamO1.PatchPositions
@@ -145,8 +149,8 @@ final class HiDreamO1 private (
   }
 
   /** x̂, the model's clean image, of `patches` (`[L, 3072]`) at timestep `t` (1
-    * − σ), the prompt cached in `sequence` before `start` (the timestep
-    * token's slot), into `out` (like `patches`).
+    * − σ), the prompt cached in `sequence` before `start` (the timestep token's
+    * slot), into `out` (like `patches`).
     */
   def predict(
       patches: Tensor,
@@ -184,8 +188,7 @@ object HiDreamO1 {
   /** Pixels per patch side. */
   val Patch = 32
 
-  /** Where the target image's patches start on every mRoPE axis
-    * (`fix_point`).
+  /** Where the target image's patches start on every mRoPE axis (`fix_point`).
     */
   val PatchPositions = 4096
 
@@ -200,18 +203,19 @@ object HiDreamO1 {
   def open(ops: Ops, path: java.nio.file.Path): HiDreamO1 = {
     val source = WeightSource.open(ops, path)
     val updates = new LoraUpdates(ops)
-    try new HiDreamO1(
-      ops,
-      source,
-      new DenseDecoder(
+    try
+      new HiDreamO1(
         ops,
         source,
-        config(source),
-        DenseNames.huggingFace(Prefix),
-        Some(updates)
-      ),
-      updates
-    )
+        new DenseDecoder(
+          ops,
+          source,
+          config(source),
+          DenseNames.huggingFace(Prefix),
+          Some(updates)
+        ),
+        updates
+      )
     catch {
       case error: Throwable =>
         source.close()
@@ -234,8 +238,12 @@ object HiDreamO1 {
       layers = layers,
       hidden = hidden.toInt,
       intermediate = dimensions("layers.0.mlp.gate_proj.weight").head.toInt,
-      heads = (dimensions("layers.0.self_attn.q_proj.weight").head / headDimension).toInt,
-      kvHeads = (dimensions("layers.0.self_attn.k_proj.weight").head / headDimension).toInt,
+      heads = (dimensions(
+        "layers.0.self_attn.q_proj.weight"
+      ).head / headDimension).toInt,
+      kvHeads = (dimensions(
+        "layers.0.self_attn.k_proj.weight"
+      ).head / headDimension).toInt,
       headDimension = headDimension.toInt,
       ropeTheta = 5000000f,
       ropeSections = RopeSections.Interleaved(24, 20, 20),

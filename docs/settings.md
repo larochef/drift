@@ -158,7 +158,10 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     configuration's **audio VAE** (the official file, which holds the
     vocoder too) the videos have their soundtrack, 48 kHz stereo, in about
     two seconds; without it they are silent. It reads `--fps` (the frame
-    rate is part of what the model sees). Image to video and LoRAs are not supported yet.
+    rate is part of what the model sees). ComfyUI's mixed int8 and 4-bit
+    checkpoints (the "W4A8" and "INT8 ConvRot" files on Civitai) load too:
+    they are decoded to full weights at startup, so they save disk and
+    download time, not memory.
   - **None** does masks, hires fix or VAE tiling yet; the runner says so
     when a request asks for them.
   - **Images differ from sd-cpp's** for the same seed: the runner follows

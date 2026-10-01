@@ -13,14 +13,17 @@ import scala.collection.mutable
   * safetensors file, or a shard index. Tensors are views over the mapped files,
   * never copies; closing unmaps them. `copied` weights are the exception, and
   * so are fp8 E4M3 safetensors weights, dequantized to BF16 (times their scale
-  * tensor, ComfyUI's scaled fp8) the first time they are asked for. Every
-  * tensor goes by the name the loaders read (`WeightNames`), whatever prefix or
-  * naming the file stores it under.
+  * tensor, ComfyUI's scaled fp8) the first time they are asked for, and
+  * ComfyUI's int8 and 4-bit linears (`ComfyQuant`), decoded to BF16 likewise.
+  * Every tensor goes by the name the loaders read (`WeightNames`), whatever
+  * prefix or naming the file stores it under.
   */
 final class WeightSource private (
     stored: Map[String, StoredTensor],
     /** A stored tensor as the backend reads it. */
     load: StoredTensor => Tensor,
+    /** A stored tensor's shape as the backend reads it. */
+    shapeOf: StoredTensor => Shape,
     closing: () => Unit,
     /** The GGUF, when the weights are one. */
     val gguf: Option[GgufFile],
@@ -41,12 +44,12 @@ final class WeightSource private (
 
   /** A tensor's shape, nothing loaded. */
   def shape(name: String): Shape =
-    stored
-      .getOrElse(
+    shapeOf(
+      stored.getOrElse(
         name,
         throw new NoSuchElementException(s"the weights have no tensor $name")
       )
-      .shape
+    )
 
   /** A tensor's bytes as the file holds them, on the host. */
   def bytes(name: String): MemorySegment =
@@ -70,6 +73,7 @@ object WeightSource {
       new WeightSource(
         renamed(file.tensors),
         _.tensor(mapped.storage),
+        _.shape,
         () => mapped.close(),
         Some(file),
         None
@@ -88,20 +92,23 @@ object WeightSource {
             .map(path.resolveSibling)
         else Seq(path)
       val mappings = shards.map(ops.mapFile)
+      val files = mappings
+        .zip(shards)
+        .map((mapped, shard) =>
+          mapped -> Safetensors.read(mapped.segment, shard.toString)
+        )
+      // by the stored name, which a tensor keeps
+      val quantized = files.flatMap((_, file) => ComfyQuant.weights(file)).toMap
       val stored = renamed(
-        mappings
-          .zip(shards)
-          .flatMap { (mapped, shard) =>
-            val file = Safetensors.read(mapped.segment, shard.toString)
-            file.tensors.view.mapValues { tensor =>
-              val scale = Option
-                .when(tensor.dtype == DType.F8E4M3)(file.scaleOf(tensor.name))
-                .flatten
-                .fold(1f)(_.decode().head)
-              (tensor, mapped, scale)
-            }
+        files.flatMap { (mapped, file) =>
+          file.tensors.view.mapValues { tensor =>
+            val scale = Option
+              .when(tensor.dtype == DType.F8E4M3)(file.scaleOf(tensor.name))
+              .flatten
+              .fold(1f)(_.decode().head)
+            (tensor, mapped, scale)
           }
-          .toMap
+        }.toMap
       )
       val config = Option(path.resolveSibling("config.json"))
         .filter(Files.isRegularFile(_))
@@ -116,14 +123,20 @@ object WeightSource {
         stored.view.mapValues(_._1).toMap,
         tensor => {
           val (mapped, scale) = placed(tensor.name)
-          val inPlace = tensor.tensor(mapped.storage)
-          if (tensor.dtype != DType.F8E4M3) inPlace
-          else
-            dequantized.getOrElseUpdate(
-              tensor.name,
-              toBf16(ops, inPlace, scale)
-            )
+          quantized.get(tensor.name) match {
+            case Some(weight) =>
+              dequantized.getOrElseUpdate(tensor.name, toBf16(ops, weight))
+            case None =>
+              val inPlace = tensor.tensor(mapped.storage)
+              if (tensor.dtype != DType.F8E4M3) inPlace
+              else
+                dequantized.getOrElseUpdate(
+                  tensor.name,
+                  toBf16(ops, inPlace, scale)
+                )
+          }
         },
+        tensor => quantized.get(tensor.name).fold(tensor.shape)(_.shape),
         () => {
           dequantized.values.foreach(ops.release)
           mappings.foreach(_.close())
@@ -154,6 +167,7 @@ object WeightSource {
               tensor.bytes.toArray(JAVA_BYTE)
             )
           ),
+        _.shape,
         () => {
           copies.values.foreach(ops.release)
           mapped.close()
@@ -188,6 +202,26 @@ object WeightSource {
         row += count
       }
     } finally ops.release(floats)
+    out
+  }
+
+  /** A ComfyUI quantized linear's weight as it was before quantization, in
+    * BF16: decoded on the CPU a few million values at a time.
+    */
+  private def toBf16(ops: Ops, weight: ComfyQuant.Weight): Tensor = {
+    val rows = weight.shape.dimensions(0)
+    val columns = weight.shape.dimensions(1)
+    val chunk = math.min(rows, math.max(1L, (1L << 24) / columns)).toInt
+    val out = ops.allocate(DType.BF16, weight.shape)
+    var row = 0L
+    while (row < rows) {
+      val count = math.min(chunk.toLong, rows - row).toInt
+      val part =
+        ops.fromFloats(Shape.of(count, columns), weight.rows(row, count))
+      try ops.convert(part, out.rows(row, count))
+      finally ops.release(part)
+      row += count
+    }
     out
   }
 

@@ -2138,6 +2138,35 @@ on the old tool.
         steps, CFG 1, a first and a last frame made for the purpose): 365 s
         with the 80s-fantasy high/low pair (steps 37 s against 35 s without),
         both keyframes held exactly; the pair changes the clip.
+    - **Done 2026-10-01: ComfyUI's int8 and 4-bit checkpoints** (`formats/
+      ComfyQuant`, `WeightSource`; REDGraft LTX 2.5, 17 GB, `mixed:w4a8+int8`).
+      A linear's `comfy_quant` marker names how its weight is stored, and two
+      layouts are decoded on the CPU to the BF16 weight the model was
+      quantized from, the first time it is asked for (the whole model: 42 s to
+      load against 21 s of failing before):
+      - `int8_tensorwise`: I8 `[out, in]` times `weight_scale`, one a row.
+      - `asym_w4a8_int8`: two 4-bit codes a byte (`[out, in / 2]`, the even
+        column in the low nibble — read as a plain weight, that was "x rows of
+        4096 against weight rows of 2048"); a code is a level of the 16-entry
+        `weight_codebook`, times `weight_s_rel` (fp8, one a 16 columns),
+        rounded to an int8 and clamped to ±127, times `weight_s_channel`.
+      - **ConvRot.** Both are stored rotated: every 256 input columns times
+        the normalized regular Hadamard matrix, the Kronecker fourth power of
+        `[[1, 1, 1, −1], [1, 1, −1, 1], [1, −1, 1, 1], [−1, 1, 1, 1]] / 2`,
+        symmetric and its own inverse, so the same product undoes it (four
+        radix-4 passes a group). ComfyUI's kernels rotate and quantize the
+        activations instead; the runner computes in floats on the weights as
+        they were. Which matrix it is was settled on real weights: with this
+        one a REDGraft layer decodes to the official BF16 layer (cosine 1.00,
+        an int8 and a 4-bit one), with the Sylvester matrix or the −1 on the
+        diagonal to noise. Any other group size is refused.
+      - Fixtures from numpy (`fixtures/comfy_quant.py`, the converter's own
+        `dequantize_rotated` and the explicit 256 × 256 matrix).
+      - **Live:** 512², 41 frames, 8 steps: 3.8 s a step, 39 s, a clean video
+        with its soundtrack. sd-cpp does not read the format.
+      - **Left:** the other marked formats (`svdquant`, `awq`, `nvfp4`,
+        `mxfp8`) are loaded as stored, as before; int8 text encoders were not
+        tried.
     - **Done 2026-10-01: LTX 2.5 LoRAs, image to video, keyframes and guides**
       (`Ltx2`, `LtxVideoVae`, `LtxPipeline`). diffusers 0.40's condition blocks
       (`LTX2ConditionPrepareLatentsStep`, `LTX2ConditionLoopBeforeDenoiser`)

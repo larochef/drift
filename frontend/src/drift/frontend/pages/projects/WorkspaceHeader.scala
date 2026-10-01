@@ -24,7 +24,8 @@ class WorkspaceHeader(
     sessions: WorkspaceSessions,
     prerequisites: LaunchPrerequisites,
     /** The modal creating a configuration of a tool, for a project of a kind
-      * (none: any), and what to do with the one created — a picker's last entry.
+      * (none: any), and what to do with the one created — a picker's last
+      * entry.
       */
     newConfiguration: (
         RuntimeTool,

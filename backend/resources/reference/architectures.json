@@ -893,8 +893,8 @@
       "--diffusion-fa": "",
       "--cfg-scale": "6.0",
       "--sampling-method": "euler",
-      "-W": "1280",
-      "-H": "720",
+      "-W": "512",
+      "-H": "512",
       "--video-frames": "33",
       "--vae-tiling": "",
       "--mmap": ""
@@ -1105,8 +1105,8 @@
       "--flow-shift": "12.0",
       "--fps": "24",
       "--video-frames": "56",
-      "-W": "864",
-      "-H": "480",
+      "-W": "512",
+      "-H": "512",
       "--cache-mode": "spectrum"
     },
     "tags": [
@@ -1170,12 +1170,15 @@
       "--diffusion-fa": "",
       "--high-noise-cfg-scale": "3.5",
       "--high-noise-sampling-method": "euler",
-      "--high-noise-steps": "20",
+      "--high-noise-steps": "8",
       "--sampling-method": "euler",
       "--flow-shift": "3.0",
       "--video-frames": "64",
       "--cache-mode": "spectrum",
-      "--cfg-scale": "1.0"
+      "--cfg-scale": "3.5",
+      "-W": "512",
+      "-H": "512",
+      "--steps": "10"
     },
     "tags": [
       "video"
@@ -1226,7 +1229,9 @@
       "--flow-shift": "3.0",
       "--video-frames": "64",
       "--cache-mode": "spectrum",
-      "--cfg-scale": "1.0"
+      "--cfg-scale": "1.0",
+      "-W": "512",
+      "-H": "512"
     },
     "tags": [
       "video"

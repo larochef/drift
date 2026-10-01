@@ -97,6 +97,13 @@ object ImageMain {
                 s"--guidance ${options.guidance.get} accepted and ignored: $family has no guidance embedding"
               )
           case video: VideoPipeline =>
+            options.highNoiseModel.foreach(file =>
+              println(
+                if (video.hasHighNoiseExpert) s"high-noise expert: $file"
+                else
+                  s"--high-noise-diffusion-model $file accepted and ignored: $family has one model"
+              )
+            )
             if (video.makesSoundtrack && !video.decodesSoundtrack)
               println(s"no --audio-vae: $family's videos are silent")
             if (!video.makesSoundtrack)

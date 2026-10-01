@@ -130,6 +130,7 @@ final class HiDreamO1Pipeline(ops: Ops, modelFile: Path, tokenizerFile: Path)
     val other = unconditional.map(_ => ops.allocate(DType.F32, shape))
     try {
       val steps = request.steps - first
+      progress(0, steps)
       (first until request.steps).foreach { i =>
         val (sigma, next) = (sigmas(i), sigmas(i + 1))
         model.predict(

@@ -179,6 +179,7 @@ final class Flux2Pipeline(
       val other =
         unconditional.map(_ => hold(ops.allocate(DType.F32, x.shape)))
       val steps = request.steps - first
+      progress(0, steps)
       (first until request.steps).foreach { i =>
         transformer.velocity(
           x,

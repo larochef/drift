@@ -167,6 +167,9 @@ trait VideoPipeline extends AutoCloseable {
   /** Whether requests may carry a control video (a ControlNet is loaded). */
   def takesControl: Boolean = false
 
+  /** Whether a high-noise expert is loaded beside the model. */
+  def hasHighNoiseExpert: Boolean = false
+
   /** Whether the model denoises a soundtrack beside the frames. */
   def makesSoundtrack: Boolean = false
 
@@ -189,7 +192,9 @@ trait VideoPipeline extends AutoCloseable {
   /** The frames a request of `frames` gets: the next count the model takes. */
   def alignedFrames(frames: Int): Int
 
-  /** The video of `request`; `progress(step, steps)` after each step. */
+  /** The video of `request`; `progress(0, steps)` before the first step (of
+    * each pass), `progress(step, steps)` after each.
+    */
   def generate(request: VideoRequest, progress: (Int, Int) => Unit): Video
 }
 

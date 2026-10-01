@@ -223,6 +223,7 @@ final class LtxPipeline(
         )
       val schedule = sigmas(request.steps, layout.videoTokens)
       val steps = schedule.length - 1
+      progress(0, steps)
       (0 until steps).foreach { i =>
         val timestep = schedule(i) * 1000
         transformer.velocity(

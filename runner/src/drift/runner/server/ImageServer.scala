@@ -162,21 +162,32 @@ final class ImageServer(
       case image: ImagePipeline =>
         (imageDefaults(sampleParams), imageFeatures(image), ujson.Arr("png"))
       case video: VideoPipeline =>
+        val videoDefaults = ujson.Obj(
+          "prompt" -> options.prompt,
+          "negative_prompt" -> options.negativePrompt,
+          "clip_skip" -> -1,
+          "width" -> options.width,
+          "height" -> options.height,
+          "strength" -> 0.75,
+          "seed" -> ujson.Num(options.seed.toDouble),
+          "video_frames" -> video.alignedFrames(options.videoFrames),
+          "fps" -> options.fps.getOrElse(video.fps),
+          "sample_params" -> sampleParams,
+          "output_format" -> "webm",
+          "output_compression" -> 100
+        )
+        // a second expert announces its own steps and CFG, as sd-cpp does:
+        // drift's form only offers them when the defaults carry them
+        if (video.hasHighNoiseExpert) {
+          val highNoise = ujson.copy(sampleParams)
+          highNoise("sample_steps") =
+            ujson.Num(options.highNoiseSteps.getOrElse(-1).toDouble)
+          highNoise("guidance")("txt_cfg") =
+            ujson.Num(options.highNoiseCfgScale.getOrElse(options.cfgScale))
+          videoDefaults("high_noise_sample_params") = highNoise
+        }
         (
-          ujson.Obj(
-            "prompt" -> options.prompt,
-            "negative_prompt" -> options.negativePrompt,
-            "clip_skip" -> -1,
-            "width" -> options.width,
-            "height" -> options.height,
-            "strength" -> 0.75,
-            "seed" -> ujson.Num(options.seed.toDouble),
-            "video_frames" -> video.alignedFrames(options.videoFrames),
-            "fps" -> options.fps.getOrElse(video.fps),
-            "sample_params" -> sampleParams,
-            "output_format" -> "webm",
-            "output_compression" -> 100
-          ),
+          videoDefaults,
           ujson.Obj(
             "init_image" -> video.takesInitImage,
             "end_image" -> video.takesEndImage,
@@ -630,17 +641,22 @@ final class ImageServer(
     described
   }
 
-  /** A step's progress line, as sd-cpp prints it. */
+  /** A step's progress line, as sd-cpp prints it: step 0 is the empty bar a
+    * pass starts with, which says the sampling has begun (and how many steps it
+    * is) while the first step, minutes long on a large video, is under way.
+    */
   private def stepPrinter(): (Int, Int) => Unit = {
     var last = System.nanoTime()
-    (step, steps) => {
-      val now = System.nanoTime()
-      val filled = 50 * step / steps
-      println(
-        f"  |${"=" * filled}${" " * (50 - filled)}| $step/$steps - ${(now - last) / 1e9}%.2fs/it"
-      )
-      last = now
-    }
+    (step, steps) =>
+      if (steps > 0) {
+        val now = System.nanoTime()
+        val filled = 50 * step / steps
+        val seconds = if (step == 0) 0.0 else (now - last) / 1e9
+        println(
+          f"  |${"=" * filled}${" " * (50 - filled)}| $step/$steps - $seconds%.2fs/it"
+        )
+        last = now
+      }
   }
 
   /** An `img_gen` job's result: `count` images of `request`, seeds in sequence.

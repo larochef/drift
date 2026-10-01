@@ -102,22 +102,23 @@ Per model, on the drift runner:
 
 ## Results
 
-- Each submission shows its queue position, then the sampling progress from
-  the log, then the image or video. Submit several and a short list appears
-  above the result with the jobs waiting behind the one on screen, each with its
-  own **⏹**, so a queue can be trimmed without touching the rest — jobs queued
-  from another project included, since they hold yours up just the same. A stop
-  takes a moment to land — the button spins until it has.
-  **⏹ Cancel** stops a queued or running job,
-  in a project workspace as well as here. Some models and builds cannot stop a
-  job once sd-cpp has taken it; drift then asks whether to stop it by killing
-  sd-cpp and starting the same configuration again. Say yes and the generation
-  ends, the model reloads (as long as the launch took), and the session comes
-  back by itself — there is no need to restart drift to get out of a run you
-  did not want.
-- A batch lays its images side by side.
-- **🤖 Ask the assistant** on a result sends the image and its parameters to
-  the assistant. See [assistant.md](assistant.md).
+- Each submission shows its queue position, then the sampling progress from the
+  log, then the image or video. Wan 2.2 with two experts shows a bar per expert,
+  marked "high noise" then "low noise"; a bar moves once a step is done, which
+  takes minutes for a long or large video (the log gives the token count and
+  each expert's steps before the first one). Submit several and a short list
+  appears above the result with the jobs waiting behind the one on screen, each
+  with its own **⏹**, so a queue can be trimmed without touching the rest — jobs
+  queued from another project included, since they hold yours up just the same.
+  A stop takes a moment to land — the button spins until it has. **⏹ Cancel**
+  stops a queued or running job, in a project workspace as well as here. Some
+  models and builds cannot stop a job once sd-cpp has taken it; drift then asks
+  whether to stop it by killing sd-cpp and starting the same configuration
+  again. Say yes and the generation ends, the model reloads (as long as the
+  launch took), and the session comes back by itself — there is no need to
+  restart drift to get out of a run you did not want. - A batch lays its images
+  side by side. - **🤖 Ask the assistant** on a result sends the image and its
+  parameters to the assistant. See [assistant.md](assistant.md).
 
 ## Sandbox or project
 

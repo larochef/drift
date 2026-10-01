@@ -146,8 +146,12 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     applies the **high-noise CFG scale**: sd-cpp ignores it whenever the
     low-noise CFG is 1, so a configuration that looked right on sd-cpp with
     a high-noise CFG of 3.5 was really running at 1. Step-distilled experts
-    (the "fast" finetunes) want 1 there; at 3.5 their videos come out
-    overcooked. LoRAs, end frames and the 5B model are not supported yet.
+    (the "fast" finetunes) want 1 on both CFGs and 4 + 4 steps, set on
+    their run configuration or on the generation form (**High-noise steps**,
+    **High-noise CFG**): the architecture's defaults (CFG 3.5 on both, 10 + 8
+    steps, 512 × 512) are the official experts', and at 3.5 a distilled
+    finetune's videos come out overcooked and take twice as long. The 5B
+    model is not supported yet.
   - **LTX 2.5** makes videos from text with the official distilled files, a
     512 × 512 clip of 57 frames in about 70 seconds. sd-cpp currently crashes
     on these files, so the runner is the way to use them. With the

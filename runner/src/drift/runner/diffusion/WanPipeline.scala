@@ -36,6 +36,7 @@ final class WanPipeline(
   def family: String = "Wan 2.2"
   def fps: Int = 16
   def sizeMultiple: Int = 16
+  override def hasHighNoiseExpert: Boolean = high.isDefined
 
   def alignedFrames(frames: Int): Int = (math.max(frames, 1) + 2) / 4 * 4 + 1
 
@@ -107,8 +108,12 @@ final class WanPipeline(
     val key = (width, height, frames)
     val bare = first.isEmpty && last.isEmpty
     conditionFor.filter(c => bare && c._1 == key).map(_._2).getOrElse {
+      val started = System.nanoTime()
       val rows =
         WanPipeline.condition(ops, decoder, width, height, frames, first, last)
+      println(
+        f"conditioning frames encoded in ${(System.nanoTime() - started) / 1e9}%.1f s"
+      )
       if (bare) {
         conditionFor.foreach((_, old) => ops.release(old))
         conditionFor = Some(key -> rows)
@@ -147,6 +152,20 @@ final class WanPipeline(
         if (high.isEmpty) 0
         else if (highSteps >= 0) highSteps
         else schedule.indexWhere(_ < request.moeBoundary).max(0)
+      val highScale = request.highNoiseCfgScale.getOrElse(request.cfgScale)
+      // what the run is, before its first step: a step of a long video takes
+      // minutes, and its bar only moves once it is done
+      def pass(steps: Int, scale: Float) =
+        s"$steps step${if (steps == 1) "" else "s"} at CFG $scale" +
+          (if (scale != 1f) " (two passes a step)" else "")
+      println(
+        s"$tokens tokens: $latentFrames latent frames of $gridHeight × $gridWidth"
+      )
+      println(
+        if (high.isDefined)
+          s"high-noise expert: ${pass(switch, highScale)}; low-noise expert: ${pass(total - switch, request.cfgScale)}"
+        else pass(total, request.cfgScale)
+      )
       val condition = Option.when(takesInitImage)(
         this.condition(
           width,
@@ -174,7 +193,6 @@ final class WanPipeline(
         }
         (conditional, unconditional)
       }
-      val highScale = request.highNoiseCfgScale.getOrElse(request.cfgScale)
       val highTexts =
         high.filter(_ => switch > 0).map(textsOf(_, highScale != 1f))
       val lowTexts =
@@ -193,6 +211,14 @@ final class WanPipeline(
         )
       (0 until total).foreach { i =>
         val highNoise = i < switch
+        // a bar per expert, each announced as sd-cpp announces its passes and
+        // started empty
+        if (high.isEmpty) { if (i == 0) progress(0, total) }
+        else if (i == 0 || i == switch) {
+          val pass = if (highNoise) "high" else "low"
+          println(s"sampling($pass noise) using Euler method")
+          progress(0, if (highNoise) switch else total - switch)
+        }
         val model = if (highNoise) high.get else low
         val ((conditional, unconditional), scale) =
           if (highNoise) (highTexts.get, highScale)
@@ -226,7 +252,9 @@ final class WanPipeline(
         }
         ops.scale(velocity, schedule(i + 1) - schedule(i), velocity)
         ops.add(latents, velocity, latents)
-        progress(i + 1, total)
+        if (high.isEmpty) progress(i + 1, total)
+        else if (highNoise) progress(i + 1, switch)
+        else progress(i + 1 - switch, total - switch)
       }
       // patch rows → latent frames [h, w, 16], then the VAE
       val perFrame = gridHeight * gridWidth

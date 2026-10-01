@@ -561,6 +561,7 @@ final class MiniMaxH3Pipeline(
           sigmas(request.steps, request.shift),
           sigmas(request.steps, AudioShift)
         )
+      progress(0, request.steps)
       (0 until request.steps).foreach { i =>
         val (videoTime, audioTime) = (1 - videoSigmas(i), 1 - audioSigmas(i))
         // ComfyUI's window: σ_end ≤ σ ≤ σ_start

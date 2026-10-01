@@ -50,7 +50,9 @@ trait ImagePipeline extends AutoCloseable {
   /** Whether the model reads the distilled guidance scale. */
   def takesGuidance: Boolean
 
-  /** The image of `request`; `progress(step, steps)` after each step. */
+  /** The image of `request`; `progress(0, steps)` before the first step,
+    * `progress(step, steps)` after each.
+    */
   def generate(
       request: ImageRequest,
       progress: (Int, Int) => Unit

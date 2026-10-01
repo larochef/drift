@@ -160,6 +160,7 @@ final class PidPipeline(
         val x = hold(ops.fromFloats(shape, noise()))
         val velocity = hold(ops.allocate(DType.F32, shape))
         val steps = Sigmas.size - 1
+        progress(0, steps)
         (0 until steps).foreach { i =>
           val (sigma, next) = (Sigmas(i), Sigmas(i + 1))
           decoder.velocity(x, sigma, conditioning, velocity)

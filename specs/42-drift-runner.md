@@ -1947,6 +1947,36 @@ on the old tool.
         finetune comes out overcooked (and each high-noise step costs two
         passes, 67 s). Upstream's to fix; set the high-noise CFG to 1 for
         step-distilled experts.
+      - **Log.** At startup, the high-noise expert's file under the "loaded"
+        line. Per generation, before the first step: the token count, each
+        expert's steps and CFG (and whether a step is two passes), the
+        conditioning frames' encoding time; then a bar per expert, started
+        empty (`0/N`, as every pipeline's bar now starts) and announced
+        as sd-cpp announces its passes (`sampling(high noise) using Euler
+        method`, `sampling(low noise) …`), which drift's progress shows as the
+        bar's pass. A bar only moves when a step is done, and a step grows
+        faster than the tokens.
+      - **Sizes, measured 2026-10-01** (the same experts, CFG 1, a drawn first
+        frame; seconds a step): 256² × 17 frames (1,280 tokens) 2.0; 512² × 17
+        (4,500) 7.5; 512² × 73 (19,456) 53; 768² × 73 (43,776) 214, with 66 s
+        of conditioning and 110 s of decoding. By that curve 1024² × 73
+        (77,824) is about 10 minutes a step — not run to the end. **Against
+        sd-cpp** (master-929, ROCm, `--diffusion-fa`) at 512² × 73, 2 + 2
+        steps: 293 s against 511 s — steps 53 s against 96 s, conditioning
+        29 s against 44 s, decoding 49 s against 77 s; the videos match.
+      - **Defaults.** The architecture's were 20 high-noise steps at CFG 3.5
+        with a low-noise CFG of 1 and no size (1024² from the form): on
+        step-distilled experts at 1024² × 73 that is 40 passes of 10 minutes
+        before the low-noise half, which is what "stuck" looked like. They
+        are now upstream's for the official experts (sd-cpp's `docs/wan.md`:
+        CFG 3.5 on both, 10 + 8 steps) at 512², as every video architecture
+        now defaults to; a step-distilled finetune wants its own (CFG 1 on
+        both, 4 + 4 steps) on its run configuration. Not run on the official
+        experts.
+      - **Capabilities.** With a high-noise expert the `vid_gen` defaults
+        carry `high_noise_sample_params` (its steps and CFG), as sd-cpp's do:
+        drift's form offers **High-noise steps** and **High-noise CFG** only
+        then.
       - **Left:** Wan 2.2 5B (TI2V, the Wan 2.2 VAE), VAE tiling, the GGUF UMT5
         (llama.cpp's names).
     - **Done 2026-09-30: LTX 2.5, text to video** (`models/Gemma4Text`,

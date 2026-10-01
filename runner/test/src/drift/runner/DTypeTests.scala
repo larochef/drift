@@ -95,7 +95,8 @@ object DTypeTests extends TestSuite {
       )
       assert(DType.fromGgmlId(999) == Left("unknown GGML type id 999"))
       assert(DType.fromSafetensorsName("F8_E4M3FN") == Right(DType.F8E4M3))
-      assert(DType.fromSafetensorsName("I64").isLeft)
+      assert(DType.fromSafetensorsName("I64") == Right(DType.I64))
+      assert(DType.fromSafetensorsName("F64").isLeft)
     }
   }
 }

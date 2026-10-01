@@ -39,7 +39,15 @@ object LinearTests extends TestSuite {
     )
       .filter((_, _, k) =>
         k % dtype.blockElements == 0 && dtype.byteSize(k) % 4 == 0
-      )
+      ) ++
+      // F32 rows not in whole blocks of 32 (MiniMax H3's ControlNet input,
+      // 196): the split kernel, and hipBLAS on weights converted as a whole
+      Option
+        .when(dtype == DType.F32)(
+          Seq((4, 24, 196), (56, 40, 196), (300, 16, 68))
+        )
+        .toSeq
+        .flatten
   }
 
   /** How far an integer kernel may land from the exact product: it multiplies

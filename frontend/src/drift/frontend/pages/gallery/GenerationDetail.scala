@@ -162,7 +162,7 @@ class GenerationDetail(
     * question of what it was for (François, 2026-09-19).
     */
   private val inputImages: List[(String, String)] =
-    RecordedParameters.inputImages(generation)
+    RecordedParameters.inputMedia(generation)
 
   private def sections: List[DetailSection] = List(
     DetailSection(

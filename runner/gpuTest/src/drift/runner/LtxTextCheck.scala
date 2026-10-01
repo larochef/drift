@@ -7,12 +7,11 @@ import drift.runner.tensor.Shape
 import java.nio.{ByteBuffer, ByteOrder}
 import java.nio.file.{Files, Path, Paths}
 
-/** LTX 2's text features and connectors on raw hidden states, for a
-  * comparison with diffusers on the released files: `TEXT_ENCODER
-  * TRANSFORMER DIR`, `DIR` holding little-endian F32 `states.f32` (the valid
-  * tokens' 49 hidden states, state-major `[49 × tokens, 3840]`); the
-  * connectors' 1024 rows are written beside it as `video_rows.f32` and
-  * `audio_rows.f32`.
+/** LTX 2's text features and connectors on raw hidden states, for a comparison
+  * with diffusers on the released files: `TEXT_ENCODER TRANSFORMER DIR`, `DIR`
+  * holding little-endian F32 `states.f32` (the valid tokens' 49 hidden states,
+  * state-major `[49 × tokens, 3840]`); the connectors' 1024 rows are written
+  * beside it as `video_rows.f32` and `audio_rows.f32`.
   */
 object LtxTextCheck {
 
@@ -39,7 +38,8 @@ object LtxTextCheck {
       val (source, video, audio) = Ltx2.connectors(ops, Paths.get(transformer))
       try {
         val values = floats(dir.resolve("states.f32"))
-        val states = ops.fromFloats(Shape.of(values.length / 3840, 3840), values)
+        val states =
+          ops.fromFloats(Shape.of(values.length / 3840, 3840), values)
         val (v, a) = features(states)
         val (videoRows, audioRows) = (video(v, 1024), audio(a, 1024))
         write(dir.resolve("video_rows.f32"), ops.toFloats(videoRows))

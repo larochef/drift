@@ -6,7 +6,7 @@ import drift.runner.tensor.*
 
 import java.nio.file.Path
 
-/** LTX 2's convolutional video VAE decoder (the official "conv" file, LTX's
+/** LTX 2's convolutional video VAE (the official "conv" file, LTX's
   * `CausalVideoAutoencoder` with a non-causal decoder; diffusers'
   * `LTX2VideoResnetBlock3d` and `LTX2VideoUpsampler3d`), channels-last frame by
   * frame, its structure read off the weights: `decoder.up_blocks.N` are
@@ -17,6 +17,15 @@ import java.nio.file.Path
   * convolution to 4 × 4 patches of RGB. The convolutions see the first and last
   * frames repeated past the ends (non-causal); the upsamplers' strides follow
   * from their channels and the next stage's.
+  *
+  * The encoder (diffusers' `LTX2VideoEncoder3d`, loaded on first use) is causal
+  * (the first frame repeated before it): 4 × 4 patches of RGB, a 3×3×3
+  * convolution, then `encoder.down_blocks.N`, residual stages as the decoder's
+  * or space-to-depth downsamplers (`conv`: a 3×3×3 convolution to `out /
+  * stride` channels, rearranged ×2 in time, space or both, plus the input
+  * rearranged alike and averaged over groups of channels; in time, the first
+  * frame repeated before the pairs), a pixel norm, SiLU and the convolution to
+  * the latent means (and a log-variance, dropped: the mode).
   */
 final class LtxVideoVae private (ops: Ops, source: WeightSource)
     extends AutoCloseable {
@@ -136,8 +145,14 @@ final class LtxVideoVae private (ops: Ops, source: WeightSource)
     out
   }
 
-  /** A non-causal 3×3×3 convolution over `frames` (the ends repeated). */
-  private def conv(frames: Seq[Tensor], slices: Seq[Convolution]): Seq[Tensor] =
+  /** A 3×3×3 convolution over `frames`: non-causal (the ends repeated), or
+    * `causal` (the first frame repeated twice before it).
+    */
+  private def conv(
+      frames: Seq[Tensor],
+      slices: Seq[Convolution],
+      causal: Boolean = false
+  ): Seq[Tensor] =
     frames.indices.map { t =>
       val (h, w, _) = sizes(frames(t))
       val channels = slices.last.outChannels
@@ -146,7 +161,8 @@ final class LtxVideoVae private (ops: Ops, source: WeightSource)
       try
         slices.zipWithIndex.foreach { (slice, tau) =>
           val source =
-            frames(math.min(math.max(t + tau - 1, 0), frames.size - 1))
+            if (causal) frames(math.max(t + tau - 2, 0))
+            else frames(math.min(math.max(t + tau - 1, 0), frames.size - 1))
           if (tau == 0) ops.conv3x3(source, slice.weight, slice.bias, out)
           else {
             ops.conv3x3(source, slice.weight, slice.bias, part)
@@ -158,6 +174,27 @@ final class LtxVideoVae private (ops: Ops, source: WeightSource)
     }
 
   private def release(frames: Seq[Tensor]): Unit = frames.foreach(ops.release)
+
+  /** `frames` through residual `blocks` (pixel norm, SiLU, convolution, twice,
+    * plus the input), into new frames; `frames` are left to the caller.
+    */
+  private def residual(
+      frames: Seq[Tensor],
+      blocks: Seq[(Seq[Convolution], Seq[Convolution])],
+      causal: Boolean
+  ): Seq[Tensor] =
+    blocks.foldLeft(frames) { case (current, (first, second)) =>
+      val normed = current.map(normSilu)
+      val inner = conv(normed, first, causal)
+      release(normed)
+      val normedInner = inner.map(normSilu)
+      release(inner)
+      val out = conv(normedInner, second, causal)
+      release(normedInner)
+      out.zip(current).foreach((o, x) => ops.add(o, x, o))
+      if (current ne frames) release(current)
+      out
+    }
 
   /** Decodes normalized `latents` (`[h, w, channels]` per latent frame) into
     * frames `[32h, 32w, 3]` in [−1, 1] (unclamped): `8 (T − 1) + 1` of them,
@@ -177,17 +214,7 @@ final class LtxVideoVae private (ops: Ops, source: WeightSource)
     replace(conv(frames, input))
     stages.foreach {
       case Stage.Residual(blocks) =>
-        blocks.foreach { (first, second) =>
-          val normed = frames.map(normSilu)
-          val inner = conv(normed, first)
-          release(normed)
-          val normedInner = inner.map(normSilu)
-          release(inner)
-          val out = conv(normedInner, second)
-          release(normedInner)
-          out.zip(frames).foreach((o, x) => ops.add(o, x, o))
-          replace(out)
-        }
+        replace(residual(frames, blocks, causal = false))
       case Stage.Up(slices, time, space, channels) =>
         val convolved = conv(frames, slices)
         val (s0, s12) = (if (time) 2 else 1, if (space) 4 else 1)
@@ -233,6 +260,160 @@ final class LtxVideoVae private (ops: Ops, source: WeightSource)
         } finally ops.release(rgb)
       }
     finally release(patches)
+  }
+
+  // ---- the encoder ----------------------------------------------------------------
+
+  private enum Down {
+    case Residual(blocks: Seq[(Seq[Convolution], Seq[Convolution])])
+
+    /** A space-to-depth downsampler: `time` frames (1 or 2) and `space` ×
+      * `space` pixels (1 or 2) into one, `channels` out, the residual the mean
+      * of `group` consecutive channels of the input rearranged alike.
+      */
+    case Compress(
+        conv: Seq[Convolution],
+        time: Int,
+        space: Int,
+        channels: Int,
+        group: Int
+    )
+  }
+
+  final private class Encoder {
+    private def at(i: Int) = s"encoder.down_blocks.$i"
+    private def isResidual(i: Int) =
+      source.has(s"${at(i)}.res_blocks.0.conv1.conv.weight")
+    private def isCompress(i: Int) = source.has(s"${at(i)}.conv.conv.weight")
+    private val count =
+      Iterator.from(0).takeWhile(i => isResidual(i) || isCompress(i)).size
+
+    /** The channels stage `i` takes in: its first convolution's inputs. */
+    private def inputsOf(i: Int) =
+      if (i == count) dimensions("encoder.conv_out.conv.weight")(1)
+      else if (isResidual(i))
+        dimensions(s"${at(i)}.res_blocks.0.conv1.conv.weight")(1)
+      else dimensions(s"${at(i)}.conv.conv.weight")(1)
+
+    val stages: Seq[Down] = (0 until count).map { i =>
+      if (isResidual(i)) Down.Residual(residuals(at(i)))
+      else {
+        val Seq(outputs, inputs) =
+          dimensions(s"${at(i)}.conv.conv.weight").take(2)
+        val next = inputsOf(i + 1)
+        val (time, space) = next / outputs match {
+          case 8     => (2, 2)
+          case 4     => (1, 2)
+          case 2     => (2, 1)
+          case other =>
+            throw new FormatException(
+              s"${at(i)}: a downsampler of stride $other"
+            )
+        }
+        Down.Compress(
+          weights.conv3x3x3(s"${at(i)}.conv.conv"),
+          time,
+          space,
+          next,
+          inputs * time * space * space / next
+        )
+      }
+    }
+    // packed channel c × 16 + y × 4 + x (packPatches') → stored c × 16 + x × 4 + y
+    val input: Seq[Convolution] = weights.conv3x3x3(
+      "encoder.conv_in.conv",
+      inputs = i => (i / 16) * 16 + (i % 4) * 4 + (i / 4) % 4
+    )
+    val output: Seq[Convolution] =
+      weights.conv3x3x3("encoder.conv_out.conv").map(_.take(latentChannels))
+    val scale: Tensor = weights.floats(std.map(1f / _ - 1f))
+    val shift: Tensor =
+      weights.floats(mean.indices.map(i => -mean(i) / std(i)).toArray)
+  }
+
+  private lazy val encoder = new Encoder
+
+  /** One space-to-depth downsampler over `frames` (released here). */
+  private def compress(
+      frames: Seq[Tensor],
+      stage: Down.Compress
+  ): Seq[Tensor] = {
+    val Down.Compress(slices, time, space, channels, group) = stage
+    // in time, the first frame repeated before the pairs
+    val padded = if (time == 2) frames.head +: frames else frames
+    val convolved = conv(padded, slices, causal = true)
+    val (h, w, inputs) = sizes(frames.head)
+    val convChannels = slices.last.outChannels.toInt
+    val (oh, ow) = (h.toInt / space, w.toInt / space)
+    val out = (0 until padded.size / time).map { j =>
+      val sources = (0 until time).map(t => ops.toFloats(padded(j * time + t)))
+      val results =
+        (0 until time).map(t => ops.toFloats(convolved(j * time + t)))
+      val values = new Array[Float](oh * ow * channels)
+      val perPixel = time * space * space
+      // channel ((c × time + t) × space + dy) × space + dx of (y, x) is
+      // channel c of pixel (y × space + dy, x × space + dx) of frame t
+      def pick(
+          frames: IndexedSeq[Array[Float]],
+          width: Int,
+          k: Int,
+          y: Int,
+          x: Int
+      ) = {
+        val (c, rest) = (k / perPixel, k % perPixel)
+        val (t, dy, dx) =
+          (rest / (space * space), rest / space % space, rest % space)
+        frames(t)(((y * space + dy) * w.toInt + x * space + dx) * width + c)
+      }
+      for {
+        y <- 0 until oh
+        x <- 0 until ow
+        o <- 0 until channels
+      } {
+        var sum = 0.0
+        (0 until group).foreach(g =>
+          sum += pick(sources, inputs.toInt, o * group + g, y, x)
+        )
+        values((y * ow + x) * channels + o) =
+          pick(results, convChannels, o, y, x) + (sum / group).toFloat
+      }
+      ops.fromFloats(Shape.of(oh, ow, channels), values)
+    }
+    release(convolved)
+    release(frames)
+    out
+  }
+
+  /** Encodes `frames` (`[H, W, 3]` in [−1, 1], `8n + 1` of them, sides
+    * multiples of 32) into normalized latents `[H / 32, W / 32, channels]`,
+    * `n + 1` of them, the caller's to release; `frames` are left to the caller.
+    */
+  def encode(frames: Seq[Tensor]): Seq[Tensor] = {
+    val e = encoder
+    var current = frames.map { rgb =>
+      val (h, w, _) = sizes(rgb)
+      val packed =
+        ops.allocate(
+          DType.F32,
+          Shape.of(h / Patch, w / Patch, 3L * Patch * Patch)
+        )
+      ops.packPatches(rgb, Patch, pixels(packed))
+      packed
+    }
+    def replace(next: Seq[Tensor]): Unit = { release(current); current = next }
+    replace(conv(current, e.input, causal = true))
+    e.stages.foreach {
+      case Down.Residual(blocks) =>
+        replace(residual(current, blocks, causal = true))
+      case stage: Down.Compress =>
+        current = compress(current, stage)
+    }
+    val normed = current.map(normSilu)
+    replace(Nil)
+    val latents = conv(normed, e.output, causal = true)
+    release(normed)
+    latents.foreach(z => ops.modulate(pixels(z), e.scale, e.shift, pixels(z)))
+    latents
   }
 
   /** How many frames `decode` gives for `frames` latent frames. */

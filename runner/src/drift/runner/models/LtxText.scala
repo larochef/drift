@@ -1,5 +1,6 @@
 package drift.runner.models
 
+import drift.runner.diffusion.LoraUpdates
 import drift.runner.formats.FormatException
 import drift.runner.ops.*
 import drift.runner.state.KvCache
@@ -112,7 +113,12 @@ final class LtxTextFeatures(
   * pre-norm without weights; a final norm. The features' order is the stream's
   * own: video 32 heads of 128, audio 32 of 64.
   */
-final class LtxConnector(ops: Ops, source: WeightSource, prefix: String) {
+final class LtxConnector(
+    ops: Ops,
+    source: WeightSource,
+    prefix: String,
+    updates: Option[LoraUpdates]
+) {
 
   private def dimensions(name: String) =
     source.shape(s"$prefix.$name").dimensions.map(_.toInt)
@@ -131,9 +137,18 @@ final class LtxConnector(ops: Ops, source: WeightSource, prefix: String) {
   private def floats(name: String, count: Long) =
     weights.floats(s"$prefix.$name", s"$prefix.$name", Shape.of(count))
 
-  final private case class Affine(weight: Tensor, bias: Tensor)
-  private def affine(name: String, outputs: Long) =
-    Affine(source(s"$prefix.$name.weight"), floats(s"$name.bias", outputs))
+  /** A linear layer and its site: its name in the file, a LoRA's target. */
+  final private case class Affine(site: String, weight: Tensor, bias: Tensor)
+  private val affines = mutable.ArrayBuffer.empty[Affine]
+  private def affine(name: String, outputs: Long) = {
+    val made = Affine(
+      s"$prefix.$name",
+      source(s"$prefix.$name.weight"),
+      floats(s"$name.bias", outputs)
+    )
+    affines += made
+    made
+  }
 
   final private class Block(i: Int) {
     private val at = s"transformer_1d_blocks.$i"
@@ -165,8 +180,13 @@ final class LtxConnector(ops: Ops, source: WeightSource, prefix: String) {
   private val attention =
     Attention((1 / math.sqrt(head)).toFloat, causal = false, None, None, None)
 
+  /** Every linear's weight by its site. */
+  def sites: Map[String, Tensor] =
+    affines.map(layer => layer.site -> layer.weight).toMap
+
   private def run(x: Tensor, layer: Affine, out: Tensor): Unit = {
     ops.linear(x, layer.weight, out)
+    updates.foreach(_(x, layer.site, out))
     ops.addRow(out, layer.bias, out)
   }
 
@@ -295,9 +315,17 @@ final class LtxConnector(ops: Ops, source: WeightSource, prefix: String) {
 
 object LtxConnector {
 
-  def apply(ops: Ops, source: WeightSource, prefix: String): LtxConnector = {
+  /** The connector at `prefix`; its linears take `updates` when given (the
+    * transformer's LoRAs).
+    */
+  def apply(
+      ops: Ops,
+      source: WeightSource,
+      prefix: String,
+      updates: Option[LoraUpdates] = None
+  ): LtxConnector = {
     if (!source.has(s"$prefix.learnable_registers"))
       throw new FormatException(s"no LTX 2 text connector at $prefix")
-    new LtxConnector(ops, source, prefix)
+    new LtxConnector(ops, source, prefix, updates)
   }
 }

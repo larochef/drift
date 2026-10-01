@@ -67,7 +67,12 @@ object ImageMain {
               options.t5xxl,
               options.tokenizer,
               options.fps,
-              options.audioVae
+              options.audioVae,
+              options.controlNet
+            )
+          else if (options.controlNet.isDefined)
+            throw new IllegalArgumentException(
+              "--control-net: the runner's image models take no ControlNet"
             )
           else
             ImagePipeline.open(

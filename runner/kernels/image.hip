@@ -1,5 +1,6 @@
 #include <hip/hip_runtime.h>
 #include <hip/hip_bf16.h>
+#include <hip/hip_fp16.h>
 
 // Image tensors channels-last: [height][width][channels] (a pixel's channels
 // contiguous), as the VAE runs them.
@@ -9,11 +10,16 @@
 // the 9 values the pixel reads at column c * 9 + ky * 3 + kx (a weight
 // [out][in][3][3] flattened the same way), as BF16. Stride 1 pads by 1 on
 // every side; stride 2 by 1 at the bottom and right only (diffusers'
-// downsampler: pad (0, 1, 0, 1), then no padding). `replicate` pads with the
-// nearest edge pixel instead of zeros (stride 1).
-extern "C" __global__ void im2col_3x3_bf16(const float* x, __hip_bfloat16* patches, int height, int width,
-                                           int channels, int out_width, int stride, int replicate,
-                                           long long first, long long count) {
+// downsampler: pad (0, 1, 0, 1), then no padding). `padding` 1 pads with the
+// nearest edge pixel instead of zeros (stride 1), 2 with the reflection
+// (−1 reads 1, height reads height − 2). F16 patches (im2col_3x3_f16) for F16
+// weights.
+__device__ inline __hip_bfloat16 to_patch(float value, __hip_bfloat16*) { return __float2bfloat16(value); }
+__device__ inline __half to_patch(float value, __half*) { return __float2half(value); }
+
+template <typename T>
+__device__ void im2col_3x3(const float* x, T* patches, int height, int width, int channels, int out_width,
+                           int stride, int padding, long long first, long long count) {
   const long long index = (long long)blockIdx.x * blockDim.x + threadIdx.x;
   const long long columns = (long long)channels * 9;
   if (index >= count * columns) return;
@@ -21,13 +27,28 @@ extern "C" __global__ void im2col_3x3_bf16(const float* x, __hip_bfloat16* patch
   const int column = index % columns, c = column / 9, ky = column % 9 / 3, kx = column % 3;
   const int pad = stride == 1 ? 1 : 0;
   int y = p / out_width * stride + ky - pad, xx = p % out_width * stride + kx - pad;
-  if (replicate) {
+  if (padding == 1) {
     y = min(max(y, 0), height - 1);
     xx = min(max(xx, 0), width - 1);
+  } else if (padding == 2) {
+    y = y < 0 ? -y : (y >= height ? 2 * height - 2 - y : y);
+    xx = xx < 0 ? -xx : (xx >= width ? 2 * width - 2 - xx : xx);
   }
   const float value =
       (y >= 0 && y < height && xx >= 0 && xx < width) ? x[((long long)y * width + xx) * channels + c] : 0.0f;
-  patches[index] = __float2bfloat16(value);
+  patches[index] = to_patch(value, patches);
+}
+
+extern "C" __global__ void im2col_3x3_bf16(const float* x, __hip_bfloat16* patches, int height, int width,
+                                           int channels, int out_width, int stride, int padding,
+                                           long long first, long long count) {
+  im2col_3x3(x, patches, height, width, channels, out_width, stride, padding, first, count);
+}
+
+extern "C" __global__ void im2col_3x3_f16(const float* x, __half* patches, int height, int width,
+                                          int channels, int out_width, int stride, int padding,
+                                          long long first, long long count) {
+  im2col_3x3(x, patches, height, width, channels, out_width, stride, padding, first, count);
 }
 
 // Nearest-neighbour ×2: out[y][x] = in[y / 2][x / 2].

@@ -1,6 +1,6 @@
 package drift.frontend.pages.gallery
 
-import drift.frontend.components.{Component, ScrollLock}
+import drift.frontend.components.*
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -119,18 +119,18 @@ class GenerationParameters(
   }
 
   lazy val inputs: Node = {
-    val images = RecordedParameters.inputImages(generation)
-    if (images.isEmpty) emptyNode
+    val media = RecordedParameters.inputMedia(generation)
+    if (media.isEmpty) emptyNode
     else
       div(
         cls := "gallery-inputs mt-3",
-        p(cls := "text-secondary is-size-7 mb-1", "Input images"),
+        p(cls := "text-secondary is-size-7 mb-1", "Inputs"),
         div(
           styleAttr := "display: flex; flex-wrap: wrap; gap: 0.5rem;",
-          images.map { (name, url) =>
+          media.map { (name, url) =>
             figure(
               cls := "m-0",
-              img(src := url, alt := name, title := name),
+              MediaPreview(url, "", name).element,
               p(cls := "text-secondary is-size-7 has-text-centered", name)
             )
           }

@@ -286,7 +286,9 @@ object SmallOpsTests extends TestSuite {
         }.toArray
       }
     }
-    test("1-D convolutions: dilated, strided, and a transposed one's overlap-add") {
+    test(
+      "1-D convolutions: dilated, strided, and a transposed one's overlap-add"
+    ) {
       // [T, in]; the weight [out, in × taps] scaled to keep sums near 1
       againstCpu(
         Seq(Shape.of(37, 16), Shape.of(300, 3)),
@@ -324,25 +326,28 @@ object SmallOpsTests extends TestSuite {
       againstCpu(
         Seq(Shape.of(1, 5), Shape.of(3, 7), Shape.of(257, 96)),
         Tolerance(1e-4, 1e-4)
-      ) {
-        (ops, shape) =>
-          val channels = Shape.of(shape.last)
-          val out = ops.allocate(DType.F32, shape)
-          ops.antiAliasedSnake(
-            input(ops, shape, 1),
-            ops.fromFloats(
-              channels,
-              TestData.gaussian(2, shape.last.toInt).map(v => math.exp(0.3 * v).toFloat)
-            ),
-            ops.fromFloats(
-              channels,
-              TestData.gaussian(3, shape.last.toInt).map(v => math.exp(-0.3 * v).toFloat)
-            ),
-            input(ops, Shape.of(12), 4),
-            input(ops, Shape.of(12), 5),
-            out
-          )
-          ops.toFloats(out)
+      ) { (ops, shape) =>
+        val channels = Shape.of(shape.last)
+        val out = ops.allocate(DType.F32, shape)
+        ops.antiAliasedSnake(
+          input(ops, shape, 1),
+          ops.fromFloats(
+            channels,
+            TestData
+              .gaussian(2, shape.last.toInt)
+              .map(v => math.exp(0.3 * v).toFloat)
+          ),
+          ops.fromFloats(
+            channels,
+            TestData
+              .gaussian(3, shape.last.toInt)
+              .map(v => math.exp(-0.3 * v).toFloat)
+          ),
+          input(ops, Shape.of(12), 4),
+          input(ops, Shape.of(12), 5),
+          out
+        )
+        ops.toFloats(out)
       }
     }
     test("group norm over pixels, then patches packed and columns joined") {

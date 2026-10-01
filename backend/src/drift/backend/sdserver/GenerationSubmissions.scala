@@ -16,7 +16,7 @@ import com.typesafe.scalalogging.Logger
   * submitting; this covers direct API callers). sd-server at the commit in use
   * answered a -1 with its default 42, every time — not random.
   *
-  * The forwarded body keeps the base64 images sd-server needs, its reference
+  * The forwarded body keeps the base64 inputs sd-server needs, its reference
   * images prepared for the session's build (`ReferenceImages`); the *recorded*
   * parameters carry URLs of the inputs persisted beside the outputs instead,
   * the references as they were given — a poll of the generation list must not
@@ -108,7 +108,42 @@ final private[sdserver] class GenerationSubmissions(
             image,
             scratch
           )
+        ),
+      references = parameters.references.zipWithIndex.map((media, index) =>
+        files.externalizeInput(
+          generationId,
+          submittedAt,
+          s"reference$index",
+          media,
+          scratch
         )
+      ),
+      guides = parameters.guides.zipWithIndex.map((guide, index) =>
+        guide.copy(media =
+          files.externalizeInput(
+            generationId,
+            submittedAt,
+            s"guide$index",
+            guide.media,
+            scratch
+          )
+        )
+      ),
+      controlVideo = parameters.controlVideo.map(
+        files.externalizeInput(generationId, submittedAt, "control", _, scratch)
+      ),
+      controlMask = parameters.controlMask.map(
+        files.externalizeInput(
+          generationId,
+          submittedAt,
+          "control-mask",
+          _,
+          scratch
+        )
+      ),
+      sourceVideo = parameters.sourceVideo.map(
+        files.externalizeInput(generationId, submittedAt, "source", _, scratch)
+      )
     )
     submit(
       sessionId,

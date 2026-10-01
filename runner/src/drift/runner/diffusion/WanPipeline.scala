@@ -18,10 +18,11 @@ import scala.collection.mutable
   * through the flow shift) shared by two experts: the high-noise model for its
   * steps (`--high-noise-steps`, else while σ ≥ the MoE boundary) at its CFG
   * scale, the low-noise one for the rest at its own; then the Wan 2.1 VAE,
-  * frame by frame. The I2V checkpoints (36 input channels) read a mask (the
-  * first latent frame's when an init image is given) and the VAE's latents of a
-  * video that is the init image then zeros, or zeros alone: those rows are made
-  * once per size and kept.
+  * frame by frame. The I2V checkpoints (36 input channels) read a mask and the
+  * VAE's latents of a video that is the init image, zeros, then the end image
+  * (`WanPipeline.condition`); without either image those rows are made once per
+  * size and kept. LoRAs go on the high-noise expert when the request says so
+  * and there is one, else on the low-noise one (sd-cpp's routing).
   */
 final class WanPipeline(
     ops: Ops,
@@ -55,6 +56,28 @@ final class WanPipeline(
   override def takesInitImage: Boolean =
     low.config.inChannels != low.config.outChannels
 
+  /** diffusers' `last_image`, and alone (a mask on the last frame only) as
+    * sd-cpp takes it.
+    */
+  override def takesEndImage: Boolean = takesInitImage
+
+  override def takesLoras: Boolean = true
+
+  private val loraFiles = new LoraFiles(ops)
+
+  /** Makes `loras` the experts' active sets; returns what is left unapplied. */
+  private def useLoras(loras: Seq[VideoLora]): Seq[String] = {
+    val (onHigh, onLow) = WanPipeline.experts(loras, high.isDefined)
+    def use(model: Wan, chosen: Seq[VideoLora]) = {
+      val (opened, problems) =
+        loraFiles.open(chosen.map(lora => lora.path -> lora.multiplier))
+      problems ++ model
+        .useLoras(opened)
+        .map(target => s"a target of no weight: $target")
+    }
+    use(low, onLow) ++ high.toSeq.flatMap(use(_, onHigh))
+  }
+
   /** UMT5's rows of `prompt`, zeros past its tokens up to 512. */
   private def encoded(prompt: String): Tensor = {
     val cleaned = prompt.trim.replaceAll("\\s+", " ")
@@ -69,8 +92,8 @@ final class WanPipeline(
     } finally ops.release(rows)
   }
 
-  /** The I2V rows for a size and an init image, kept for the last size when
-    * there is no image.
+  /** The I2V rows for a size, kept for the last size when there is neither an
+    * init nor an end image.
     */
   private var conditionFor = Option.empty[((Int, Int, Int), Tensor)]
 
@@ -78,50 +101,15 @@ final class WanPipeline(
       width: Int,
       height: Int,
       frames: Int,
-      init: Option[BufferedImage]
+      first: Option[BufferedImage],
+      last: Option[BufferedImage]
   ): Tensor = {
     val key = (width, height, frames)
-    conditionFor.filter(c => init.isEmpty && c._1 == key).map(_._2).getOrElse {
-      val (h, w) = (height / 8, width / 8)
-      val latentFrames = (frames - 1) / 4 + 1
-      val video = (0 until frames).map { i =>
-        val pixels = ops.allocate(DType.F32, Shape.of(height, width, 3))
-        init.filter(_ => i == 0) match {
-          case Some(image) =>
-            val uploaded =
-              ops.fromFloats(
-                pixels.shape,
-                Images.pixels(Images.resized(image, width, height))
-              )
-            ops.copy(uploaded, pixels)
-            ops.release(uploaded)
-          case None => ops.zero(pixels)
-        }
-        pixels
-      }
-      val latents =
-        try decoder.encode(video)
-        finally video.foreach(ops.release)
-      val tokens = (h / 2) * (w / 2)
+    val bare = first.isEmpty && last.isEmpty
+    conditionFor.filter(c => bare && c._1 == key).map(_._2).getOrElse {
       val rows =
-        ops.allocate(DType.F32, Shape.of(latentFrames.toLong * tokens, 80))
-      try
-        latents.zipWithIndex.foreach { (latent, t) =>
-          // [mask of 4 ; latents of 16] per pixel, packed 2 × 2
-          val mask = ops.fromFloats(
-            Shape.of(h, w, 4),
-            Array.fill(h * w * 4)(if (init.isDefined && t == 0) 1f else 0f)
-          )
-          val joined = ops.allocate(DType.F32, Shape.of(h, w, 20))
-          ops.concatColumns(
-            Seq(mask.view(h.toLong * w, 4), latent.view(h.toLong * w, 16)),
-            joined.view(h.toLong * w, 20)
-          )
-          ops.packPatches(joined, 2, rows.rows(t.toLong * tokens, tokens))
-          Seq(mask, joined).foreach(ops.release)
-        }
-      finally latents.foreach(ops.release)
-      if (init.isEmpty) {
+        WanPipeline.condition(ops, decoder, width, height, frames, first, last)
+      if (bare) {
         conditionFor.foreach((_, old) => ops.release(old))
         conditionFor = Some(key -> rows)
       }
@@ -160,9 +148,19 @@ final class WanPipeline(
         else if (highSteps >= 0) highSteps
         else schedule.indexWhere(_ < request.moeBoundary).max(0)
       val condition = Option.when(takesInitImage)(
-        this.condition(width, height, frames, request.initImage)
+        this.condition(
+          width,
+          height,
+          frames,
+          request.initImage,
+          request.endImage
+        )
       )
-      if (request.initImage.isDefined) condition.foreach(keep)
+      if (request.initImage.isDefined || request.endImage.isDefined)
+        condition.foreach(keep)
+      useLoras(request.loras).foreach(problem =>
+        println(s"[WARN] LoRA left unapplied: $problem")
+      )
       val (prompt, negative) =
         (encoded(request.prompt), encoded(request.negativePrompt))
       held ++= Seq(prompt, negative)
@@ -265,9 +263,89 @@ final class WanPipeline(
 
   def close(): Unit = {
     conditionFor.foreach((_, rows) => ops.release(rows))
+    loraFiles.close()
     decoder.close()
     high.foreach(_.close())
     low.close()
     encoder.close()
+  }
+}
+
+object WanPipeline {
+
+  /** `loras` as (the high-noise expert's, the low-noise one's): those marked
+    * high-noise go on the high-noise expert when there is one; the rest, and
+    * all of them without it, on the low-noise one.
+    */
+  def experts(
+      loras: Seq[VideoLora],
+      twoExperts: Boolean
+  ): (Seq[VideoLora], Seq[VideoLora]) =
+    loras.partition(_.highNoise && twoExperts)
+
+  /** The I2V checkpoints' conditioning rows for a `frames`-frame video of
+    * `width × height` (`[latent frames × tokens, 80]`, each row 2 × 2 pixels of
+    * a mask of 4 then 16 latent channels, channel-major), as diffusers'
+    * `WanImageToVideoPipeline` makes them with `image` and `last_image`: the
+    * VAE's latents of a video that is `first`, zeros, then `last` (zeros where
+    * an image is missing, sd-cpp's grey), and a mask of the frames given. The
+    * first latent frame's 4 mask channels are the first frame repeated, each
+    * later one's the 4 frames it stands for, so the end image sets only the
+    * last channel of the last latent frame.
+    */
+  def condition(
+      ops: Ops,
+      vae: WanVideoVae,
+      width: Int,
+      height: Int,
+      frames: Int,
+      first: Option[BufferedImage],
+      last: Option[BufferedImage]
+  ): Tensor = {
+    val (h, w) = (height / 8, width / 8)
+    val latentFrames = (frames - 1) / 4 + 1
+    def imageAt(frame: Int): Option[BufferedImage] =
+      first
+        .filter(_ => frame == 0)
+        .orElse(last.filter(_ => frame == frames - 1))
+    val video = (0 until frames).map { i =>
+      val pixels = ops.allocate(DType.F32, Shape.of(height, width, 3))
+      imageAt(i) match {
+        case Some(image) =>
+          val uploaded = ops.fromFloats(
+            pixels.shape,
+            Images.pixels(Images.resized(image, width, height))
+          )
+          ops.copy(uploaded, pixels)
+          ops.release(uploaded)
+        case None => ops.zero(pixels)
+      }
+      pixels
+    }
+    val latents =
+      try vae.encode(video)
+      finally video.foreach(ops.release)
+    val tokens = (h / 2) * (w / 2)
+    val rows =
+      ops.allocate(DType.F32, Shape.of(latentFrames.toLong * tokens, 80))
+    try
+      latents.zipWithIndex.foreach { (latent, t) =>
+        // [mask of 4 ; latents of 16] per pixel, packed 2 × 2
+        val masked = (0 until 4)
+          .map(j => imageAt(if (t == 0) 0 else 4 * (t - 1) + 1 + j).isDefined)
+        val mask = ops.fromFloats(
+          Shape.of(h, w, 4),
+          Array.tabulate(h * w * 4)(i => if (masked(i % 4)) 1f else 0f)
+        )
+        val joined = ops.allocate(DType.F32, Shape.of(h, w, 20))
+        ops.concatColumns(
+          Seq(mask.view(h.toLong * w, 4), latent.view(h.toLong * w, 16)),
+          joined.view(h.toLong * w, 20)
+        )
+        ops.packPatches(joined, 2, rows.rows(t.toLong * tokens, tokens))
+        Seq(mask, joined).foreach(ops.release)
+      }
+    finally latents.foreach(ops.release)
+    rows
   }
 }

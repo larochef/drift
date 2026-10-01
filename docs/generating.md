@@ -48,7 +48,9 @@ something (an image attached, hires on, a non-default sampler):
 
 - **Sampling**: sampler and scheduler.
 - **Inputs**: init image (img2img) with a strength, reference images (edit),
-  end image on video, and a mask once an init image is attached (inpaint).
+  and a mask once an init image is attached (inpaint). On video: start and
+  end images, references, guides and a control video, as far as the model
+  takes them (see [Video inputs](#video-inputs)).
   A reference keeps its own shape whatever the output's: drift sizes it the
   way sd-cli would (about a megapixel) before sending it, or — on an sd-cpp
   older than master-892, whose server stretches references to the output —
@@ -64,8 +66,39 @@ something (an image attached, hires on, a non-default sampler):
 
 - **Image**: text to image; add an init image for img2img; add reference
   images for an edit model. "Edit" is not a separate mode.
-- **Video**: text to video, or image to video with an init or end image.
+- **Video**: text to video, or image to video with a start or end image.
   Tabs appear only when the model offers both modes.
+
+## Video inputs
+
+The **Inputs** section offers what the loaded model reports it takes; a
+picker previews each file as a still, a player or a sound.
+
+- **Start / end image**: the first and last frame. Both are fitted to the
+  video's size.
+- **References**: images, clips (with their sound) and audio files, in
+  order — the prompt names them by position, so **←** / **→** move one.
+- **Guides**: a file held at a frame of the video; the frame index counts
+  from 0, and a negative one from the end (-1 is the last frame, the default).
+- **Control video**: a pose, depth or edge video steering the motion, with a
+  **strength** (default 1). Folded under **Control range and mask**: the
+  fraction of the steps it applies over (0 to 1) and an optional **mask**
+  (image or video, white is regenerated) over an optional **source video**.
+
+References, guides and control videos keep their own size. The gallery shows
+every input a video was made with, and **reuse** loads them back.
+
+Per model, on the drift runner:
+
+- **MiniMax H3**: start and end images and guides on the usual (fl2va)
+  checkpoint; references need the **ref2va** checkpoint — pick it as the
+  configuration's diffusion model (experimental: the drift runner's ref2va
+  videos come out corrupted for now); a control video needs the **Fun ControlNet
+  union** in the configuration's **control-net** slot. Both files are in drift's
+  model list, ready to download.
+- **Wan 2.2 A14B (I2V)**: start and end images; LoRAs, a pair's high-noise
+  file applied to the high-noise expert (see [loras.md](loras.md)).
+- **LTX 2.5**: start and end images; LoRAs.
 
 ## Results
 

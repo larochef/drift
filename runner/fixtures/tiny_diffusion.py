@@ -1244,5 +1244,6 @@ families = {"krea2": krea2, "wan_vae": wan_vae, "flux2": flux2, "flux2_dev": flu
             "ltx_connectors": ltx_connectors, "ltx_transformer": ltx_transformer,
             "ltx_video_vae": ltx_video_vae, "minimax_h3_audio": minimax_h3_audio, "ltx_audio": ltx_audio,
             "qwen_image21": qwen_image21, "qwen_image21_vae": qwen_image21_vae}
-for family in sys.argv[1:] or families:
-    families[family]()
+if __name__ == "__main__":
+    for family in sys.argv[1:] or families:
+        families[family]()

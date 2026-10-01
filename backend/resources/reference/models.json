@@ -390,6 +390,32 @@
     "builtIn": true
   },
   {
+    "id": "minimax-h3-ref2va-pruned-q4-k",
+    "familyId": "minimax-h3-diffusion",
+    "label": "minimax_h3_ref2va_pruned-Q4_K",
+    "source": {
+      "type": "huggingface",
+      "repo": "unsloth/MiniMax-H3-GGUF",
+      "filename": "minimax_h3_ref2va_pruned-Q4_K.gguf"
+    },
+    "format": "gguf",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "minimax-h3-fun-controlnet-union",
+    "familyId": "minimax-h3-controlnet",
+    "label": "minimax_h3_fun_controlnet_union_2.0_pruned_bf16",
+    "source": {
+      "type": "huggingface",
+      "repo": "Comfy-Org/MiniMax-H3",
+      "filename": "model_patches/minimax_h3_fun_controlnet_union_2.0_pruned_bf16.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
     "id": "minimax-h3-video-vae",
     "familyId": "minimax-h3-video-vae",
     "label": "minimax_h3_video_vae_fp16",

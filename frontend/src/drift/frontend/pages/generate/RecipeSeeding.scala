@@ -343,12 +343,12 @@ class RecipeSeeding(
     // their bytes back, so they are fetched into the pickers.
     initImageVar.set(None)
     refImagesVar.set(List.empty)
-    loadRecordedImages(p.initImage.toList)(images =>
+    loadRecordedMedia(p.initImage.toList)(images =>
       initImageVar.set(images.headOption)
     )
-    loadRecordedImages(p.refImages)(refImagesVar.set)
+    loadRecordedMedia(p.refImages)(refImagesVar.set)
     maskImageVar.set(None)
-    loadRecordedImages(p.maskImage.toList)(images =>
+    loadRecordedMedia(p.maskImage.toList)(images =>
       maskImageVar.set(images.headOption)
     )
     batchCountVar.set(p.batchCount.toString)
@@ -376,11 +376,52 @@ class RecipeSeeding(
     applyLoras(p.lora)
     initImageVar.set(None)
     endImageVar.set(None)
-    loadRecordedImages(p.initImage.toList)(images =>
+    loadRecordedMedia(p.initImage.toList)(images =>
       initImageVar.set(images.headOption)
     )
-    loadRecordedImages(p.endImage.toList)(images =>
+    loadRecordedMedia(p.endImage.toList)(images =>
       endImageVar.set(images.headOption)
+    )
+    applyVideoInputs(p)
+  }
+
+  /** The video models' media inputs, fetched back like the images. Every Var is
+    * cleared first, so a recipe without them leaves none behind; the loads land
+    * later.
+    */
+  private def applyVideoInputs(p: VideoGenerationParameters): Unit = {
+    referencesVar.set(List.empty)
+    guidesVar.set(List.empty)
+    controlVideoVar.set(None)
+    controlMaskVar.set(None)
+    sourceVideoVar.set(None)
+    controlStrengthVar.set(p.controlStrength.fold("")(_.toString))
+    controlStartVar.set(p.controlStart.fold("")(_.toString))
+    controlEndVar.set(p.controlEnd.fold("")(_.toString))
+    // References are read by position: one that failed to load shifts every
+    // later one, which the notice has to say.
+    loadRecordedMediaAligned(p.references) { loaded =>
+      if (loaded.contains(None))
+        warnAboutRecipe(
+          "A reference could not be loaded; the later ones moved up a place."
+        )
+      referencesVar.set(loaded.flatten)
+    }
+    loadRecordedMediaAligned(p.guides.map(_.media)) { loaded =>
+      if (loaded.contains(None))
+        warnAboutRecipe("A guide could not be loaded and was left out.")
+      guidesVar.set(p.guides.zip(loaded).collect { case (guide, Some(media)) =>
+        guideInput(media, guide.frameIndex.toString)
+      })
+    }
+    loadRecordedMedia(p.controlVideo.toList)(videos =>
+      controlVideoVar.set(videos.headOption)
+    )
+    loadRecordedMedia(p.controlMask.toList)(masks =>
+      controlMaskVar.set(masks.headOption)
+    )
+    loadRecordedMedia(p.sourceVideo.toList)(videos =>
+      sourceVideoVar.set(videos.headOption)
     )
   }
 

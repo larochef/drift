@@ -1,5 +1,6 @@
 package drift.runner.models
 
+import drift.runner.diffusion.*
 import drift.runner.formats.FormatException
 import drift.runner.ops.*
 import drift.runner.state.KvCache
@@ -65,20 +66,27 @@ object Ltx2Config {
   * them (diffusers' `LTX2AudioVideoRotaryPosEmbed`): each video latent the
   * middle of its pixel span (a latent frame 8 frames, the first causal, over
   * `fps`; 32 × 32 pixels), each audio latent the middle of its span in seconds
-  * (4 mel frames of 160 samples at 16 kHz, the first causal).
+  * (4 mel frames of 160 samples at 16 kHz, the first causal). `appended` are
+  * the positions of the keyframe tokens after the video's
+  * (`Ltx2Layout.keyframe`).
   */
 final case class Ltx2Layout(
     frames: Int,
     height: Int,
     width: Int,
     audioFrames: Int,
-    fps: Double
+    fps: Double,
+    appended: IndexedSeq[Array[Double]] = Vector.empty
 ) {
-  def videoTokens: Int = frames * height * width
+
+  /** The generated video's tokens, before the appended ones. */
+  def generatedTokens: Int = frames * height * width
+
+  def videoTokens: Int = generatedTokens + appended.size
 
   /** Per video token, its (t, y, x) middles in seconds and pixels. */
   def videoPositions: Array[Array[Double]] =
-    Array.tabulate(videoTokens) { i =>
+    Array.tabulate(generatedTokens) { i =>
       val (f, y, x) = (i / (height * width), i / width % height, i % width)
       def time(frame: Int) = math.max(0.0, frame * 8 + 1 - 8) / fps
       Array(
@@ -86,13 +94,42 @@ final case class Ltx2Layout(
         (y * 32 + (y + 1) * 32) / 2.0,
         (x * 32 + (x + 1) * 32) / 2.0
       )
-    }
+    } ++ appended
 
   /** Per audio token, its middle in seconds. */
   def audioPositions: Array[Double] =
     Array.tabulate(audioFrames) { f =>
       def time(frame: Int) = math.max(0.0, frame * 4 + 1 - 4) * 160 / 16000
       (time(f) + time(f + 1)) / 2
+    }
+}
+
+object Ltx2Layout {
+
+  /** The positions of a keyframe's tokens appended after the video's
+    * (diffusers' `_prepare_keyframe_coords`, ComfyUI's `LTXVAddGuide`): its
+    * `frames` latent frames of `height` × `width` from pixel frame `index`,
+    * each spanning 8 frames, or the one frame `[index, index + 1)` when the
+    * keyframe is a single pixel frame; in seconds over `fps`.
+    */
+  def keyframe(
+      frames: Int,
+      height: Int,
+      width: Int,
+      index: Int,
+      single: Boolean,
+      fps: Double
+  ): IndexedSeq[Array[Double]] =
+    (0 until frames * height * width).map { i =>
+      val (f, y, x) = (i / (height * width), i / width % height, i % width)
+      val (start, end) =
+        if (single) (index.toDouble, index + 1.0)
+        else (f * 8.0 + index, (f + 1) * 8.0 + index)
+      Array(
+        (start / fps + end / fps) / 2,
+        (y * 32 + (y + 1) * 32) / 2.0,
+        (x * 32 + (x + 1) * 32) / 2.0
+      )
     }
 }
 
@@ -107,8 +144,13 @@ final case class Ltx2Layout(
   *   - a GELU (tanh) MLP;
   * every attention gated per head by 2σ(a projection of its input), q/k RMS
   * norms across the heads, the stream norms without weights. One timestep for
-  * every token (σ × 1000), as text to video has it; the output is the flow
-  * velocity.
+  * every token (σ × 1000), but the video tokens held by a condition (diffusers'
+  * `conditioning_mask` at 1) take 0 in the video's own AdaLN (the blocks' and
+  * the head's); the prompt's, the cross-modal ones and the audio's keep σ (the
+  * cross timestep). The output is the flow velocity.
+  *
+  * LoRAs apply at run time on every linear (`useLoras`), the text connectors'
+  * too when the file holds them (`connectors`).
   */
 final class Ltx2 private (ops: Ops, source: WeightSource)
     extends AutoCloseable {
@@ -117,24 +159,33 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
   private val c = config
   private val weights = new HybridWeights(ops, source, gguf = true)
   private val Epsilon = 1e-6f
+  private val updates = new LoraUpdates(ops)
+
+  /** Every linear's weight by its site (its name in the file). */
+  private val siteWeights = mutable.Map.empty[String, Tensor]
 
   private def floats(name: String, count: Long) =
     weights.floats(name, name, Shape.of(count))
   private def table(name: String, rows: Int, width: Int) =
     weights.floats(name, name, Shape.of(rows, width))
 
-  final private case class Affine(weight: Tensor, bias: Tensor)
-  private def affineLayer(prefix: String, outputs: Long) =
-    Affine(source(s"$prefix.weight"), floats(s"$prefix.bias", outputs))
-  private def linearLayer(prefix: String, outputs: Long) =
+  /** A linear layer at `site` (its name in the file, a LoRA's target). */
+  final private case class Affine(site: String, weight: Tensor, bias: Tensor)
+  private def linearLayer(prefix: String, outputs: Long) = {
+    val weight = source(s"$prefix.weight")
+    siteWeights(prefix) = weight
     Affine(
-      source(s"$prefix.weight"),
+      prefix,
+      weight,
       if (source.has(s"$prefix.bias")) floats(s"$prefix.bias", outputs)
       else
         weights.keep(
           ops.fromFloats(Shape.of(outputs), new Array[Float](outputs.toInt))
         )
     )
+  }
+  private def affineLayer(prefix: String, outputs: Long) =
+    linearLayer(prefix, outputs)
 
   /** An attention's projections: q from `inner`-wide queries, k and v, the
     * output back to `outputs`, the gate's logits per head.
@@ -238,9 +289,51 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
     ops.fromFloats(Shape.of(c.audioHidden), Array.fill(c.audioHidden)(1f))
   )
 
+  /** The prompt's text connectors (the video's and the audio's), when the file
+    * holds them: they share its LoRAs.
+    */
+  val connectors: Option[(LtxConnector, LtxConnector)] =
+    Option.when(source.has("video_embeddings_connector.learnable_registers"))(
+      (
+        LtxConnector(ops, source, "video_embeddings_connector", Some(updates)),
+        LtxConnector(ops, source, "audio_embeddings_connector", Some(updates))
+      )
+    )
+
   private def affine(x: Tensor, layer: Affine, out: Tensor): Unit = {
     ops.linear(x, layer.weight, out)
+    updates(x, layer.site, out)
     ops.addRow(out, layer.bias, out)
+  }
+
+  // ---- LoRAs ---------------------------------------------------------------------
+
+  private def allSites: Map[String, Tensor] =
+    siteWeights.toMap ++ connectors.toSeq.flatMap((v, a) => v.sites ++ a.sites)
+
+  /** Makes `loras` (each at its multiplier) the active set, replacing the last;
+    * they read the original names (ComfyUI's, the official trainer's) and
+    * diffusers' (`Ltx2.siteOf`). Returns the targets that matched nothing or a
+    * weight of another shape, left unapplied. Text encoded before depends on
+    * the LoRAs of its time (the connectors).
+    */
+  def useLoras(loras: Seq[(Lora, Float)]): Seq[String] = {
+    val sites = allSites
+    val placed = loras.flatMap((lora, multiplier) =>
+      lora.pairs.toSeq.map { (target, pair) =>
+        (
+          target,
+          Ltx2.placement(target, pair, sites.get(_).map(_.shape)),
+          pair.copy(scale = pair.scale * multiplier)
+        )
+      }
+    )
+    updates.use(
+      placed
+        .collect { case (_, Some(site), pair) => site -> pair }
+        .groupMap(_._1)(_._2)
+    )
+    placed.collect { case (target, None, _) => target }.distinct
   }
 
   /** The split RoPE's per-head tables over `positions` (per token, one value
@@ -295,12 +388,14 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
     }
   }
 
-  /** Velocities of one step: `video` (`[frames × h × w, channels]`) and `audio`
-    * (`[audioFrames, channels]`) at `timestep` (σ × 1000), given the prompt's
-    * connector rows `text` (`[L, hidden]`) and `audioText` (`[L,
-    * audioHidden]`), into `videoVelocity` and `audioVelocity`. `isolated`
-    * skips the audio-to-video and video-to-audio attentions (diffusers'
-    * `isolate_modalities`): each stream alone.
+  /** Velocities of one step: `video` (`[frames × h × w + appended, channels]`)
+    * and `audio` (`[audioFrames, channels]`) at `timestep` (σ × 1000), given
+    * the prompt's connector rows `text` (`[L, hidden]`) and `audioText` (`[L,
+    * audioHidden]`), into `videoVelocity` and `audioVelocity`. The video tokens
+    * in the `conditioned` ranges (start, count) are held by conditions, at
+    * timestep 0 in the video's AdaLN. `isolated` skips the audio-to-video and
+    * video-to-audio attentions (diffusers' `isolate_modalities`): each stream
+    * alone.
     */
   def velocity(
       layout: Ltx2Layout,
@@ -311,7 +406,8 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
       timestep: Float,
       videoVelocity: Tensor,
       audioVelocity: Tensor,
-      isolated: Boolean = false
+      isolated: Boolean = false,
+      conditioned: Seq[(Long, Long)] = Nil
   ): Unit = {
     val (nv, na, nt) = (
       layout.videoTokens.toLong,
@@ -343,9 +439,36 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
       )
     try {
       val pageTable = keep(ops.fromInts(Shape.of(1), Array(0)))
+      // the video tokens' runs by timestep: (start, count, 0 for σ, 1 for the
+      // conditioned ones' 0)
+      val runs = {
+        val sorted = conditioned.filter(_._2 > 0).sortBy(_._1)
+        val (gaps, end) =
+          sorted.foldLeft((Vector.empty[(Long, Long, Int)], 0L)) {
+            case ((acc, at), (start, count)) =>
+              require(
+                start >= at && start + count <= nv,
+                s"conditioned: $conditioned"
+              )
+              (
+                acc ++ Option.when(start > at)((at, start - at, 0)) :+
+                  (start, count, 1),
+                start + count
+              )
+          }
+        gaps ++ Option.when(end < nv)((end, nv - end, 0))
+      }
+      val timesteps =
+        if (conditioned.exists(_._2 > 0)) Seq(timestep, 0f) else Seq(timestep)
       // the timestep's embeddings, and each AdaLN-single's vectors
-      val embedded = keep(ops.fromFloats(Shape.of(1, 256), sinusoid(timestep)))
-      def adaLn(layer: AdaLn, width: Int): (Tensor, Tensor) = {
+      val embeddings =
+        timesteps.map(t => keep(ops.fromFloats(Shape.of(1, 256), sinusoid(t))))
+      val embedded = embeddings.head
+      def adaLn(
+          layer: AdaLn,
+          width: Int,
+          embedded: Tensor = embedded
+      ): (Tensor, Tensor) = {
         val inner = allocate(1, width)
         val emb = allocate(1, width)
         affine(embedded, layer.first, inner)
@@ -356,7 +479,9 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
         affine(inner, layer.out, out)
         (out, emb)
       }
-      val (videoTime, videoEmbedded) = adaLn(time, c.hidden)
+      // the video's own, per timestep
+      val (videoTimes, videoEmbeddeds) =
+        embeddings.map(e => adaLn(time, c.hidden, e)).unzip
       val (audioTimeOut, audioEmbedded) = adaLn(audioTime, c.audioHidden)
       val (promptOut, _) = adaLn(promptTime, c.hidden)
       val (audioPromptOut, _) = adaLn(audioPromptTime, c.audioHidden)
@@ -515,13 +640,35 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
       val audioRope = Some((audioCos, audioSin))
       val (f, fa) = (c.hidden.toLong, c.audioHidden.toLong)
       blocks.foreach { b =>
-        val videoMods = keep(ops.allocate(DType.F32, Shape.of(9, f)))
-        ops.add(b.modulation, videoTime.view(9, f), videoMods)
+        val videoMods = videoTimes.map { videoTime =>
+          val mods = keep(ops.allocate(DType.F32, Shape.of(9, f)))
+          ops.add(b.modulation, videoTime.view(9, f), mods)
+          mods
+        }
+        // the video's modulation and gates, run by run
+        def modulateVideo(x: Tensor, scale: Int, shift: Int): Unit =
+          runs.foreach { (start, count, k) =>
+            val part = x.rows(start, count)
+            ops.modulate(
+              part,
+              row(videoMods(k), scale),
+              row(videoMods(k), shift),
+              part
+            )
+          }
+        def gateVideo(y: Tensor, gate: Int): Unit =
+          runs.foreach((start, count, k) =>
+            ops.gatedAdd(
+              x.rows(start, count),
+              y.rows(start, count),
+              row(videoMods(k), gate)
+            )
+          )
         val audioMods = keep(ops.allocate(DType.F32, Shape.of(9, fa)))
         ops.add(b.audioModulation, audioTimeOut.view(9, fa), audioMods)
         // self-attention
         ops.rmsNorm(x, videoOnes, Epsilon, 0f, normed)
-        ops.modulate(normed, row(videoMods, 1), row(videoMods, 0), normed)
+        modulateVideo(normed, 1, 0)
         val out = projected.prefix(nv, f)
         attend(
           b.attention,
@@ -533,7 +680,7 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
           videoRope,
           out
         )
-        ops.gatedAdd(x, out, row(videoMods, 2))
+        gateVideo(out, 2)
         ops.rmsNorm(a, audioOnes, Epsilon, 0f, normedAudio)
         ops.modulate(
           normedAudio,
@@ -564,9 +711,9 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
           textRows
         )
         ops.rmsNorm(x, videoOnes, Epsilon, 0f, normed)
-        ops.modulate(normed, row(videoMods, 7), row(videoMods, 6), normed)
+        modulateVideo(normed, 7, 6)
         attend(b.text, normed, textRows, c.heads, c.head, None, None, out)
-        ops.gatedAdd(x, out, row(videoMods, 8))
+        gateVideo(out, 8)
         val audioPromptVectors = keep(ops.allocate(DType.F32, Shape.of(2, fa)))
         ops.add(b.audioPrompt, audioPromptOut.view(2, fa), audioPromptVectors)
         val audioTextRows = keysIn.prefix(nt, fa)
@@ -598,7 +745,11 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
         // none when the modalities are isolated (the modality guidance's pass)
         if (!isolated) {
           val crossVideo = keep(ops.allocate(DType.F32, Shape.of(5, f)))
-          ops.add(b.cross.rows(0, 4), crossOut.view(4, f), crossVideo.rows(0, 4))
+          ops.add(
+            b.cross.rows(0, 4),
+            crossOut.view(4, f),
+            crossVideo.rows(0, 4)
+          )
           ops.add(
             b.cross.rows(4, 1),
             crossGateOut.view(1, f),
@@ -620,7 +771,12 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
           val (videoQuery, audioKey) =
             (queriesIn.prefix(nv, f), keysIn.prefix(na, fa))
           // a2v: (scale 0, shift 1) on both sides
-          ops.modulate(normed, row(crossVideo, 0), row(crossVideo, 1), videoQuery)
+          ops.modulate(
+            normed,
+            row(crossVideo, 0),
+            row(crossVideo, 1),
+            videoQuery
+          )
           ops.modulate(
             normedAudio,
             row(crossAudio, 0),
@@ -666,9 +822,9 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
         }
         // MLPs
         ops.rmsNorm(x, videoOnes, Epsilon, 0f, normed)
-        ops.modulate(normed, row(videoMods, 4), row(videoMods, 3), normed)
+        modulateVideo(normed, 4, 3)
         mlp(normed, b.up, b.down, out)
-        ops.gatedAdd(x, out, row(videoMods, 5))
+        gateVideo(out, 5)
         ops.rmsNorm(a, audioOnes, Epsilon, 0f, normedAudio)
         ops.modulate(
           normedAudio,
@@ -678,40 +834,54 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
         )
         mlp(normedAudio, b.audioUp, b.audioDown, audioOutput)
         ops.gatedAdd(a, audioOutput, row(audioMods, 5))
-        Seq(
-          videoMods,
+        (videoMods ++ Seq(
           audioMods,
           promptVectors,
           audioPromptVectors
-        ).foreach { t =>
+        )).foreach { t =>
           held -= t
           ops.release(t)
         }
       }
       // the heads: shift and scale from the tables and the time embedding
+      // (per run of timesteps: `runs` over `embs`)
       def finish(
           stream: Tensor,
-          n: Long,
           width: Long,
           modulation: Tensor,
-          emb: Tensor,
+          embs: Seq[Tensor],
+          runs: Seq[(Long, Long, Int)],
           layer: Affine,
           target: Tensor
       ) = {
-        val vectors = allocate(2, width)
-        ops.addRow(modulation, emb.view(width), vectors)
+        val vectors = embs.map { emb =>
+          val made = allocate(2, width)
+          ops.addRow(modulation, emb.view(width), made)
+          made
+        }
         val norm = if (width == f) normed else normedAudio
         ops.layerNorm(stream, None, None, Epsilon, norm)
-        ops.modulate(norm, row(vectors, 1), row(vectors, 0), norm)
+        runs.foreach { (start, count, k) =>
+          val part = norm.rows(start, count)
+          ops.modulate(part, row(vectors(k), 1), row(vectors(k), 0), part)
+        }
         affine(norm, layer, target)
       }
-      finish(x, nv, f, finalModulation, videoEmbedded, videoOut, videoVelocity)
+      finish(
+        x,
+        f,
+        finalModulation,
+        videoEmbeddeds,
+        runs,
+        videoOut,
+        videoVelocity
+      )
       finish(
         a,
-        na,
         fa,
         audioFinalModulation,
-        audioEmbedded,
+        Seq(audioEmbedded),
+        Seq((0L, na, 0)),
         audioOut,
         audioVelocity
       )
@@ -719,12 +889,61 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
   }
 
   def close(): Unit = {
+    updates.close()
+    connectors.foreach { (video, audio) =>
+      video.release()
+      audio.release()
+    }
     weights.release()
     source.close()
   }
 }
 
 object Ltx2 {
+
+  /** diffusers' names (the LoRAs trained with it) → the original ones, each a
+    * whole name or its first parts.
+    */
+  private val DiffusersNames = Seq(
+    "^proj_in(?=\\.|$)" -> "patchify_proj",
+    "^audio_proj_in(?=\\.|$)" -> "audio_patchify_proj",
+    "^time_embed(?=\\.|$)" -> "adaln_single",
+    "^audio_time_embed(?=\\.|$)" -> "audio_adaln_single",
+    "^prompt_adaln(?=\\.|$)" -> "prompt_adaln_single",
+    "^audio_prompt_adaln(?=\\.|$)" -> "audio_prompt_adaln_single",
+    "^av_cross_attn_video_scale_shift(?=\\.|$)" -> "av_ca_video_scale_shift_adaln_single",
+    "^av_cross_attn_video_a2v_gate(?=\\.|$)" -> "av_ca_a2v_gate_adaln_single",
+    "^av_cross_attn_audio_scale_shift(?=\\.|$)" -> "av_ca_audio_scale_shift_adaln_single",
+    "^av_cross_attn_audio_v2a_gate(?=\\.|$)" -> "av_ca_v2a_gate_adaln_single",
+    "^connectors\\.video_connector\\.transformer_blocks\\." ->
+      "video_embeddings_connector.transformer_1d_blocks.",
+    "^connectors\\.audio_connector\\.transformer_blocks\\." ->
+      "audio_embeddings_connector.transformer_1d_blocks."
+  ).map((pattern, replacement) => pattern.r -> replacement)
+
+  /** The site a LoRA `target` names, in the original naming. */
+  def siteOf(target: String): String =
+    DiffusersNames.foldLeft(target)((name, rename) =>
+      rename._1.replaceFirstIn(name, rename._2)
+    )
+
+  /** Where `pair` (the update of `target`) applies, given the model's sites'
+    * shapes: its site when the site exists and its weight's shape is the
+    * update's.
+    */
+  def placement(
+      target: String,
+      pair: LoraPair,
+      shape: String => Option[Shape]
+  ): Option[String] = {
+    val site = siteOf(target)
+    shape(site)
+      .filter(weight =>
+        weight.dimensions.head == pair.up.shape.dimensions.head &&
+          weight.last == pair.down.shape.last
+      )
+      .map(_ => site)
+  }
 
   def open(ops: Ops, path: Path): Ltx2 = {
     val source = WeightSource.open(ops, path)
@@ -741,7 +960,9 @@ object Ltx2 {
     }
   }
 
-  /** The transformer file's text connectors share its weights. */
+  /** The transformer file's text connectors alone, without LoRAs (the text
+    * checks'); the pipeline takes `connectors` of the whole model.
+    */
   def connectors(
       ops: Ops,
       path: Path

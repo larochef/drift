@@ -179,9 +179,12 @@ final class ImageServer(
           ),
           ujson.Obj(
             "init_image" -> video.takesInitImage,
-            "end_image" -> false,
+            "end_image" -> video.takesEndImage,
             "control_frames" -> false,
-            "lora" -> false,
+            "references" -> video.takesReferences,
+            "guides" -> video.takesGuides,
+            "control_video" -> video.takesControl,
+            "lora" -> (video.takesLoras && options.loraDirectory.isDefined),
             "vae_tiling" -> false,
             "cancel_queued" -> true,
             "cancel_generating" -> false
@@ -380,9 +383,19 @@ final class ImageServer(
       Option.when(present("init_image") && !pipeline.takesInitImage)(
         "init images"
       ),
-      Option.when(present("end_image"))("end images"),
+      Option.when(present("end_image") && !pipeline.takesEndImage)(
+        "end images"
+      ),
       Option.when(present("control_frames"))("control frames"),
-      Option.when(present("lora"))("LoRAs"),
+      Option.when(present("references") && !pipeline.takesReferences)(
+        "reference media"
+      ),
+      Option.when(present("guides") && !pipeline.takesGuides)("guides"),
+      Option.when(
+        (present("control_video") || present("control_mask")) &&
+          !pipeline.takesControl
+      )("control videos"),
+      Option.when(present("lora") && !pipeline.takesLoras)("LoRAs"),
       Option.when(
         field("vae_tiling_params").exists(t =>
           t.obj.get("enabled").exists(_.bool)
@@ -402,14 +415,61 @@ final class ImageServer(
       field("high_noise_sample_params").map(_.obj).getOrElse(Map.empty)
     val width = field("width").map(_.num.toInt).getOrElse(options.width)
     val height = field("height").map(_.num.toInt).getOrElse(options.height)
-    val init =
-      try Right(field("init_image").map(_.str).filter(_.nonEmpty).map(decode))
+    def string(name: String) = field(name).map(_.str).filter(_.nonEmpty)
+    def frames(media: Media): Seq[java.awt.image.BufferedImage] = media match {
+      case Media.Still(image)       => Seq(image)
+      case Media.Clip(frames, _, _) => frames
+      case Media.Sound(_)           =>
+        throw new IllegalArgumentException("a sound where frames are expected")
+    }
+    val inputs =
+      try
+        Right {
+          // a mask alone (with its source) inpaints without a control video
+          val control = string("control_video")
+            .map(media)
+            .orElse(
+              string("control_mask")
+                .map(_ => Media.Clip(Nil, pipeline.fps, None))
+            )
+          (
+            string("init_image").map(decode),
+            string("end_image").map(decode),
+            field("references").toSeq
+              .flatMap(_.arr)
+              .map(_.str)
+              .filter(_.nonEmpty)
+              .map(media),
+            field("guides").toSeq.flatMap(_.arr).map { guide =>
+              VideoGuide(
+                media(guide("media").str),
+                guide.obj.get("frame_index").fold(0)(_.num.toInt)
+              )
+            },
+            control.map { video =>
+              VideoControl(
+                frames(video),
+                video match {
+                  case Media.Clip(_, fps, _) => fps
+                  case _                     => pipeline.fps.toDouble
+                },
+                field("control_strength").fold(1f)(_.num.toFloat),
+                field("control_start").fold(0f)(_.num.toFloat),
+                field("control_end").fold(1f)(_.num.toFloat),
+                string("control_mask").map(mask => frames(media(mask))),
+                string("source_video").map(source => frames(media(source)))
+              )
+            }
+          )
+        }
       catch { case error: IllegalArgumentException => Left(error.getMessage) }
-    val initImage = init match {
-      case Right(image)  => image
-      case Left(problem) =>
+    val (initImage, endImage, references, guides, control) = inputs match {
+      case Right(decoded) => decoded
+      case Left(problem)  =>
         return json(exchange, 400, ujson.Obj("error" -> problem))
     }
+    def rounded(side: Int) =
+      (side + pipeline.sizeMultiple - 1) / pipeline.sizeMultiple * pipeline.sizeMultiple
     val request = VideoRequest(
       prompt = field("prompt").map(_.str).getOrElse(options.prompt),
       negativePrompt =
@@ -446,16 +506,42 @@ final class ImageServer(
         .getOrElse(options.moeBoundary.toFloat),
       fps = field("fps").map(_.num.toInt).orElse(options.fps),
       audioCfgScale = field("audio_cfg_scale").map(_.num.toFloat),
-      ancestral = sample.get("sample_method").exists(_.strOpt.contains("euler_a")),
+      ancestral =
+        sample.get("sample_method").exists(_.strOpt.contains("euler_a")),
       modalityScale = field("modality_scale").map(_.num.toFloat).getOrElse(1f),
       audioModalityScale =
         field("audio_modality_scale").map(_.num.toFloat).getOrElse(1f),
-      initImage = initImage.map { image =>
-        def rounded(side: Int) =
-          (side + pipeline.sizeMultiple - 1) / pipeline.sizeMultiple * pipeline.sizeMultiple
-        Images.resized(image, rounded(width), rounded(height))
-      }
+      initImage = initImage.map(
+        pipeline.onCanvas(_, rounded(width), rounded(height), follower = false)
+      ),
+      endImage = endImage.map(
+        pipeline.onCanvas(
+          _,
+          rounded(width),
+          rounded(height),
+          follower = initImage.nonEmpty
+        )
+      ),
+      loras = field("lora").toSeq.flatMap(_.arr).map { lora =>
+        val path = Paths.get(lora("path").str)
+        VideoLora(
+          if (path.isAbsolute) path
+          else options.loraDirectory.fold(path)(_.resolve(path)),
+          lora.obj.get("multiplier").fold(1f)(_.num.toFloat),
+          lora.obj.get("is_high_noise").exists(_.bool)
+        )
+      },
+      references = references,
+      guides = guides,
+      control = control
     )
+    val missing = request.loras.map(_.path).filterNot(Files.isRegularFile(_))
+    if (missing.nonEmpty)
+      return json(
+        exchange,
+        400,
+        ujson.Obj("error" -> s"no such LoRA: ${missing.mkString(", ")}")
+      )
     enqueue(exchange, "vid_gen", () => video(pipeline, request))
   }
 
@@ -496,6 +582,15 @@ final class ImageServer(
       throw new IllegalArgumentException("an image that does not decode")
     )
   }
+
+  /** A media input (base64 or a data URL), decoded. */
+  private def media(encoded: String): Media =
+    VideoFiles.decode(
+      Base64.getMimeDecoder.decode(
+        if (encoded.startsWith("data:")) encoded.drop(encoded.indexOf(',') + 1)
+        else encoded
+      )
+    )
 
   /** `GET /sdcpp/v1/jobs/{id}` and `POST /sdcpp/v1/jobs/{id}/cancel`. */
   private def job(exchange: HttpExchange): Unit = {

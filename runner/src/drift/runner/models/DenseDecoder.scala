@@ -110,7 +110,9 @@ object Qwen3Config {
 
   /** Qwen3-VL's language model from its weights alone, transformers' names
     * without a `config.json` (MiniMax H3's text encoder, a GGUF with no
-    * metadata): RoPE's θ is Qwen3-VL's 5 000 000, RMS norms' ε 10⁻⁶.
+    * metadata): RoPE's θ is Qwen3-VL's 5 000 000, its interleaved mRoPE of 24,
+    * 20 and 20 pairs (text turns alike on every axis; images by their grid),
+    * RMS norms' ε 10⁻⁶.
     */
   def fromWeights(source: WeightSource, prefix: String): DenseConfig = {
     def dimensions(name: String) =
@@ -131,7 +133,7 @@ object Qwen3Config {
         dimensions("layers.0.self_attn.k_proj.weight").head / headDimension,
       headDimension = headDimension,
       ropeTheta = 5000000f,
-      ropeSections = RopeSections.Single,
+      ropeSections = RopeSections.Interleaved(24, 20, 20),
       ropeLayout = RopeLayout.Neox,
       rmsEpsilon = 1e-6f,
       vocabulary = dimensions("embed_tokens.weight").head,
@@ -873,14 +875,20 @@ final class DenseDecoder private[models] (
 
 object Qwen3 {
 
-  /** Opens a Qwen 3 from a GGUF, or from safetensors with their `config.json`.
+  /** Opens a Qwen 3 from a GGUF, or from safetensors with their `config.json`,
+    * or Qwen3-VL's language model from transformers' names alone (MiniMax H3's
+    * text encoder, `Qwen3Config.fromWeights`).
     */
   def open(ops: Ops, path: java.nio.file.Path): DenseDecoder = {
     val source = WeightSource.open(ops, path)
     try {
       source.gguf match {
-        case Some(_) if source.has("model.embed_tokens.weight") =>
-          // transformers' names in a GGUF, no metadata (MiniMax H3's)
+        case _
+            if source.has("model.embed_tokens.weight") &&
+              (source.gguf.isDefined || source.config.isEmpty &&
+                source.has("visual.patch_embed.proj.weight")) =>
+          // transformers' names with no metadata: MiniMax H3's text encoder
+          // (a GGUF, or safetensors holding Qwen3-VL's tower beside it)
           new DenseDecoder(
             ops,
             source,

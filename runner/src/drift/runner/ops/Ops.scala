@@ -156,11 +156,13 @@ trait Ops extends AutoCloseable {
   ): Unit
 
   /** A 3×3 convolution, channels-last: `x` `[H, W, in]`, `weight` `[out, in ×
-    * 9]` (a `[out][in][3][3]` kernel flattened; BF16 on the GPU), `bias` F32
+    * 9]` (a `[out][in][3][3]` kernel flattened; BF16 on the GPU, whose patches
+    * and sums are BF16, or F16, whose patches are F16 and sums F32), `bias` F32
     * `[out]`, `out` `[H / stride, W / stride, out]`. Stride 1 pads by 1 on
     * every side; stride 2 (even H and W) by 1 at the bottom and right only, as
     * diffusers' downsamplers do. `replicate` pads with the nearest edge pixel
-    * instead of zeros (PyTorch's `padding_mode="replicate"`; stride 1).
+    * instead of zeros (PyTorch's `padding_mode="replicate"`; stride 1),
+    * `reflect` with the reflection (`"reflect"`: −1 reads 1; either stride).
     */
   def conv3x3(
       x: Tensor,
@@ -168,15 +170,16 @@ trait Ops extends AutoCloseable {
       bias: Tensor,
       out: Tensor,
       stride: Int = 1,
-      replicate: Boolean = false
+      replicate: Boolean = false,
+      reflect: Boolean = false
   ): Unit
 
   /** A 1-D convolution over time, channels-last: `x` `[T, in]`, `weight` `[out,
-    * in × taps]` (a `[out][in][taps]` kernel flattened; BF16 or F32 on the
-    * GPU, its patches of the same type, the sums F32), taps
-    * `dilation` samples apart, zeros `padLeft` before and `padRight` after `x`,
-    * `bias` F32 `[out]` when given, `out` `[(T + padLeft + padRight −
-    * dilation × (taps − 1) − 1) / stride + 1, out]`.
+    * in × taps]` (a `[out][in][taps]` kernel flattened; BF16 or F32 on the GPU,
+    * its patches of the same type, the sums F32), taps `dilation` samples
+    * apart, zeros `padLeft` before and `padRight` after `x`, `bias` F32 `[out]`
+    * when given, `out` `[(T + padLeft + padRight − dilation × (taps − 1) − 1) /
+    * stride + 1, out]`.
     */
   def conv1d(
       x: Tensor,
@@ -192,8 +195,8 @@ trait Ops extends AutoCloseable {
 
   /** A transposed 1-D convolution's overlap-add: `columns` `[T, out × taps]`
     * (the input times the weight regrouped as `[out × taps, in]`), `out`
-    * `[(T − 1) × stride − 2 × pad + taps, out]` with `out[t × stride + k −
-    * pad, o] = Σ columns[t, o × taps + k] + bias[o]`.
+    * `[(T − 1) × stride − 2 × pad + taps, out]` with `out[t × stride + k − pad,
+    * o] = Σ columns[t, o × taps + k] + bias[o]`.
     */
   def overlapAdd(
       columns: Tensor,
@@ -219,6 +222,11 @@ trait Ops extends AutoCloseable {
       downFilter: Tensor,
       out: Tensor
   ): Unit
+
+  /** DAC's Snake over time, channels-last (`x` and `out` `[T, C]`): `x + sin²(α
+    * x) / (α + 10⁻⁹)`, `alpha` F32 `[C]` as stored (not log-scale).
+    */
+  def snake(x: Tensor, alpha: Tensor, out: Tensor): Unit
 
   /** Rotary embedding from precomputed angles, pairs of adjacent values: pair
     * `m` of every head of token `t` (values `2m`, `2m + 1`) turns by the angle
@@ -949,6 +957,18 @@ object Ops {
         upFilter.shape == Shape.of(SnakeTaps) &&
         downFilter.shape == Shape.of(SnakeTaps),
       s"antiAliasedSnake: x ${x.shape}, filters ${upFilter.shape} and ${downFilter.shape}"
+    )
+    (length, channels)
+  }
+
+  /** `snake`'s `(T, C)`. */
+  def checkSnake(x: Tensor, alpha: Tensor, out: Tensor): (Int, Int) = {
+    requireF32("snake", x, alpha, out)
+    requireSameShape("snake", x, out)
+    val Seq(length, channels) = x.shape.dimensions.map(_.toInt)
+    require(
+      alpha.shape == Shape.of(channels),
+      s"snake: x ${x.shape}, alpha ${alpha.shape}"
     )
     (length, channels)
   }

@@ -175,6 +175,7 @@ class GenerationSubmission(
       }
 
     if (currentMode == "vid_gen") {
+      val control = attached("control_video", controlVideoVar.now())
       val base = reusedVideoBase
         .now()
         .getOrElse(
@@ -209,6 +210,30 @@ class GenerationSubmission(
             // No control-frame picker yet (spec 14); a reused base carries
             // URLs there, not payloads, so they cannot be resent.
             controlFrames = List.empty,
+            references =
+              if (features.getOrElse("references", false))
+                referencesVar.now()
+              else List.empty,
+            guides =
+              if (!features.getOrElse("guides", false)) List.empty
+              else
+                guidesVar
+                  .now()
+                  .map(guide =>
+                    VideoGuide(
+                      guide.media,
+                      guide.frameIndex.trim.toIntOption.getOrElse(-1)
+                    )
+                  ),
+            // The rest of the control block means nothing without the video,
+            // so it is sent only beside one; blanks are the runner's
+            // defaults, spelled out so the recipe records what ran.
+            controlVideo = control,
+            controlStrength = control.map(_ => doubleOf(controlStrengthVar, 1)),
+            controlStart = control.map(_ => doubleOf(controlStartVar, 0)),
+            controlEnd = control.map(_ => doubleOf(controlEndVar, 1)),
+            controlMask = control.flatMap(_ => controlMaskVar.now()),
+            sourceVideo = control.flatMap(_ => sourceVideoVar.now()),
             lora = loraSelections,
             sampleParams = sampleOver(base.sampleParams),
             highNoiseSampleParams =

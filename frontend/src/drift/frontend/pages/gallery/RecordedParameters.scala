@@ -131,10 +131,11 @@ object RecordedParameters {
         "Original file" -> d.parentFileName
       )
 
-  /** The persisted input images: label → URL. Inputs whose persistence failed
-    * carry a placeholder instead of a URL and are left out.
+  /** The persisted inputs: label → URL — images, and a video model's clips and
+    * sounds (`specs/42`, step 14), a guide's frame in its label. Inputs whose
+    * persistence failed carry a placeholder instead of a URL and are left out.
     */
-  def inputImages(generation: Generation): List[(String, String)] = {
+  def inputMedia(generation: Generation): List[(String, String)] = {
     val fromImage = generation.imageParameters.toList.flatMap { p =>
       p.initImage.map("Init image" -> _).toList ++
         p.maskImage.map("Mask" -> _).toList ++
@@ -145,7 +146,16 @@ object RecordedParameters {
         p.endImage.map("End image" -> _).toList ++
         p.controlFrames.zipWithIndex.map((url, i) =>
           s"Control frame ${i + 1}" -> url
-        )
+        ) ++
+        p.references.zipWithIndex.map((url, i) =>
+          s"Reference ${i + 1}" -> url
+        ) ++
+        p.guides.zipWithIndex.map((guide, i) =>
+          s"Guide ${i + 1} · frame ${guide.frameIndex}" -> guide.media
+        ) ++
+        p.controlVideo.map("Control video" -> _).toList ++
+        p.controlMask.map("Control mask" -> _).toList ++
+        p.sourceVideo.map("Source video" -> _).toList
     }
     (fromImage ++ fromVideo).filter(_._2.startsWith("/"))
   }
@@ -271,6 +281,12 @@ object RecordedParameters {
       p.initImage.map(_ => "Strength" -> number(p.strength)) ++
       p.moeBoundary.map(v => "MoE boundary" -> number(v)) ++
       p.vaceStrength.map(v => "VACE strength" -> number(v)) ++
+      p.controlVideo.map(_ =>
+        "Control" ->
+          s"strength ${number(p.controlStrength.getOrElse(1.0))} · steps ${number(
+              p.controlStart.getOrElse(0.0)
+            )}–${number(p.controlEnd.getOrElse(1.0))}"
+      ) ++
       vaeRows(p.vaeTilingParams) ++
       loraRows(p.lora) ++
       List("Output" -> s"${p.outputFormat} · quality ${p.outputCompression}")

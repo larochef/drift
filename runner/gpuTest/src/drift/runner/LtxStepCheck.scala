@@ -69,7 +69,9 @@ object LtxStepCheck {
         )
         write(dir.resolve("video_out.f32"), ops.toFloats(videoOut))
         write(dir.resolve("audio_out.f32"), ops.toFloats(audioOut))
-        println(s"velocities of ${layout.videoTokens} video and ${layout.audioFrames} audio rows")
+        println(
+          s"velocities of ${layout.videoTokens} video and ${layout.audioFrames} audio rows"
+        )
       } finally model.close()
     } finally ops.close()
   }

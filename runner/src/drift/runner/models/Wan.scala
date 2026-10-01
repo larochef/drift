@@ -1,5 +1,6 @@
 package drift.runner.models
 
+import drift.runner.diffusion.*
 import drift.runner.formats.FormatException
 import drift.runner.ops.*
 import drift.runner.state.KvCache
@@ -104,9 +105,10 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
   private def floats(name: String, count: Long): Tensor =
     weights.floats(name, name, Shape.of(count))
 
-  final private case class Affine(weight: Tensor, bias: Tensor)
+  /** A linear layer and its bias, by its original name (its LoRA site). */
+  final private case class Affine(name: String, weight: Tensor, bias: Tensor)
   private def affineLayer(prefix: String, outputs: Long): Affine =
-    Affine(source(s"$prefix.weight"), floats(s"$prefix.bias", outputs))
+    Affine(prefix, source(s"$prefix.weight"), floats(s"$prefix.bias", outputs))
 
   final private class Attention(prefix: String) {
     val q: Affine = affineLayer(s"$prefix.q", c.hidden)
@@ -140,6 +142,7 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
       System.arraycopy(stored, row * width, matrix, row * padded, width)
     )
     Affine(
+      "patch_embedding",
       weights.keep(ops.fromFloats(Shape.of(c.hidden, padded), matrix)),
       floats("patch_embedding.bias", c.hidden)
     )
@@ -153,6 +156,9 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
   private val headModulation =
     weights.floats("head.modulation", "head.modulation", Shape.of(2, c.hidden))
 
+  /** The stored head row of the loaded head's `row`. */
+  private def headRow(row: Int): Int = (row % 4) * c.outChannels + row / 4
+
   /** The head, its outputs reordered from (row, column, channel) to channel
     * major.
     */
@@ -160,8 +166,9 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
     val out = 4 * c.outChannels
     val stored = weights.hostFloats("head.head.weight")
     val bias = weights.hostFloats("head.head.bias")
-    def from(row: Int) = (row % 4) * c.outChannels + row / 4
+    def from(row: Int) = headRow(row)
     Affine(
+      "head.head",
       weights.keep(
         ops.fromFloats(
           Shape.of(out, c.hidden),
@@ -184,9 +191,74 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
     None
   )
 
+  /** `out = x · weightᵀ + bias`, and the active LoRAs' updates. */
   private def affine(x: Tensor, layer: Affine, out: Tensor): Unit = {
     ops.linear(x, layer.weight, out)
+    updates(x, layer.name, out)
     ops.addRow(out, layer.bias, out)
+  }
+
+  // ---- LoRAs ---------------------------------------------------------------------
+
+  /** The active LoRAs' updates of each linear layer, by its original name. */
+  private val updates = new LoraUpdates(ops)
+  private val loraSite = Wan.loraSite(c)
+
+  /** The head's updates, their up rows in the loaded head's order. */
+  private var headUpdates = Seq.empty[Tensor]
+
+  /** Makes `loras` (each at its multiplier) the active set, replacing the last.
+    * They read the original names (ComfyUI's, musubi's), diffusers' and kohya's
+    * of both (`Wan.loraSite`). Returns the targets that matched nothing or a
+    * weight of another shape, left unapplied. A prompt's `text` made before
+    * depends on the LoRAs of its time (the cross-attention's keys and values).
+    */
+  def useLoras(loras: Seq[(Lora, Float)]): Seq[String] = {
+    headUpdates.foreach(ops.release)
+    headUpdates = Nil
+    val placed = loras.flatMap((lora, multiplier) =>
+      lora.pairs.toSeq.map((target, pair) =>
+        (
+          target,
+          loraSite(target, pair),
+          pair.copy(scale = pair.scale * multiplier)
+        )
+      )
+    )
+    updates.use(
+      placed
+        .collect {
+          case (_, Some("head.head"), pair) => "head.head" -> headOrdered(pair)
+          case (_, Some(site), pair)        => site -> pair
+        }
+        .groupMap(_._1)(_._2)
+    )
+    placed.collect { case (target, None, _) => target }.distinct
+  }
+
+  /** `pair` with its up rows permuted as the loaded head's (BF16, kept until
+    * the next `useLoras`).
+    */
+  private def headOrdered(pair: LoraPair): LoraPair = {
+    val rank = pair.rank
+    val wide = ops.allocate(DType.F32, pair.up.shape)
+    val stored =
+      try {
+        ops.convert(pair.up, wide)
+        ops.toFloats(wide)
+      } finally ops.release(wide)
+    val rows = pair.up.shape.dimensions.head.toInt
+    val permuted = ops.fromFloats(
+      pair.up.shape,
+      Array.tabulate(rows * rank)(i =>
+        stored(headRow(i / rank) * rank + i % rank)
+      )
+    )
+    val up = ops.allocate(DType.BF16, pair.up.shape)
+    try ops.convert(permuted, up)
+    finally ops.release(permuted)
+    headUpdates :+= up
+    pair.copy(up = up)
   }
 
   /** `prompt` (the text encoder's `[L, textWidth]`, zero rows included as the
@@ -465,12 +537,87 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
 
   def close(): Unit = {
     buffers.foreach(_.release())
+    updates.close()
+    headUpdates.foreach(ops.release)
     weights.release()
     source.close()
   }
 }
 
 object Wan {
+
+  /** The linears a LoRA may update, by their original names, with their `[out,
+    * in]` sizes (the head's as stored). The patch embedding, a convolution, is
+    * not one.
+    */
+  def loraSites(c: WanConfig): Map[String, (Long, Long)] = {
+    val (hidden, intermediate) = (c.hidden.toLong, c.intermediate.toLong)
+    val blocks = (0 until c.blocks).flatMap { i =>
+      Seq("self_attn", "cross_attn").flatMap(attention =>
+        Seq("q", "k", "v", "o")
+          .map(part => s"blocks.$i.$attention.$part" -> (hidden, hidden))
+      ) ++ Seq(
+        s"blocks.$i.ffn.0" -> (intermediate, hidden),
+        s"blocks.$i.ffn.2" -> (hidden, intermediate)
+      )
+    }
+    (blocks ++ Seq(
+      "text_embedding.0" -> (hidden, c.textWidth.toLong),
+      "text_embedding.2" -> (hidden, hidden),
+      "time_embedding.0" -> (hidden, c.frequencies.toLong),
+      "time_embedding.2" -> (hidden, hidden),
+      "time_projection.1" -> (6 * hidden, hidden),
+      "head.head" -> (4L * c.outChannels, hidden)
+    )).toMap
+  }
+
+  /** diffusers' names of the original ones (`WanTransformer3DModel`), part by
+    * part.
+    */
+  private val DiffusersParts = Seq(
+    "^text_embedding\\.0$" -> "condition_embedder.text_embedder.linear_1",
+    "^text_embedding\\.2$" -> "condition_embedder.text_embedder.linear_2",
+    "^time_embedding\\.0$" -> "condition_embedder.time_embedder.linear_1",
+    "^time_embedding\\.2$" -> "condition_embedder.time_embedder.linear_2",
+    "^time_projection\\.1$" -> "condition_embedder.time_proj",
+    "^head\\.head$" -> "proj_out",
+    "\\.self_attn\\." -> ".attn1.",
+    "\\.cross_attn\\." -> ".attn2.",
+    "\\.(q|k|v)$" -> ".to_$1",
+    "\\.o$" -> ".to_out.0",
+    "\\.ffn\\.0$" -> ".ffn.net.0.proj",
+    "\\.ffn\\.2$" -> ".ffn.net.2"
+  )
+
+  /** A LoRA target's site in a Wan of `config`, when it names one of the same
+    * shape. The published files name the sites in their original names
+    * (ComfyUI's, musubi's `diffusion_model.`, which the loader drops),
+    * diffusers' (`transformer.`, dropped by `Lora`; `to_out` also without its
+    * `.0`, as ComfyUI accepts it), and kohya's forms of both (`lora_unet_`,
+    * ComfyUI's `lycoris_`, the dots made underscores).
+    */
+  def loraSite(config: WanConfig): (String, LoraPair) => Option[String] = {
+    val sites = loraSites(config)
+    val aliases = sites.keys.flatMap { original =>
+      val diffusers =
+        DiffusersParts.foldLeft(original)((name, rule) =>
+          name.replaceAll(rule._1, rule._2)
+        )
+      val dotted =
+        Seq(original, diffusers) ++
+          Option.when(diffusers.endsWith(".to_out.0"))(
+            diffusers.stripSuffix(".0")
+          )
+      (dotted ++ dotted.flatMap(name =>
+        Seq("lora_unet_", "lycoris_").map(_ + name.replace('.', '_'))
+      )).map(_ -> original)
+    }.toMap
+    (target, pair) =>
+      aliases.get(target).filter { site =>
+        val (out, in) = sites(site)
+        pair.up.shape.dimensions.head == out && pair.down.shape.last == in
+      }
+  }
 
   def open(ops: Ops, path: Path): Wan = {
     val source = WeightSource.open(ops, path)

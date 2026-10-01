@@ -1090,6 +1090,12 @@
         "familyId": "qwen3-tokenizer",
         "flag": "--tokenizer",
         "required": false
+      },
+      {
+        "name": "control-net",
+        "familyId": "minimax-h3-controlnet",
+        "flag": "--control-net",
+        "required": false
       }
     ],
     "defaultParameters": {

@@ -1,8 +1,8 @@
 package drift.backend.routes
 
-/** The one byte range of a `Range` header that a file of `size` bytes can
-  * serve (RFC 9110 §14.1.2): `bytes=first-last`, `bytes=first-` (to the end)
-  * or `bytes=-count` (the last bytes), as the inclusive `(first, last)`.
+/** The one byte range of a `Range` header that a file of `size` bytes can serve
+  * (RFC 9110 §14.1.2): `bytes=first-last`, `bytes=first-` (to the end) or
+  * `bytes=-count` (the last bytes), as the inclusive `(first, last)`.
   */
 object ByteRanges {
 

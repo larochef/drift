@@ -7,17 +7,20 @@ import java.util.Base64
 import javax.imageio.ImageIO
 
 /** An image as the Qwen vision tower reads it: `patches` F32 `[gridHeight ×
-  * gridWidth, 3 × patch²]`, each patch's pixels channel by channel (`c × patch²
-  * + y × patch + x`), normalized to [−1, 1], the patches in merge-window order
-  * (each `merge × merge` window's patches together, row by row). `key`
-  * identifies the picture, so a cached prompt knows it again.
+  * gridWidth, 3 × frames × patch²]`, each patch's pixels channel by channel
+  * then frame by frame (`(c × frames + t) × patch² + y × patch + x`),
+  * normalized to [−1, 1], the patches in merge-window order (each `merge ×
+  * merge` window's patches together, row by row). A still is one frame (its own
+  * second one in the tower's two-frame patches); a video's pair of frames two.
+  * `key` identifies the picture, so a cached prompt knows it again.
   */
 final case class PreparedImage(
     patches: Array[Float],
     gridHeight: Int,
     gridWidth: Int,
     merge: Int,
-    key: String
+    key: String,
+    frames: Int = 1
 ) {
 
   /** The language model's tokens for it, one per merge window. */
@@ -89,10 +92,21 @@ final case class ImageSizing(
   /** Normalized pixels (`[height, width, 3]`) into merge-window-ordered
     * patches.
     */
-  def patches(pixels: Array[Float], height: Int, width: Int): Array[Float] = {
+  def patches(pixels: Array[Float], height: Int, width: Int): Array[Float] =
+    framePatches(Seq(pixels), height, width)
+
+  /** Normalized frames (each `[height, width, 3]`) into merge-window-ordered
+    * patches of all of them (transformers' video patches for a pair).
+    */
+  def framePatches(
+      frames: Seq[Array[Float]],
+      height: Int,
+      width: Int
+  ): Array[Float] = {
     val (gridHeight, gridWidth) = (height / patch, width / patch)
     val area = patch * patch
-    val out = new Array[Float](gridHeight * gridWidth * 3 * area)
+    val depth = frames.size
+    val out = new Array[Float](gridHeight * gridWidth * 3 * depth * area)
     var row = 0
     for {
       by <- 0 until gridHeight / merge
@@ -103,10 +117,11 @@ final case class ImageSizing(
       val (top, left) = ((by * merge + iy) * patch, (bx * merge + ix) * patch)
       for {
         c <- 0 until 3
+        (pixels, t) <- frames.zipWithIndex
         y <- 0 until patch
         x <- 0 until patch
       }
-        out(row * 3 * area + c * area + y * patch + x) = pixels(
+        out((row * 3 + c) * depth * area + t * area + y * patch + x) = pixels(
           ((top + y) * width + left + x) * 3 + c
         )
       row += 1
@@ -191,6 +206,21 @@ object Resampling {
     out
   }
 
+  /** PIL's resampling filters: the kernel and its support. */
+  enum Filter(val support: Double) {
+    case Bicubic extends Filter(2.0)
+    case Lanczos extends Filter(3.0)
+
+    def apply(x: Double): Double = this match {
+      case Bicubic => cubic(x)
+      case Lanczos =>
+        if (math.abs(x) < 3) sinc(x) * sinc(x / 3) else 0
+    }
+  }
+
+  private def sinc(x: Double): Double =
+    if (x == 0) 1 else math.sin(math.Pi * x) / (math.Pi * x)
+
   private def cubic(x: Double): Double = {
     val a = -0.5
     val t = math.abs(x)
@@ -200,9 +230,13 @@ object Resampling {
   }
 
   /** Each output coordinate's first input and weights along one axis. */
-  private def taps(from: Int, to: Int): Array[(Int, Array[Double])] = {
+  private def taps(
+      from: Int,
+      to: Int,
+      filter: Filter
+  ): Array[(Int, Array[Double])] = {
     val scale = from.toDouble / to
-    val support = 2.0 * math.max(scale, 1.0)
+    val support = filter.support * math.max(scale, 1.0)
     val stretch = math.max(scale, 1.0)
     Array.tabulate(to) { i =>
       val center = (i + 0.5) * scale
@@ -210,7 +244,7 @@ object Resampling {
       val last = math.min(from, (center + support + 0.5).toInt)
       val weights =
         Array.tabulate(last - first)(j =>
-          cubic((first + j - center + 0.5) / stretch)
+          filter((first + j - center + 0.5) / stretch)
         )
       val total = weights.sum
       (first, if (total != 0) weights.map(_ / total) else weights)
@@ -227,9 +261,21 @@ object Resampling {
       fromHeight: Int,
       width: Int,
       height: Int
+  ): Array[Float] =
+    resampled(pixels, fromWidth, fromHeight, width, height, Filter.Bicubic)
+
+  /** `[height, width, 3]` from `[fromHeight, fromWidth, 3]` through `filter`.
+    */
+  def resampled(
+      pixels: Array[Float],
+      fromWidth: Int,
+      fromHeight: Int,
+      width: Int,
+      height: Int,
+      filter: Filter
   ): Array[Float] = {
     // horizontal, then vertical, as PIL
-    val across = taps(fromWidth, width)
+    val across = taps(fromWidth, width, filter)
     val wide = new Array[Float](fromHeight * width * 3)
     for {
       y <- 0 until fromHeight
@@ -245,7 +291,7 @@ object Resampling {
       }
       wide((y * width + x) * 3 + c) = clip8(sum)
     }
-    val down = taps(fromHeight, height)
+    val down = taps(fromHeight, height, filter)
     val out = new Array[Float](height * width * 3)
     for {
       y <- 0 until height

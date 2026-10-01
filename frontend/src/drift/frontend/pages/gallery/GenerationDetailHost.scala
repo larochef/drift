@@ -475,7 +475,7 @@ object GenerationDetailHost {
     */
   def fileCount(generation: Generation): Int =
     generation.outputs.size +
-      RecordedParameters.inputImages(generation).size + 1
+      RecordedParameters.inputMedia(generation).size + 1
 
   /** The one confirmation every delete goes through, wherever the button is: it
     * names the kind, the file count and the prompt, because the files go with

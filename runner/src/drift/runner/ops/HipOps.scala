@@ -754,14 +754,16 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
       bias: Tensor,
       out: Tensor,
       stride: Int,
-      replicate: Boolean
+      replicate: Boolean,
+      reflect: Boolean
   ): Unit = {
     val (height, width, in, outChannels) =
       Ops.checkConv3x3(x, weight, bias, out, stride)
     require(
-      weight.dtype == DType.BF16,
-      s"conv3x3 takes BF16 weights, not ${weight.dtype}"
+      weight.dtype == DType.BF16 || weight.dtype == DType.F16,
+      s"conv3x3 takes BF16 or F16 weights, not ${weight.dtype}"
     )
+    val half = weight.dtype == DType.F16
     val pixels = (height / stride).toLong * (width / stride)
     val columns = in * 9L
     val chunk = math.max(1L, math.min(pixels, PatchBudget / (2 * columns)))
@@ -770,7 +772,7 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
     (0L until pixels by chunk).foreach { first =>
       val count = math.min(chunk, pixels - first)
       launch(
-        kernel(imageKernels, "im2col_3x3_bf16"),
+        kernel(imageKernels, if (half) "im2col_3x3_f16" else "im2col_3x3_bf16"),
         (count * columns + 255) / 256,
         256,
         Pointer(pointer(x)),
@@ -780,30 +782,44 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
         I32(in),
         I32(width / stride),
         I32(stride),
-        I32(if (replicate) 1 else 0),
+        I32(if (replicate) 1 else if (reflect) 2 else 0),
         I64(first),
         I64(count)
       )
-      blas.gemm(
-        patches,
-        pointer(weight),
-        result,
-        count.toInt,
-        outChannels,
-        columns.toInt,
-        HipBlas.RealBF16
-      )
       val rows = out.view(pixels, outChannels.toLong).rows(first, count)
-      convertAt(result, pointer(rows), count * outChannels, 3)
+      if (half)
+        // F16 operands, F32 sums: no rounding of the output
+        blas.gemm(
+          patches,
+          pointer(weight),
+          pointer(rows),
+          count.toInt,
+          outChannels,
+          columns.toInt,
+          HipBlas.RealF16,
+          HipBlas.RealF32
+        )
+      else {
+        blas.gemm(
+          patches,
+          pointer(weight),
+          result,
+          count.toInt,
+          outChannels,
+          columns.toInt,
+          HipBlas.RealBF16
+        )
+        convertAt(result, pointer(rows), count * outChannels, 3)
+      }
       addRow(rows, bias, rows)
     }
   }
 
   private val audioKernels = new KernelModule(hip, "audio")
 
-  /** BF16 weights take BF16 patches, as `conv3x3`'s; F32 ones F32 patches.
-    * The sums are F32 either way: a waveform does not take BF16's rounding at
-    * every layer.
+  /** BF16 weights take BF16 patches, as `conv3x3`'s; F32 ones F32 patches. The
+    * sums are F32 either way: a waveform does not take BF16's rounding at every
+    * layer.
     */
   def conv1d(
       x: Tensor,
@@ -896,6 +912,20 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
       I32(taps),
       I32(stride),
       I32(pad)
+    )
+  }
+
+  def snake(x: Tensor, alpha: Tensor, out: Tensor): Unit = {
+    val (length, channels) = Ops.checkSnake(x, alpha, out)
+    launch(
+      kernel(audioKernels, "snake_f32"),
+      (out.shape.elementCount + 255) / 256,
+      256,
+      Pointer(pointer(x)),
+      Pointer(pointer(alpha)),
+      Pointer(pointer(out)),
+      I64(length.toLong * channels),
+      I32(channels)
     )
   }
 
@@ -1614,7 +1644,18 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
     val outHalf = offset(xHalf, 2L * m * k + weightBytes)
     val weightHalf =
       if (weight.dtype == DType.F16) pointer(weight)
-      else {
+      else if (weight.dtype == DType.F32) {
+        // dense F32 element by element: the dequantizers walk rows in blocks
+        // of 32, which rows such as the H3 ControlNet's 196 are not
+        val target = offset(xHalf, 2L * m * k)
+        convertAt(
+          pointer(weight),
+          target,
+          n.toLong * k,
+          conversionCodes(DType.F32 -> (if (wide) DType.BF16 else DType.F16))
+        )
+        target
+      } else {
         val target = offset(xHalf, 2L * m * k)
         val precision = if (wide) "bf16_" else ""
         launch(

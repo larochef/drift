@@ -63,7 +63,15 @@ object Lora {
         if (tensor.dtype == DType.BF16) tensor
         else {
           val copy = ops.allocate(DType.BF16, tensor.shape)
-          ops.convert(tensor, copy)
+          if (tensor.dtype == DType.F32) ops.convert(tensor, copy)
+          else {
+            // F16 (and the rest) by way of F32: no backend converts directly
+            val wide = ops.allocate(DType.F32, tensor.shape)
+            try {
+              ops.convert(tensor, wide)
+              ops.convert(wide, copy)
+            } finally ops.release(wide)
+          }
           converted += copy
           copy
         }

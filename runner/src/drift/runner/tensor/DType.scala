@@ -135,6 +135,14 @@ object DType {
       int32(source, offset).toFloat
   }
 
+  /** Integers such as a LoRA's `.alpha` scalar; decoded values are exact up to
+    * 2²⁴.
+    */
+  object I64 extends ElementType("I64", 8, Some(27), Some("I64")) {
+    def decodeElement(source: MemorySegment, offset: Long): Float =
+      int64(source, offset).toFloat
+  }
+
   object U8 extends ElementType("U8", 1, None, Some("U8")) {
     def decodeElement(source: MemorySegment, offset: Long): Float =
       uint8(source, offset).toFloat
@@ -148,6 +156,7 @@ object DType {
     F8E5M2,
     I8,
     I32,
+    I64,
     U8,
     GgmlQuants.Q4_0,
     GgmlQuants.Q4_1,
@@ -199,7 +208,6 @@ object DType {
     22 -> "IQ2_S",
     23 -> "IQ4_XS",
     25 -> "I16",
-    27 -> "I64",
     28 -> "F64",
     29 -> "IQ1_M",
     34 -> "TQ1_0",

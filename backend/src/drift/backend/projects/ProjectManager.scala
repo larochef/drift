@@ -78,7 +78,7 @@ final class ProjectManager(storage: StorageService) {
 object ProjectManager {
 
   /** The recipe without what varies between runs of the same recipe: the seed
-    * and the input images. A batch count is one of those too (`specs/14`): four
+    * and the inputs. A batch count is one of those too (`specs/14`): four
     * images in one run are four re-rolls of the recipe, the same thing the
     * blanked seed already says, so asking for more of them must not append a
     * "changed batch" version. An image recipe never equals a video one.
@@ -98,12 +98,19 @@ object ProjectManager {
         )
       )
       .orElse(
-        videoParameters.map(
-          _.copy(
+        videoParameters.map(p =>
+          p.copy(
             seed = -1,
             initImage = None,
             endImage = None,
-            controlFrames = List.empty
+            controlFrames = List.empty,
+            // A guide's frame is part of the recipe; its medium, like every
+            // input, is a file that differs from run to run.
+            references = List.empty,
+            guides = p.guides.map(_.copy(media = "")),
+            controlVideo = None,
+            controlMask = None,
+            sourceVideo = None
           )
         )
       )

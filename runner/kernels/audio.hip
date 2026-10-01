@@ -32,6 +32,16 @@ extern "C" __global__ void im2col_1d_f32(const float* x, float* patches, int len
   patches[index] = (s >= 0 && s < length) ? x[s * channels + c] : 0.0f;
 }
 
+// DAC's Snake: out = x + sin²(alpha x) / (alpha + 1e-9), alpha per channel.
+extern "C" __global__ void snake_f32(const float* x, const float* alpha, float* out, long long count,
+                                     int channels) {
+  const long long index = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+  if (index >= count) return;
+  const float a = alpha[index % channels], value = x[index];
+  const float s = sinf(a * value);
+  out[index] = value + s * s / (a + 1e-9f);
+}
+
 // A transposed 1-D convolution's overlap-add: out[p][o] = bias[o] + the sum of
 // columns[t][o * taps + k] over t * stride + k - pad = p.
 extern "C" __global__ void overlap_add_f32(const float* columns, const float* bias, float* out, int length,

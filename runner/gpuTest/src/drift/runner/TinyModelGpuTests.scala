@@ -238,6 +238,27 @@ object TinyModelGpuTests extends TestSuite {
         assert(error < 2e-2)
       } finally ops.close()
     }
+    test("Wan with each expert's LoRA, then without, in BF16") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      ops.wideProducts = true
+      try {
+        val error = TinyWanCase.loraVelocityError(ops)
+        println(
+          f"  worst LoRA velocity error ${error * 100}%.4f%% of the largest"
+        )
+        assert(error < 2e-2)
+      } finally ops.close()
+    }
+    test("Wan's I2V conditioning with an end image") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val errors = TinyWanCase.conditionErrors(ops)
+        println(
+          s"  worst errors ${errors.map(e => f"${e * 100}%.4f%%").mkString(", ")} of the largest"
+        )
+        assert(errors.forall(_ < 4e-2))
+      } finally ops.close()
+    }
     test("The Wan 2.1 VAE on video") {
       val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
       try {
@@ -272,6 +293,30 @@ object TinyModelGpuTests extends TestSuite {
         val error = TinyLtxCase.transformerError(ops)
         println(f"  worst velocity error ${error * 100}%.4f%% of the largest")
         assert(error < 1e-2)
+      } finally ops.close()
+    }
+    test("LTX 2.5's joint transformer, conditioned") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val error = TinyLtxCase.conditionError(ops)
+        println(f"  worst velocity error ${error * 100}%.4f%% of the largest")
+        assert(error < 1e-2)
+      } finally ops.close()
+    }
+    test("LTX 2.5's LoRAs") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val error = TinyLtxCase.loraError(ops)
+        println(f"  worst error ${error * 100}%.4f%% of the largest")
+        assert(error < 1e-2)
+      } finally ops.close()
+    }
+    test("LTX 2.5's conv VAE encoder") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val error = TinyLtxCase.encoderError(ops)
+        println(f"  worst latent error ${error * 100}%.4f%% of the largest")
+        assert(error < 4e-2)
       } finally ops.close()
     }
     test("LTX 2.5's conv VAE decoder") {

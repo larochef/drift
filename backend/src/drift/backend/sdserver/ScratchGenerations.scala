@@ -75,7 +75,14 @@ final private[sdserver] class ScratchGenerations(
               p.copy(
                 initImage = p.initImage.map(files.rehome(_, date)),
                 endImage = p.endImage.map(files.rehome(_, date)),
-                controlFrames = p.controlFrames.map(files.rehome(_, date))
+                controlFrames = p.controlFrames.map(files.rehome(_, date)),
+                references = p.references.map(files.rehome(_, date)),
+                guides = p.guides.map(guide =>
+                  guide.copy(media = files.rehome(guide.media, date))
+                ),
+                controlVideo = p.controlVideo.map(files.rehome(_, date)),
+                controlMask = p.controlMask.map(files.rehome(_, date)),
+                sourceVideo = p.sourceVideo.map(files.rehome(_, date))
               )
             )
           )

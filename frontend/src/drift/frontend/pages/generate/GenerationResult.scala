@@ -1,6 +1,6 @@
 package drift.frontend.pages.generate
 
-import drift.frontend.components.{Component, LogProgressView, VideoRelease}
+import drift.frontend.components.*
 import drift.frontend.services.*
 import drift.shared.*
 

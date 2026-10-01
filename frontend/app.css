@@ -1530,7 +1530,8 @@ select.select:focus {
   white-space: nowrap;
 }
 
-.gallery-inputs img {
+.gallery-inputs img,
+.gallery-inputs video {
   max-height: 96px;
   max-width: 160px;
   border-radius: 4px;

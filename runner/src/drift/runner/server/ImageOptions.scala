@@ -57,6 +57,10 @@ final case class ImageOptions(
       * their own.
       */
     fps: Option[Int],
+    /** A video model's ControlNet (`--control-net`): MiniMax H3's Fun
+      * ControlNet union.
+      */
+    controlNet: Option[Path],
     notes: Seq[String]
 )
 
@@ -95,7 +99,6 @@ object ImageOptions {
   /** Refused until the runner does what they ask. */
   private val NotYet: Map[String, String] = Map(
     "--vae-tiling" -> "tiled VAE decoding comes later",
-    "--control-net" -> "ControlNets come later",
     "--taesd" -> "TAESD previews come later"
   )
 
@@ -123,7 +126,8 @@ object ImageOptions {
             "--negative-prompt" | "--lora-model-dir" | "--tokenizer" |
             "--llm_vision" | "--audio-vae" | "--video-frames" |
             "--high-noise-diffusion-model" | "--t5xxl" | "--high-noise-steps" |
-            "--high-noise-cfg-scale" | "--moe-boundary" | "--fps" =>
+            "--high-noise-cfg-scale" | "--moe-boundary" | "--fps" |
+            "--control-net" =>
           value().foreach(v => values(canonical(flag)) = v)
         case other if NotYet.contains(other) =>
           problem = Some(s"$other is not supported yet: ${NotYet(other)}")
@@ -172,6 +176,7 @@ object ImageOptions {
         values.get("--high-noise-cfg-scale").map(_.toDouble),
         values.get("--moe-boundary").fold(0.875)(_.toDouble),
         values.get("--fps").map(_.toInt),
+        values.get("--control-net").map(Paths.get(_)),
         notes.result()
       )
     }

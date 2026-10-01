@@ -5,8 +5,8 @@ import drift.runner.tensor.*
 
 /** A 1-D convolution over time, "same" padded: its F32 weight `[out, in ×
   * taps]` and F32 patches (a vocoder moves its waveform by 10% for a 0.2%
-  * change of its input, so it adds no rounding of its own; F32 takes the same
-  * 2 s for LTX's 3.5 s of sound), its bias when it has one.
+  * change of its input, so it adds no rounding of its own; F32 takes the same 2
+  * s for LTX's 3.5 s of sound), its bias when it has one.
   */
 final case class TimeConvolution(
     weight: Tensor,
@@ -127,42 +127,58 @@ object AntiAliasedSnake {
 }
 
 /** A BigVGAN generator (anti-aliased SnakeBeta activations, AMP residual
-  * blocks), from mel or latent frames `[T, in]` to a waveform `[T × hop,
-  * out]`: a 7-tap convolution, then per stage a transposed convolution
-  * upsampling by its stride and the mean of its parallel AMP blocks (each,
-  * per dilation, `x += conv(snake(conv_d(snake(x))))`), then a snake and a
-  * 7-tap convolution. The weights under `prefix`, in either naming of the
-  * original checkpoints: MiniMax H3's (`ups.i.0`, `resblocks.j.activations.2d`
-  * and `2d + 1`, `activation_post`) or LTX 2's (`ups.i`, `resblocks.j.acts1.d`
-  * and `acts2.d`, `act_post`). The files keep no config: `strides` are the
-  * upsampling rates, the dilations BigVGAN's (1, 3, 5) in every block.
+  * blocks), from mel or latent frames `[T, in]` to a waveform `[T × hop, out]`:
+  * a 7-tap convolution, then per stage a transposed convolution upsampling by
+  * its stride and the mean of its parallel AMP blocks (each, per dilation,
+  * `x += conv(snake(conv_d(snake(x))))`), then a snake and a 7-tap convolution.
+  * The weights under `prefix`, in either naming of the original checkpoints:
+  * MiniMax H3's (`ups.i.0`, `resblocks.j.activations.2d` and `2d + 1`,
+  * `activation_post`) or LTX 2's (`ups.i`, `resblocks.j.acts1.d` and `acts2.d`,
+  * `act_post`). The files keep no config: `strides` are the upsampling rates,
+  * the dilations BigVGAN's (1, 3, 5) in every block.
   */
-final class BigVgan(ops: Ops, weights: VaeWeights, prefix: String, strides: Seq[Int]) {
+final class BigVgan(
+    ops: Ops,
+    weights: VaeWeights,
+    prefix: String,
+    strides: Seq[Int]
+) {
 
   private val Dilations = Seq(1, 3, 5)
 
-  private final case class AmpBlock(
+  final private case class AmpBlock(
       first: Seq[(AntiAliasedSnake, TimeConvolution)],
       second: Seq[(AntiAliasedSnake, TimeConvolution)]
   )
 
-  private final case class Stage(upsampler: TimeUpsampler, blocks: Seq[AmpBlock])
+  final private case class Stage(
+      upsampler: TimeUpsampler,
+      blocks: Seq[AmpBlock]
+  )
 
   private val oldNames = weights.has(s"$prefix.ups.0.0.weight")
   require(
-    weights.has(s"$prefix.ups.${strides.size - 1}.${if (oldNames) "0." else ""}weight") &&
-      !weights.has(s"$prefix.ups.${strides.size}.${if (oldNames) "0." else ""}weight"),
+    weights.has(
+      s"$prefix.ups.${strides.size - 1}.${if (oldNames) "0." else ""}weight"
+    ) &&
+      !weights.has(
+        s"$prefix.ups.${strides.size}.${if (oldNames) "0." else ""}weight"
+      ),
     s"$prefix: ${strides.size} upsampling rates for another count of stages"
   )
   private val blocksPerStage =
-    Iterator.from(0).takeWhile(j => weights.has(s"$prefix.resblocks.$j.convs1.0.weight")).size /
+    Iterator
+      .from(0)
+      .takeWhile(j => weights.has(s"$prefix.resblocks.$j.convs1.0.weight"))
+      .size /
       strides.size
 
   private val convPre = TimeConvolution.load(weights, s"$prefix.conv_pre")
 
   private val stages = strides.zipWithIndex.map { (stride, i) =>
     val name = s"$prefix.ups.$i${if (oldNames) ".0" else ""}"
-    val Seq(in, out, taps) = weights.shape(s"$name.weight").dimensions.map(_.toInt)
+    val Seq(in, out, taps) =
+      weights.shape(s"$name.weight").dimensions.map(_.toInt)
     val stored = weights.values(s"$name.weight")
     // [in][out][taps] → rows (o, k) of the inputs
     val regrouped = Array.tabulate(out * taps * in) { index =>

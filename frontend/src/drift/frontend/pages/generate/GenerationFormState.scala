@@ -64,6 +64,32 @@ class GenerationFormState {
   val endImageVar = Var(Option.empty[String])
   val refImagesVar = Var(List.empty[String])
 
+  /** A video model's media inputs (`specs/42`, step 14), as data URLs: the
+    * references in the order the model reads them, the guides held at a frame,
+    * and a control video with what goes with it. The control numbers stay blank
+    * for "the default" (strength 1 over the whole run), like every other
+    * numeric field.
+    */
+  val referencesVar = Var(List.empty[String])
+  val guidesVar = Var(List.empty[GuideInput])
+  val controlVideoVar = Var(Option.empty[String])
+  val controlStrengthVar = Var("")
+  val controlStartVar = Var("")
+  val controlEndVar = Var("")
+  val controlMaskVar = Var(Option.empty[String])
+  val sourceVideoVar = Var(Option.empty[String])
+
+  private var guideKeys = 0
+
+  /** A guide row with a key of its own, so its row survives edits. */
+  def guideInput(media: String, frameIndex: String): GuideInput = {
+    guideKeys += 1
+    GuideInput(guideKeys, media, frameIndex)
+  }
+
+  def addGuide(media: String, frameIndex: String): Unit =
+    guidesVar.update(_ :+ guideInput(media, frameIndex))
+
   /** The inpaint mask (`specs/14`): meaningful only beside an init image, so it
     * is offered, and sent, only when one is attached.
     */
@@ -116,6 +142,11 @@ class GenerationFormState {
       if (list.contains(text)) list else list :+ text
     )
 }
+
+/** One guide as the form holds it: the frame index stays as typed until submit,
+  * like the other numbers.
+  */
+case class GuideInput(key: Int, media: String, frameIndex: String)
 
 object GenerationFormState {
 

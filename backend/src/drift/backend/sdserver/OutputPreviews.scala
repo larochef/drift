@@ -4,7 +4,7 @@ import drift.backend.images.VideoFrames
 import drift.backend.postprocess.PostProcessImages
 
 import java.awt.image.BufferedImage
-import java.nio.file.{Files, Path, StandardCopyOption}
+import java.nio.file.*
 import javax.imageio.ImageIO
 import scala.util.control.NonFatal
 
@@ -79,7 +79,8 @@ final class OutputPreviews(outputsRoot: Path, cacheRoot: Path) {
       case i  => fileName.substring(i + 1).toLowerCase
     }
 
-  /** A video's first frame fitted in `side`, cached as the scaled copies are. */
+  /** A video's first frame fitted in `side`, cached as the scaled copies are.
+    */
   private def still(
       file: Path,
       date: String,
@@ -93,7 +94,8 @@ final class OutputPreviews(outputsRoot: Path, cacheRoot: Path) {
     )(
       VideoFrames.first(file).map { frame =>
         val scale =
-          math.min(1.0, side.toDouble / math.max(frame.getWidth, frame.getHeight))
+          math
+            .min(1.0, side.toDouble / math.max(frame.getWidth, frame.getHeight))
         PostProcessImages.scaledCopy(
           frame,
           math.round(frame.getWidth * scale).toInt.max(1),

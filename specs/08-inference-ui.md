@@ -27,6 +27,16 @@ built from what the loaded model reports it supports, not from hardcoded lists.
   reference, end-image and mask pickers appear per `features_by_mode`. "Edit"
   is not a mode: it is `img_gen` with `ref_images`. txt2img, img2img, edit,
   txt2vid and img2vid all work; video results play inline as webm.
+- **Video inputs** (the drift runner's `vid_gen` flags `references`, `guides`,
+  `control_video`): an ordered list of reference media (images, clips with
+  their sound, sounds; the order is the model's), guides (a medium and the
+  frame it is held at, negative from the end) and a control video (strength,
+  a start and end fraction, an optional mask whose white regenerates and a
+  source video behind it). Every picker previews its file. They are saved
+  beside the outputs like the images (served back with their MIME type), shown
+  in the gallery's Inputs panel with players, and reloaded by "reuse". In a
+  project's recipe the guide frames and the control strength and range count;
+  the media themselves are inputs.
 - Submit shows queue position, then status and elapsed time, then the result;
   the only step progress is what the log reports (13). A queued or generating
   job can be cancelled — the panel is the same on the inference page and in a

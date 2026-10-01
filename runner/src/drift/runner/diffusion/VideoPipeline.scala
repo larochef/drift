@@ -32,6 +32,20 @@ final case class VideoRequest(
     moeBoundary: Float = 0.875f,
     /** The first frame, already the video's size (I2V). */
     initImage: Option[BufferedImage] = None,
+    /** The last frame, already the video's size. */
+    endImage: Option[BufferedImage] = None,
+    /** The LoRAs, each with its multiplier and, for two-expert models, whether
+      * it goes on the high-noise expert.
+      */
+    loras: Seq[VideoLora] = Nil,
+    /** Reference media, in the order the model reads them (MiniMax H3's
+      * ref2va).
+      */
+    references: Seq[Media] = Nil,
+    /** Media held at given frames (MiniMax H3's guides). */
+    guides: Seq[VideoGuide] = Nil,
+    /** A control video through the loaded ControlNet. */
+    control: Option[VideoControl] = None,
     /** The frame rate, for the models that read it (LTX); the others run at
       * their own.
       */
@@ -52,6 +66,41 @@ final case class VideoRequest(
     ancestral: Boolean = false
 )
 
+/** A LoRA of a video request: `highNoise` puts it on the high-noise expert of a
+  * two-expert model (Wan 2.2 A14B), else it goes on the low-noise one.
+  */
+final case class VideoLora(path: Path, multiplier: Float, highNoise: Boolean)
+
+/** A decoded media input of a video request, at its own size and rates. */
+enum Media {
+  case Still(image: BufferedImage)
+  case Clip(
+      frames: Seq[BufferedImage],
+      fps: Double,
+      soundtrack: Option[Soundtrack]
+  )
+  case Sound(soundtrack: Soundtrack)
+}
+
+/** `media` held at `frameIndex` of the video; a negative index counts from the
+  * end (−1 the last frame).
+  */
+final case class VideoGuide(media: Media, frameIndex: Int)
+
+/** A control video (`frames` at `fps`) applied at `strength` over the steps
+  * from fraction `start` to `end`; with a `mask` (white regenerates, one image
+  * or one per frame), the rest comes from `source`.
+  */
+final case class VideoControl(
+    frames: Seq[BufferedImage],
+    fps: Double,
+    strength: Float,
+    start: Float,
+    end: Float,
+    mask: Option[Seq[BufferedImage]],
+    source: Option[Seq[BufferedImage]]
+)
+
 /** A soundtrack: `samples` interleaved over `channels`, in [−1, 1]. */
 final case class Soundtrack(samples: Array[Float], channels: Int, rate: Int)
 
@@ -63,10 +112,10 @@ object Soundtrack {
   private val Ceiling = 0.97f
 
   /** A decoder's raw `samples` as a soundtrack: when their peak passes the
-    * ceiling, every sample scaled down by the same factor. The references
-    * clamp each sample to [−1, 1] instead, which flattens a hot track's peaks
-    * into audible saturation (LTX 2.5 on long captions: hundreds of samples at
-    * the clamp).
+    * ceiling, every sample scaled down by the same factor. The references clamp
+    * each sample to [−1, 1] instead, which flattens a hot track's peaks into
+    * audible saturation (LTX 2.5 on long captions: hundreds of samples at the
+    * clamp).
     */
   def fitted(samples: Array[Float], channels: Int, rate: Int): Soundtrack = {
     val peak = samples.foldLeft(0f)((m, s) => math.max(m, math.abs(s)))
@@ -103,6 +152,21 @@ trait VideoPipeline extends AutoCloseable {
   /** Whether requests may carry an init image (the first frame). */
   def takesInitImage: Boolean = false
 
+  /** Whether requests may carry an end image (the last frame). */
+  def takesEndImage: Boolean = false
+
+  /** Whether requests may carry LoRAs. */
+  def takesLoras: Boolean = false
+
+  /** Whether requests may carry reference media. */
+  def takesReferences: Boolean = false
+
+  /** Whether requests may carry guides. */
+  def takesGuides: Boolean = false
+
+  /** Whether requests may carry a control video (a ControlNet is loaded). */
+  def takesControl: Boolean = false
+
   /** Whether the model denoises a soundtrack beside the frames. */
   def makesSoundtrack: Boolean = false
 
@@ -110,6 +174,17 @@ trait VideoPipeline extends AutoCloseable {
     * sound.
     */
   def decodesSoundtrack: Boolean = false
+
+  /** An init or end image put on the `width` × `height` canvas: stretched. A
+    * model may fit the `follower` (the end image of a request with both)
+    * otherwise.
+    */
+  def onCanvas(
+      image: BufferedImage,
+      width: Int,
+      height: Int,
+      follower: Boolean
+  ): BufferedImage = Images.resized(image, width, height)
 
   /** The frames a request of `frames` gets: the next count the model takes. */
   def alignedFrames(frames: Int): Int
@@ -153,7 +228,8 @@ object VideoPipeline {
       t5File: Option[Path],
       tokenizer: Option[Path],
       fps: Option[Int],
-      audioVae: Option[Path]
+      audioVae: Option[Path],
+      controlNet: Option[Path]
   ): VideoPipeline = {
     def needed(file: Option[Path], flag: String, what: String) =
       file.getOrElse(
@@ -161,7 +237,12 @@ object VideoPipeline {
           s"${diffusionModel.getFileName} needs $what: pass $flag <file>"
         )
       )
-    family(ops, diffusionModel) match {
+    val detected = family(ops, diffusionModel)
+    if (controlNet.isDefined && !detected.contains(Family.MiniMaxH3))
+      throw new IllegalArgumentException(
+        s"--control-net: ${diffusionModel.getFileName} takes no ControlNet"
+      )
+    detected match {
       case Some(Family.MiniMaxH3) =>
         new MiniMaxH3Pipeline(
           ops,
@@ -173,7 +254,8 @@ object VideoPipeline {
             "MiniMax H3's Qwen3-VL text encoder"
           ),
           needed(tokenizer, "--tokenizer", "Qwen3's tokenizer.json"),
-          audioVae
+          audioVae,
+          controlNet
         )
       case Some(Family.Wan) =>
         new WanPipeline(

@@ -9,9 +9,9 @@ import java.nio.file.Path
 /** MiniMax H3's audio decoder (diffusers' `AutoencoderKLMiniMaxH3Audio.decode`,
   * the audio VAE's `dec_in_proj` and `decoder`): mono latents `[L, 32]`
   * denormalized by the file's `latents_mean` and `latents_std`, a 1×1
-  * convolution to the trunk's width, then BigVGAN up to `L × 800` samples at
-  * 32 kHz, not clamped (diffusers clamps to [−1, 1]; `Soundtrack.fitted`
-  * scales the stereo track instead). The model is mono: a stereo soundtrack is two
+  * convolution to the trunk's width, then BigVGAN up to `L × 800` samples at 32
+  * kHz, not clamped (diffusers clamps to [−1, 1]; `Soundtrack.fitted` scales
+  * the stereo track instead). The model is mono: a stereo soundtrack is two
   * decodes. `strides` are the file's `decoder_rates`.
   */
 final class MiniMaxH3Audio private (
@@ -32,8 +32,8 @@ final class MiniMaxH3Audio private (
   /** The latent channels a frame holds. */
   val channels: Int = mean.length
 
-  /** One channel's samples from its normalized latents `[L,
-    * channels]` (row-major).
+  /** One channel's samples from its normalized latents `[L, channels]`
+    * (row-major).
     */
   def decode(latents: Array[Float]): Array[Float] = {
     val frames = latents.length / channels

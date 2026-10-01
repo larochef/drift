@@ -67,6 +67,52 @@ object QwenVisionConfig {
     )
   }
 
+  /** Qwen3-VL's taps by the tower's depth (its configs'
+    * `deepstack_visual_indexes`: 4B's 24 blocks, 8B's and 32B's 27).
+    */
+  private val DeepstackByDepth = Map(24 -> Seq(5, 11, 17), 27 -> Seq(8, 16, 24))
+
+  /** Qwen3-VL's tower from transformers' names under `prefix` alone, no
+    * configuration (MiniMax H3's text encoder, a GGUF with no metadata): the
+    * shapes give the widths, the depth and the patch; Qwen3-VL's every size has
+    * 16 heads, layer norms' ε 10⁻⁶ and the taps of its depth.
+    */
+  def fromWeights(
+      source: WeightSource,
+      prefix: String,
+      deepstack: Option[Seq[Int]]
+  ): QwenVisionConfig = {
+    def dimensions(name: String) =
+      source.shape(s"$prefix$name").dimensions.map(_.toInt)
+    val hidden = dimensions("patch_embed.proj.bias").head
+    val depth = Iterator
+      .from(0)
+      .takeWhile(i => source.has(s"${prefix}blocks.$i.norm1.weight"))
+      .size
+    val joined = dimensions("merger.linear_fc1.weight").last
+    QwenVisionConfig(
+      hidden = hidden,
+      heads = 16,
+      intermediate = dimensions("blocks.0.mlp.linear_fc1.weight").head,
+      depth = depth,
+      patch = dimensions("patch_embed.proj.weight").last,
+      merge = math.round(math.sqrt(joined / hidden)).toInt,
+      positionSide = 0, // from the table's rows, at load
+      outputWidth = dimensions("merger.linear_fc2.weight").head,
+      epsilon = 1e-6f,
+      deepstack =
+        if (!source.has(s"${prefix}deepstack_merger_list.0.norm.weight")) Nil
+        else
+          deepstack
+            .orElse(DeepstackByDepth.get(depth))
+            .getOrElse(
+              throw new FormatException(
+                s"a Qwen3-VL tower of $depth blocks: its deepstack taps are unknown"
+              )
+            )
+    )
+  }
+
   /** transformers' `vision_config`. */
   def fromHuggingFace(root: ModelConfig): QwenVisionConfig = {
     val config = root.section("vision_config")
@@ -99,11 +145,12 @@ final class QwenVision private (
     ops: Ops,
     source: WeightSource,
     configured: QwenVisionConfig,
-    gguf: Boolean
+    gguf: Boolean,
+    prefix: String
 ) extends AutoCloseable {
 
   private val weights = new HybridWeights(ops, source, gguf)
-  private val v = "model.visual."
+  private val v = prefix
 
   private val positionTable: Array[Float] =
     weights.hostFloats(
@@ -123,9 +170,9 @@ final class QwenVision private (
   private def f32(values: Array[Float], dimensions: Long*): Tensor =
     weights.keep(ops.fromFloats(Shape(dimensions.toVector), values))
 
-  /** The patch embedding as one linear layer over a patch's pixels (`c × p² + y
+  /** The patch embedding as one linear layer over a still's patch (`c × p² + y
     * × p + x`): transformers' Conv3d spans two frames and llama.cpp splits it
-    * in two kernels; an image is its own second frame, so they add up.
+    * in two kernels; a still is its own second frame, so they add up.
     */
   private val patchWeight: Tensor = {
     val pixels = 3 * config.patch * config.patch
@@ -148,6 +195,31 @@ final class QwenVision private (
           kernel(((o * 3 + c) * 2 + t) * frame + p)
     }
     f32(summed, hidden, pixels)
+  }
+
+  /** The patch embedding over a pair of frames (`(c × 2 + t) × p² + y × p + x`,
+    * transformers' video patches): the Conv3d's kernel as it is, or llama.cpp's
+    * two kernels interleaved per channel.
+    */
+  private lazy val pairWeight: Tensor = {
+    val frame = config.patch * config.patch
+    val pixels = 3 * 2 * frame
+    val kernel =
+      if (gguf) {
+        val Seq(first, second) =
+          Seq("v.patch_embd.weight", "v.patch_embd.weight.1")
+            .map(weights.hostFloats)
+        Array.tabulate(hidden * pixels) { i =>
+          val (o, c, t, p) = (
+            i / pixels,
+            i % pixels / (2 * frame),
+            i % (2 * frame) / frame,
+            i % frame
+          )
+          (if (t == 0) first else second) ((o * 3 + c) * frame + p)
+        }
+      } else weights.hostFloats(v + "patch_embed.proj.weight")
+    f32(kernel, hidden, pixels)
   }
   private val patchBias =
     weights.floats(
@@ -368,8 +440,12 @@ final class QwenVision private (
       ops.allocateCache(1, (patches + 15) / 16 * 16, heads, paddedHead)
     val results = mutable.ArrayBuffer.empty[Tensor]
     try {
+      require(
+        image.frames == 1 || image.frames == 2,
+        s"a patch of ${image.frames} frames for a tower of two-frame patches"
+      )
       val pixels = ops.fromFloats(
-        Shape.of(p, 3L * config.patch * config.patch),
+        Shape.of(p, 3L * image.frames * config.patch * config.patch),
         image.patches
       )
       held += pixels
@@ -389,7 +465,11 @@ final class QwenVision private (
       val (rotatedQ, rotatedK) = (allocate(p, width), allocate(p, width))
       val attended = allocate(p, width)
       val inner = allocate(p, config.intermediate)
-      ops.linear(pixels, patchWeight, x)
+      ops.linear(
+        pixels,
+        if (image.frames == 2) pairWeight else patchWeight,
+        x
+      )
       ops.addRow(x, patchBias, x)
       val table = ops.fromFloats(
         Shape.of(p, hidden),
@@ -500,6 +580,36 @@ final class QwenVision private (
 
 object QwenVision {
 
+  /** transformers' names for the tower. */
+  private val DefaultPrefix = "model.visual."
+
+  /** The tower that shares `path` with its language model under transformers'
+    * names at `prefix`, with no configuration (MiniMax H3's text encoder:
+    * `visual.` in a GGUF without metadata); its deepstack taps those of
+    * Qwen3-VL's depth unless given.
+    */
+  def fromWeights(
+      ops: Ops,
+      path: Path,
+      prefix: String,
+      deepstack: Option[Seq[Int]] = None
+  ): QwenVision = {
+    val source = WeightSource.open(ops, path)
+    try
+      new QwenVision(
+        ops,
+        source,
+        QwenVisionConfig.fromWeights(source, prefix, deepstack),
+        gguf = false,
+        prefix
+      )
+    catch {
+      case error: Throwable =>
+        source.close()
+        throw error
+    }
+  }
+
   /** An mmproj GGUF, or transformers' weights whose `config.json` has a
     * `vision_config` (the tower under `model.visual.`).
     */
@@ -512,7 +622,8 @@ object QwenVision {
             ops,
             source,
             QwenVisionConfig.fromGguf(file),
-            gguf = true
+            gguf = true,
+            DefaultPrefix
           )
         case None =>
           val config = source.config.getOrElse(
@@ -522,7 +633,8 @@ object QwenVision {
             ops,
             source,
             QwenVisionConfig.fromHuggingFace(config),
-            gguf = false
+            gguf = false,
+            DefaultPrefix
           )
       }
     catch {

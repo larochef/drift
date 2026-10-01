@@ -25,7 +25,7 @@ final class GenerationImports(outputsRoot: Path) {
 
   def importImage(request: ImageImport): Either[String, Generation] =
     try {
-      val (bytes, _) = GenerationFiles.decodeImageData(request.data)
+      val (bytes, _) = GenerationFiles.decodeMediaData(request.data)
       GenerationImports.formatOf(bytes) match {
         case None =>
           Left(

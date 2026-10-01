@@ -86,14 +86,14 @@ object SafetensorsTests extends TestSuite {
     test("an unsupported dtype fails only when that tensor is asked for") {
       val file = Safetensors.read(
         fileOf(
-          """{"ids":{"dtype":"I64","shape":[1],"data_offsets":[0,8]},"x":{"dtype":"F32","shape":[1],"data_offsets":[8,12]}}""",
+          """{"ids":{"dtype":"F64","shape":[1],"data_offsets":[0,8]},"x":{"dtype":"F32","shape":[1],"data_offsets":[8,12]}}""",
           new Array[Byte](12)
         ),
         "test"
       )
       assert(file("x").decode().sameElements(Array(0f)))
       val error = assertThrows[NoSuchElementException](file("ids"))
-      assert(error.getMessage == "ids: safetensors dtype I64 is not supported")
+      assert(error.getMessage == "ids: safetensors dtype F64 is not supported")
     }
     test("broken files are refused with a reason") {
       def refusal(header: String, data: Int) =

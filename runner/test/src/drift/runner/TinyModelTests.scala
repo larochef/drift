@@ -2,7 +2,10 @@ package drift.runner
 
 import utest.*
 
+import drift.runner.diffusion.{VideoLora, WanPipeline}
 import drift.runner.ops.CpuOps
+
+import java.nio.file.Paths
 
 /** The reference backend runs transformers' tiny models to their logits. The
   * only rounding is the F16 key-value cache (2⁻¹¹ relative). Qwen 3.5 MoE's
@@ -146,6 +149,42 @@ object TinyModelTests extends TestSuite {
         assert(error < 2e-3) // the F16 key-value caches
       } finally ops.close()
     }
+    test(
+      "Wan with each expert's LoRA (every naming, I64 alphas), then without"
+    ) {
+      val ops = new CpuOps
+      try {
+        val error = TinyWanCase.loraVelocityError(ops)
+        println(
+          f"  worst LoRA velocity error: ${error * 100}%.4f%% of the largest"
+        )
+        assert(error < 2e-3)
+      } finally ops.close()
+    }
+    test("Wan's LoRAs by expert: high-noise ones on the high-noise model") {
+      val (high, low) = (
+        VideoLora(Paths.get("high"), 1f, highNoise = true),
+        VideoLora(Paths.get("low"), 1f, highNoise = false)
+      )
+      assert(
+        WanPipeline.experts(Seq(high, low), twoExperts = true) ==
+          (Seq(high), Seq(low))
+      )
+      assert(
+        WanPipeline.experts(Seq(high, low), twoExperts = false) ==
+          (Nil, Seq(high, low))
+      )
+    }
+    test("Wan's I2V conditioning: first, first and last, last alone") {
+      val ops = new CpuOps
+      try {
+        val errors = TinyWanCase.conditionErrors(ops)
+        println(
+          s"  worst errors: ${errors.map(e => f"${e * 100}%.4f%%").mkString(", ")} of the largest"
+        )
+        assert(errors.forall(_ < 4e-2)) // BF16 weights, as the VAE's test
+      } finally ops.close()
+    }
     test("The Wan 2.1 VAE on video: causal streams both ways") {
       val ops = new CpuOps
       try {
@@ -180,6 +219,32 @@ object TinyModelTests extends TestSuite {
         val error = TinyLtxCase.transformerError(ops)
         println(f"  worst velocity error: ${error * 100}%.4f%% of the largest")
         assert(error < 2e-3) // the F16 key-value caches
+      } finally ops.close()
+    }
+    test(
+      "LTX 2.5's joint transformer: a conditioned step, keyframes appended"
+    ) {
+      val ops = new CpuOps
+      try {
+        val error = TinyLtxCase.conditionError(ops)
+        println(f"  worst velocity error: ${error * 100}%.4f%% of the largest")
+        assert(error < 2e-3) // the F16 key-value caches
+      } finally ops.close()
+    }
+    test("LTX 2.5's LoRAs: transformer and connectors, both namings") {
+      val ops = new CpuOps
+      try {
+        val error = TinyLtxCase.loraError(ops)
+        println(f"  worst error: ${error * 100}%.4f%% of the largest")
+        assert(error < 2e-3)
+      } finally ops.close()
+    }
+    test("LTX 2.5's conv VAE encoder: causal, space-to-depth") {
+      val ops = new CpuOps
+      try {
+        val error = TinyLtxCase.encoderError(ops)
+        println(f"  worst latent error: ${error * 100}%.4f%% of the largest")
+        assert(error < 4e-2) // BF16 weights
       } finally ops.close()
     }
     test("LTX 2.5's conv VAE decoder: residuals and depth-to-space") {

@@ -338,10 +338,13 @@ final class CpuOps extends Ops {
       bias: Tensor,
       out: Tensor,
       stride: Int,
-      replicate: Boolean
+      replicate: Boolean,
+      reflect: Boolean
   ): Unit = {
     val (height, width, in, outChannels) =
       Ops.checkConv3x3(x, weight, bias, out, stride)
+    def reflected(i: Int, size: Int) =
+      if (i < 0) -i else if (i >= size) 2 * size - 2 - i else i
     val pad = if (stride == 1) 1 else 0
     val outWidth = width / stride
     val input = reader(x)
@@ -365,6 +368,11 @@ final class CpuOps extends Ops {
             (
               math.min(math.max(y * stride + ky - pad, 0), height - 1),
               math.min(math.max(xx * stride + kx - pad, 0), width - 1)
+            )
+          else if (reflect)
+            (
+              reflected(y * stride + ky - pad, height),
+              reflected(xx * stride + kx - pad, width)
             )
           else (y * stride + ky - pad, xx * stride + kx - pad)
         if (sy >= 0 && sy < height && sx >= 0 && sx < width)
@@ -614,6 +622,17 @@ final class CpuOps extends Ops {
           sum += input((shifted / stride) * outChannels * taps + o * taps + k)
       }
       sum
+    }
+  }
+
+  def snake(x: Tensor, alpha: Tensor, out: Tensor): Unit = {
+    val (length, channels) = Ops.checkSnake(x, alpha, out)
+    val (input, alphas, target) = (reader(x), reader(alpha), segment(out))
+    (0L until length.toLong * channels).foreach { i =>
+      val a = alphas(i % channels)
+      val value = input(i)
+      val s = math.sin(a * value)
+      target.setAtIndex(JAVA_FLOAT, i, (value + s * s / (a + 1e-9)).toFloat)
     }
   }
 

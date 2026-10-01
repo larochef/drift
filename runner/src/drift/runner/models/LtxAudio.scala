@@ -40,8 +40,8 @@ object LtxAudioConfig {
   * 3` frames; the vocoder (BigVGAN) to a 16 kHz waveform; then the bandwidth
   * extension: each channel's causal STFT (the file's basis), its log-mel (the
   * file's filter bank), a second BigVGAN to the 48 kHz residual, added to the
-  * waveform resampled ×3 (a Hann-windowed sinc). Not clamped (diffusers
-  * clamps to [−1, 1]; `Soundtrack.fitted` scales the track instead).
+  * waveform resampled ×3 (a Hann-windowed sinc). Not clamped (diffusers clamps
+  * to [−1, 1]; `Soundtrack.fitted` scales the track instead).
   */
 final class LtxAudio private (
     ops: Ops,
@@ -60,7 +60,7 @@ final class LtxAudio private (
     weights.shape(s"$Decoder.conv_in.conv.weight").dimensions(1).toInt
   private val latentMelBins = mean.length / latentChannels
 
-  private final case class Residual(
+  final private case class Residual(
       conv1: Convolution,
       conv2: Convolution,
       shortcut: Option[Convolution]
@@ -167,7 +167,8 @@ final class LtxAudio private (
     ops.release(second)
     block.shortcut match {
       case Some(conv) =>
-        val shortcut = ops.allocate(DType.F32, Shape.of(h * w, conv.outChannels))
+        val shortcut =
+          ops.allocate(DType.F32, Shape.of(h * w, conv.outChannels))
         ops.linear(x.view(h * w, c), conv.weight, shortcut)
         ops.addRow(shortcut, conv.bias, shortcut)
         ops.add(out, shortcut.view(h, w, conv.outChannels), out)
@@ -249,13 +250,17 @@ final class LtxAudio private (
     (0 until frames).foreach { frame =>
       val row = frame * 2 * bins
       val magnitudes = Array.tabulate(bins) { f =>
-        val (re, im) = (values(row + f).toDouble, values(row + bins + f).toDouble)
+        val (re, im) =
+          (values(row + f).toDouble, values(row + bins + f).toDouble)
         math.sqrt(re * re + im * im)
       }
       (0 until extensionMelBins).foreach { b =>
         var sum = 0.0
-        (0 until bins).foreach(f => sum += melBasis(b * bins + f) * magnitudes(f))
-        out(frame * extensionMelBins + b) = math.log(math.max(sum, 1e-5)).toFloat
+        (0 until bins).foreach(f =>
+          sum += melBasis(b * bins + f) * magnitudes(f)
+        )
+        out(frame * extensionMelBins + b) =
+          math.log(math.max(sum, 1e-5)).toFloat
       }
     }
     out
@@ -267,7 +272,9 @@ final class LtxAudio private (
   private def resampled(samples: Array[Float]): Array[Float] = {
     val (width, taps) = (LtxAudio.HannWidth, resampler.length)
     val cropLeft = 2 * width * ratio
-    def padded(i: Int) = samples(math.min(math.max(i - width, 0), samples.length - 1))
+    def padded(i: Int) = samples(
+      math.min(math.max(i - width, 0), samples.length - 1)
+    )
     Array.tabulate(samples.length * ratio) { n =>
       val q = n + cropLeft
       var sum = 0.0
@@ -312,7 +319,9 @@ final class LtxAudio private (
       i =>
         val (frame, j) =
           (i / (channels * extensionMelBins), i % (channels * extensionMelBins))
-        mels(j / extensionMelBins)(frame * extensionMelBins + j % extensionMelBins)
+        mels(j / extensionMelBins)(
+          frame * extensionMelBins + j % extensionMelBins
+        )
     }
     val high = {
       val x = ops.fromFloats(

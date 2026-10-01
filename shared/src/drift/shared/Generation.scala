@@ -177,6 +177,14 @@ object ImageGenerationParameters {
   )
 }
 
+/** An image, video or audio clip (base64 or a data URL) that the video holds at
+  * `frameIndex` (a negative index counts from the end).
+  */
+case class VideoGuide(media: String, frameIndex: Int = 0)
+object VideoGuide {
+  given Schema[VideoGuide] = Schema.derived
+}
+
 /** The body of `POST /sdcpp/v1/vid_gen`. One video sequence per job — the
   * native schema has no batch count here. `initImage`/`endImage` make it
   * image-to-video where the model supports them.
@@ -196,6 +204,26 @@ case class VideoGenerationParameters(
     initImage: Option[String] = None,
     endImage: Option[String] = None,
     controlFrames: List[String] = List.empty,
+    /** Reference media in the order the model reads them (MiniMax H3's ref2va):
+      * images, videos (with their soundtrack) and audio clips, as base64 or
+      * data URLs.
+      */
+    references: List[String] = List.empty,
+    /** Media anchored at a frame of the video (MiniMax H3's guides). */
+    guides: List[VideoGuide] = List.empty,
+    /** A control video (pose, depth, edges…) steering the motion through the
+      * run configuration's ControlNet, with its strength and the fraction of
+      * the steps it applies over.
+      */
+    controlVideo: Option[String] = None,
+    controlStrength: Option[Double] = None,
+    controlStart: Option[Double] = None,
+    controlEnd: Option[Double] = None,
+    /** With a control video: an image or video whose white marks what to
+      * regenerate, over `sourceVideo`.
+      */
+    controlMask: Option[String] = None,
+    sourceVideo: Option[String] = None,
     sampleParams: SampleParameters = SampleParameters(),
     highNoiseSampleParams: Option[SampleParameters] = None,
     lora: List[LoraSelection] = List.empty,
@@ -609,9 +637,9 @@ val getOutputSize: PublicEndpoint[(String, String), Unit, OutputSize, Any] =
 /** A persisted output, streamed from disk. A `Range` header (one range of
   * bytes) gets `206` with just those bytes and their `Content-Range`, which a
   * video player needs to reach a webm's index at the end and a large image
-  * (16k² is near 1 GB) to be fetched in parts; without one, the whole file.
-  * The errors: `404`, or `416` with a `Content-Range` of the size alone for a
-  * range past the end.
+  * (16k² is near 1 GB) to be fetched in parts; without one, the whole file. The
+  * errors: `404`, or `416` with a `Content-Range` of the size alone for a range
+  * past the end.
   */
 val getOutputFile: PublicEndpoint[
   (String, String, Option[String]),

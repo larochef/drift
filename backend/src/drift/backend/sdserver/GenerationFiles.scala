@@ -14,7 +14,7 @@ import com.github.plokhotnyuk.jsoniter_scala.core.*
 import com.typesafe.scalalogging.Logger
 
 /** Where a generation's files live under the outputs root — its day once kept,
-  * `scratch/` while it is free play — and how they get there: the input images
+  * `scratch/` while it is free play — and how they get there: the inputs
   * written beside the outputs, the outputs decoded from the finished job, the
   * parameter sidecar.
   */
@@ -31,10 +31,10 @@ final private[sdserver] class GenerationFiles(outputsRoot: Path) {
     if (generation.scratch) GenerationManager.ScratchDirectory
     else dateOf(generation.submittedAt)
 
-  /** Writes one input image (raw base64 or data URL) beside the outputs and
-    * answers with the URL it will be served from. A write failure downgrades to
-    * a placeholder rather than failing the generation — the input is
-    * convenience history, the generation is the point.
+  /** Writes one input (raw base64 or data URL) beside the outputs and answers
+    * with the URL it will be served from. A write failure downgrades to a
+    * placeholder rather than failing the generation — the input is convenience
+    * history, the generation is the point.
     */
   def externalizeInput(
       generationId: String,
@@ -44,7 +44,7 @@ final private[sdserver] class GenerationFiles(outputsRoot: Path) {
       scratch: Boolean
   ): String =
     try {
-      val (bytes, extension) = GenerationFiles.decodeImageData(data)
+      val (bytes, extension) = GenerationFiles.decodeMediaData(data)
       val date =
         if (scratch) GenerationManager.ScratchDirectory else dateOf(submittedAt)
       val directory = outputsRoot.resolve(date)
@@ -57,7 +57,7 @@ final private[sdserver] class GenerationFiles(outputsRoot: Path) {
         logger.warn(
           s"Generation $generationId: persisting input '$tag' failed: ${err.getMessage}"
         )
-        "<input image not saved>"
+        "<input not saved>"
     }
 
   /** Decodes the base64 payload(s) into files under the generation's directory.
@@ -157,18 +157,18 @@ final private[sdserver] class GenerationFiles(outputsRoot: Path) {
 
 private[sdserver] object GenerationFiles {
 
-  /** Base64 payload plus file extension, from a raw base64 string or a
-    * `data:image/...;base64,` URL.
+  /** Base64 payload plus file extension, from a raw base64 string or a data URL
+    * of any medium drift serves (`GenerationManager.extensionFor`): an image,
+    * or a video model's clip or sound. A bare payload or an unknown type is
+    * taken for a PNG, what the image fields have always carried.
     */
-  def decodeImageData(data: String): (Array[Byte], String) =
+  def decodeMediaData(data: String): (Array[Byte], String) =
     if (data.startsWith("data:")) {
       val comma = data.indexOf(',')
       val mime = data.substring(5, comma).takeWhile(_ != ';')
-      val extension = mime match {
-        case "image/jpeg" => "jpeg"
-        case "image/webp" => "webp"
-        case _            => "png"
-      }
-      (Base64.getMimeDecoder.decode(data.substring(comma + 1)), extension)
+      (
+        Base64.getMimeDecoder.decode(data.substring(comma + 1)),
+        GenerationManager.extensionFor(mime).getOrElse("png")
+      )
     } else (Base64.getMimeDecoder.decode(data), "png")
 }

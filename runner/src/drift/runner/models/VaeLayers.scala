@@ -50,6 +50,17 @@ final class VaeWeights(ops: Ops, source: WeightSource) {
     keep(ops.fromBytes(DType.BF16, shape, bytes))
   }
 
+  /** Floats as F16 (round to nearest even), uploaded. */
+  def f16(shape: Shape, floats: Array[Float]): Tensor = {
+    val bytes = new Array[Byte](2 * floats.length)
+    floats.indices.foreach { i =>
+      val half = java.lang.Float.floatToFloat16(floats(i))
+      bytes(2 * i) = half.toByte
+      bytes(2 * i + 1) = (half >>> 8).toByte
+    }
+    keep(ops.fromBytes(DType.F16, shape, bytes))
+  }
+
   /** Floats as they are, uploaded in `shape`. */
   def f32(shape: Shape, floats: Array[Float]): Tensor =
     keep(ops.fromFloats(shape, floats))
@@ -77,11 +88,15 @@ final class VaeWeights(ops: Ops, source: WeightSource) {
 
   /** A causal 3×3×3 convolution as its three temporal slices (the oldest
     * frame's first), each a 3×3 one; the bias rides on the newest. Output row
-    * `r` is the stored row `rows(r)`.
+    * `r` is the stored row `rows(r)`, input channel `i` the stored `inputs(i)`.
+    * `half` keeps the weights F16 (the convolutions then take F16 patches and
+    * F32 sums).
     */
   def conv3x3x3(
       prefix: String,
-      rows: Int => Int = identity
+      rows: Int => Int = identity,
+      inputs: Int => Int = identity,
+      half: Boolean = false
   ): Seq[Convolution] = {
     val dimensions = source(s"$prefix.weight").shape.dimensions.map(_.toInt)
     val (out, in, depth) = (dimensions(0), dimensions(1), dimensions(2))
@@ -92,10 +107,11 @@ final class VaeWeights(ops: Ops, source: WeightSource) {
     (0 until depth).map { t =>
       val slice = Array.tabulate(out * in * 9) { i =>
         val (oi, k) = (i / 9, i % 9)
-        all((rows(oi / in) * in + oi % in) * depth * 9 + t * 9 + k)
+        all((rows(oi / in) * in + inputs(oi % in)) * depth * 9 + t * 9 + k)
       }
       Convolution(
-        bf16(Shape.of(out, in * 9L), slice),
+        if (half) f16(Shape.of(out, in * 9L), slice)
+        else bf16(Shape.of(out, in * 9L), slice),
         if (t == depth - 1) bias else zero
       )
     }

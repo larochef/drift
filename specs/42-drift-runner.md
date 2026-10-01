@@ -1,6 +1,6 @@
 # 42 — drift runner: an inference engine for Strix Halo
 
-**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1 draws; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX with their soundtracks); groom each later step before building it
+**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1 draws; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX with their soundtracks), with LoRAs and image inputs (H3 also guides and a ControlNet, its references built but broken live; LTX guides); groom each later step before building it
 **Depends on:** 06 (runtimes, TheRock), 07 (launch and supervision), 16 (parameter resolution), 17 and 18 (the chat runtime and its sessions), 41 (text projects)
 
 drift's own runner replaces sd-cpp and llama.cpp for one machine: Strix Halo
@@ -1893,8 +1893,7 @@ on the old tool.
         19.2 s rising to 23.2 s as the laptop throttles (≈ 19 TFLOPS: 285
         TFLOP of GEMMs and 78 of attention a step). Text 11.4 s → about 1 s;
         video decode 66.4 s → 41.7 s; loading 1.9 s.
-      - **Left:** keyframes
-        (`fl2va`) and references (`ref2va`); a step cache.
+      - **Left:** a step cache.
     - **Done 2026-09-30: Wan 2.2 A14B, text to video and I2V**
       (`text/Unigram`, `models/Umt5`, `models/Wan`, `models/WanVideoVae`,
       `diffusion/WanPipeline`). diffusers 0.40 (`WanTransformer3DModel`,
@@ -1948,8 +1947,8 @@ on the old tool.
         finetune comes out overcooked (and each high-noise step costs two
         passes, 67 s). Upstream's to fix; set the high-noise CFG to 1 for
         step-distilled experts.
-      - **Left:** Wan 2.2 5B (TI2V, the Wan 2.2 VAE), LoRAs, end images, VAE
-        tiling, the GGUF UMT5 (llama.cpp's names).
+      - **Left:** Wan 2.2 5B (TI2V, the Wan 2.2 VAE), VAE tiling, the GGUF UMT5
+        (llama.cpp's names).
     - **Done 2026-09-30: LTX 2.5, text to video** (`models/Gemma4Text`,
       `models/LtxText`, `models/Ltx2`, `models/LtxVideoVae`,
       `diffusion/LtxPipeline`). diffusers 0.40 (`LTX2VideoTransformer3DModel`,
@@ -1995,8 +1994,7 @@ on the old tool.
         files; 512 × 512, 64 frames → 57, 8 steps, 16 fps): a clean,
         coherent clip in **71 s**: steps of 5.3–8 s, decode 21.7 s, loading
         19 s.
-      - **Left:** image to video and conditions, the
-        diffusion decoder (LTX 2.5's default in diffusers), LoRAs, the
+      - **Left:** the diffusion decoder (LTX 2.5's default in diffusers), the
         rescaled guider.
     - **Done 2026-09-30: the soundtracks of MiniMax H3 and LTX 2.5**
       (`models/BigVgan`, `models/MiniMaxH3Audio`, `models/LtxAudio`), from
@@ -2068,6 +2066,193 @@ on the old tool.
         short prompt's sound louder but more robotic.
       - **Left:** an LTX caption writer in the prompt library (ComfyUI's LTX
         2.4+ system prompt), so a short idea reaches the model as a caption.
+    - **Done 2026-10-01: the video requests' inputs.** `VideoRequest` carries
+      an end image, LoRAs (`VideoLora`, with sd-server's `is_high_noise`),
+      reference media, guides (`VideoGuide`: media held at a frame, negative
+      from the end) and a control video (`VideoControl`: strength, a start and
+      end fraction of the steps, a mask whose white regenerates over a source
+      video). Uploaded media (`Media`: a still, a clip with its soundtrack, a
+      sound) are decoded by `VideoFiles.decode` (the JDK for images, else
+      ffprobe and ffmpeg; clips to a 1080 short edge). Each pipeline says what
+      it takes (`takesEndImage`, `takesLoras`, `takesReferences`,
+      `takesGuides`, `takesControl`), the capabilities advertise it, and a
+      request asking for more is refused. `--control-net` is a value option,
+      refused for every family but MiniMax H3. A mask alone (with its source)
+      inpaints without a control video.
+      - **Shared fixes found on the way:** safetensors `I64` is read (a Wan
+        Lightning pair's `.alpha` 8 at rank 64 had been dropped, running it at
+        8×); F16 LoRAs no longer crash (converted by way of F32, every model);
+        `HipOps`' hipBLAS path converts dense F32 weights element by element
+        (the dequantizers walk rows in blocks of 32, so rows of 196 or 68 came
+        out wrong without an error; `LinearTests` covers them now).
+    - **Done 2026-10-01: Wan 2.2 A14B LoRAs and end images** (`Wan.useLoras`,
+      `WanPipeline.condition`).
+      - **LoRAs** at run time on every linear (self- and cross-attention q, k,
+        v, o; `ffn.0`/`ffn.2`; the text and time embeddings;
+        `time_projection.1`; the head, its up rows permuted like its weight),
+        in the original, diffusers and kohya (`lora_unet_`, `lycoris_`) names.
+        A high-noise LoRA goes on the high-noise expert, the rest (and all of
+        them with one expert) on the low-noise one, as sd-cpp routes them. The
+        cross-attention keys and values are made after the LoRAs are set. All
+        11 of François's files map fully (400 pairs on 400 sites each,
+        `WanLoraCheck`). `diff`/`diff_b` deltas are not read.
+      - **End image**: diffusers' `last_image`, the VAE latents of [first,
+        zeros…, last] with the mask on the first latent frame and the last
+        channel of the last one; an end image alone is taken, as sd-cpp takes
+        it (diffusers refuses it).
+      - **Checks.** Two tiny LoRAs (both namings, F32 and BF16, float and I64
+        alphas) against diffusers' merged weights to 0.0098% (`Cpu`) and 0.50%
+        (`Hip`); the conditioning with first, first and last, and last alone to
+        0.33% and 0.56%.
+      - **Live** (the FASTMOVE V2 Q8 experts, 832 × 480, 33 frames, 4 + 4
+        steps, CFG 1, a first and a last frame made for the purpose): 365 s
+        with the 80s-fantasy high/low pair (steps 37 s against 35 s without),
+        both keyframes held exactly; the pair changes the clip.
+    - **Done 2026-10-01: LTX 2.5 LoRAs, image to video, keyframes and guides**
+      (`Ltx2`, `LtxVideoVae`, `LtxPipeline`). diffusers 0.40's condition blocks
+      (`LTX2ConditionPrepareLatentsStep`, `LTX2ConditionLoopBeforeDenoiser`)
+      are the reference; ComfyUI's `LTXVAddGuide` for pixel-frame placement.
+      - **LoRAs** at run time on every linear, the text connectors' too (they
+        now load with the transformer): original names and diffusers'
+        (`proj_in`, `time_embed`, `av_cross_attn_*`, `connectors.*`), a target
+        applied when its shape matches. François's BEANFLK (rank 16, 1152
+        pairs) maps fully; his seven LTX 2.3 LoRAs match LTX 2.5's names and
+        shapes too (not offered).
+      - **Conditions** at strength 1: one at frame 0 (a still, or a clip the
+        video continues, 8n + 1 frames) replaces the first latent frames; the
+        others are appended as keyframe tokens with their own positions (a
+        still at [i, i + 1), the end image at the last pixel frame as ComfyUI's
+        −1, where diffusers' latent −1 lands 8 frames earlier; a clip from the
+        multiple of 8 plus 1 at or before its index, encoded after a throwaway
+        frame). Their tokens take timestep 0 in the video's own AdaLN (blocks
+        and head); the prompt's, cross-modal and audio ones keep σ; clean
+        latents are restored after each step; appended tokens are dropped
+        before decoding. Stills go through H.264 at CRF 18 (ffmpeg), as LTX 2.5
+        learned them. A guide at frame 0 overrides the init image.
+      - **VAE encoder**: causal, space-to-depth downsamplers with grouped-mean
+        residuals (rearranged on the host), the mode normalized by the
+        per-channel statistics.
+      - **Checks.** A conditioned step (first frame held, a still and a clip
+        appended) to 0.011% (`Cpu`) and 0.060% (`Hip`); a LoRA on the
+        transformer and connectors, both namings, 0.013% and 0.085%; the
+        encoder (9 → 2 and 1 → 1 frames) 0.39% and 0.54%.
+      - **Live** (832 × 480, 57 frames at 16 fps, 8 steps): first and last
+        frame in 80 s (steps 8.2 s, decode 10 s), both held exactly, the middle
+        a dissolve between the two shots; reruns identical; BEANFLK adds 1.1 s
+        a step. Extending the Wan clip (a guide at frame 0, 89 frames): 150 s, a
+        coherent continuation.
+      - **Left:** strengths below 1, a guide clip's frame rate and soundtrack
+        (continuing the audio needs the audio VAE's encoder), the keyframe
+        marker embedding (diffusers' forward pass does not add it), a 100-frame
+        extend clip is slow (the encoder's downsamplers run on the host).
+    - **Done 2026-10-01: MiniMax H3 LoRAs, keyframes (fl2va) and guides**
+      (`models/MiniMaxH3VideoEncoder`, `models/MiniMaxH3AudioEncoder`,
+      `diffusion/TorchRandom`, `diffusion/MiniMaxH3Conditions`,
+      `diffusion/SoundResampling`). diffusers 0.40 (the `t2va`/`fl2va` blocks,
+      `AutoencoderKLMiniMaxH3*`) and ComfyUI (`MiniMaxH3AddGuide`,
+      `PackedLayout`) are the references.
+      - **LoRAs** at run time on every linear (q, k, v split from `qkv_proj`;
+        gate and value from `fc1`; the refiners, projections, both heads, every
+        block's `adaln_proj`, the final AdaLN, the time MLP), in the original,
+        musubi (`lora_unet_`) and diffusers names. The pruned files' AdaLN
+        updates run on the host with their projections. A target without a
+        weight (the time MLP on a pruned file) is reported, not fatal. All 10
+        of François's Civitai files map fully (104 to 258 pairs).
+      - **Noise.** torch's CPU generator (MT19937, both `randn` paths) in
+        diffusers' draw order, so a seed gives diffusers' noise; t2va videos
+        changed for a given seed.
+      - **Video encoder.** A causal 3-D CNN: reflect-padded 3×3×3 convolutions,
+        time halved at levels 1 and 2, 256-pixel tiles blended in latent space,
+        chunks of 17 frames with the last 3 latents dropped. F16 weights and
+        patches with F32 sums: 0.24% of the released weights' reference (BF16
+        was 2.5%, and 16% on a clip). New: `conv3x3` reflect padding and F16
+        weights.
+      - **Audio encoder.** The DAC encoder with Snake (a new op), `pre_block`'s
+        head mean, pool and `proj` folded into one linear; 0.04% on the
+        released file.
+      - **Presentation.** `"<Picture i>: "` and a vision block per keyframe,
+        then the prompt, no chat template; the vision tower read from the text
+        encoder's `visual.` (16 heads, deepstack 8/16/24; `QwenVision` already
+        covered Qwen3-VL), interleaved mRoPE 24/20/20; the vision rows
+        modulated as video.
+      - **fl2va.** Keyframes as a seed-42 draw rounded to F16, mixed at 0.999,
+        held at max(t, 0.999); stretched onto the canvas, the end image
+        cover-cropped when both are given.
+      - **Guides** as ComfyUI: frames centre-cropped (17k + 5) and encoded as the
+        posterior mean, mixed at 0.999 from the request seed restarted per
+        guide; sound resampled to 32 kHz as torchaudio does, cut to the
+        soundtrack, held clean.
+      - **Partitions.** fl2va and ref2va share every name and shape and carry
+        no metadata; told apart by the file name, else by
+        `final_layer.norm.weight`'s first values.
+      - **Checks.** LoRAs 0.11% and 0.14% (`Cpu`), 0.41% (`Hip`); the encoder on
+        the released weights 0.24% (a frame) and 0.39% (a clip); the real
+        vision tower against transformers 0.048%; an fl2va step 0.0026% and
+        0.44%; a guided step 0.0029% and 0.53%; `randn` to 1.3·10⁻⁶; the
+        resampler 0.0024%.
+      - **Live** (the fl2va Q4_K, 832 × 480, 56 frames, the turbo v4 LoRA, 8
+        steps): first and last frame in 341 s, a real drive between the two
+        keyframes, held exactly. A step costs 22.6 s bare, 27 s with the turbo
+        LoRA, 35 s with two keyframes too. Guides (the Wan clip at 0, a still
+        at −1, a sound at 0): 586 s; the clip continued, the still reached, the
+        soundtrack's envelope correlates 0.92 with the guiding sound.
+      - **Open:** keyframes and guides together have no reference; the
+        negative pass keeps the condition rows (ComfyUI's has none).
+    - **Done 2026-10-01: the MiniMax H3 Fun ControlNet union; references
+      (ref2va) built but broken live** (`diffusion/MiniMaxH3References`,
+      `MiniMaxH3.ControlNet`).
+      - **References** (diffusers' `ref2va` blocks, ComfyUI's
+        `MiniMaxH3ReferenceToVideo` the second reading), on the ref2va
+        checkpoint only, which takes no keyframes or guides: up to 9 images, 3
+        clips and 3 sounds (12 in all, never sounds alone), in the request's
+        order. Images scaled down to a 2048 short edge (never up, PIL's
+        LANCZOS); clips to 24 fps on the canvas their own aspect resolves to
+        (768 short edge, at most 768 × 1344); soundtracks cut to the video's
+        length, stereo, 32 kHz. `<Picture i>: ` with a vision block; `<Audio
+        j>: ` first for anything with sound; `<Video k>: ` then a `<t
+        seconds>` label and a two-frame vision block per pair read at 2 fps
+        (the tower's patch embedding unfolded for the pairs). Packed `[text |
+        conditions | references | audio | video]`, each reference on its own
+        grid; the references advance a shared rotary clock (an image 1, a sound
+        its latents, a clip the longer of its two spans) and the generated rows
+        start where it ends. One pass per step (guidance-distilled; another
+        CFG is ignored with a warning).
+      - **ControlNet** (ComfyUI's `MiniMaxH3FunControl*`): the 2.0 file, 10
+        blocks at 0, 5, …, 45 with the pruned files' 8-wide AdaLN (the older
+        union file, 5 blocks with the full AdaLN, is refused against the pruned
+        transformer). The control is encoded as the posterior mean; with a
+        mask, its visibility (trilinear) and the masked source too, 49
+        channels. Before block 0 the video rows become the projected control,
+        pass `before_proj` and join the stream; each control block runs beside
+        its base block with the same spans and angles, and `after_proj` adds
+        its output at the strength, zero on audio rows; both CFG passes, any
+        conditioning, between the start and end fractions of the shifted
+        schedule.
+      - **Checks.** Token ids identical to diffusers'; the presentation's hidden
+        state 0.011% (`Cpu`) and 0.17% (`Hip`); positions 1.3·10⁻⁶; a ref2va
+        step 0.0036% and 0.21–0.32%; a controlled step (with and without a mask,
+        ComfyUI's patch) 0.0036% and 0.6%.
+      - **Live, ControlNet** (the fl2va Q4_K, the union 2.0 BF16, the edges of
+        the Wan clip, a blue pickup in a desert for prompt, the turbo LoRA, 8
+        steps, 56 frames at 832 × 480): 421 s (28.5 s a step); the new subject
+        follows the control's whole motion (side view, turn, driving away). A
+        ControlNet loaded but not asked for leaves the video bit-identical.
+      - **Live, references: broken, cause open** (the ref2va Q4_K, 832 × 480).
+        The reference's subject comes through (the red convertible), but the
+        generated rows are corrupted: an image alone at 20 steps gives a foggy,
+        near-static clip at 56 frames (530 s) and at 124 frames (1366 s, so
+        not the 5–15 s duration), and on a sunny street prompt a dark frame of
+        vertical streaks around the car. An image and a 1 s clip at 12 steps:
+        1641 s (65 s a step), smeared. diffusers' `transformer` and
+        `transformer_ref` configs are identical, and the shared H3 path is
+        unchanged (a t2va rerun is bit-identical), so the fault is in the
+        references' inputs at real sizes, beyond the tiny fixtures. Next: one
+        step on the released file against diffusers (or ComfyUI's GGUF loader)
+        with the same image, tensor by tensor. drift does not offer the ref2va
+        checkpoint in a starter configuration.
+      - **Left:** ComfyUI's `"match"` sizing of references (diffusers' canvas
+        sizing makes a clip reference cost more rows than the video itself);
+        the 5–15 s duration check.
 
 **Tooling.**
 

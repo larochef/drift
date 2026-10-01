@@ -46,7 +46,7 @@ class ProjectWorkspacePage(
       * and which of its outputs (`GenerationDetailHost.boundToUrl`).
       */
     section: Signal[List[String]],
-    /** For a picker's **+ New**: the model browsers its form opens. */
+    /** For a picker's new configuration: the model browsers its form opens. */
     browsers: BrowserServices
 ) extends Component {
 
@@ -305,7 +305,7 @@ class ProjectWorkspacePage(
 
   // ---------------------------------------------------------------- layout
 
-  /** A picker's **+ New** (François, 2026-09-28). */
+  /** A picker's new configuration (François, 2026-09-28). */
   private val newConfiguration = ModelPicker.newConfiguration(
     runConfigurationService,
     loraService,

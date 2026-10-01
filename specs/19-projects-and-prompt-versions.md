@@ -42,7 +42,9 @@ them.
     session's Log/Restart/Stop (`GenerationPanel.sessionControls`) sit beside
     its picker, the panel drawing no header of its own in a project; the
     chat drawer's toggle beside the assistant's.
-  - **+ New** beside each picker opens `NewRunConfigurationModal` (the run
+  - Each picker's last entry, **+ New … configuration…** (a button in the
+    select's place while it has no configuration), opens
+    `NewRunConfigurationModal` (the run
     configurations page's own), its architectures narrowed to the picker's
     tool and the project's kind. The created configuration is picked as a
     select change would — launch, or download and wait — once

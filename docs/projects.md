@@ -48,7 +48,8 @@ The parts:
   current one if needed. The **Assistant** picker does the same for chat
   models (see [assistant.md](assistant.md)). A model that is live but of the
   other kind is still listed, marked as such.
-  **+ New** beside each picker creates a run configuration without leaving the
+  The last entry of each picker, **+ New … configuration…**, creates a run
+  configuration without leaving the
   project: the same form as the run configurations page, offering only the
   architectures that make what the project makes (a chat model for the
   assistant). Once created it is picked, as if chosen in the list: it

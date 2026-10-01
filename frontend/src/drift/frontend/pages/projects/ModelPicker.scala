@@ -27,7 +27,7 @@ class ModelPicker(
     sessions: WorkspaceSessions,
     prerequisites: LaunchPrerequisites,
     /** The modal creating a configuration of a tool for a kind, and what to do
-      * with the one created — the picker's **+ New**.
+      * with the one created — the select's last entry.
       */
     newConfiguration: (
         RuntimeTool,
@@ -48,7 +48,7 @@ class ModelPicker(
   // 2026-09-28). Picking again, or the empty entry, replaces it.
   private val picked = Var(Option.empty[String])
 
-  /** A configuration created from **+ New**, picked once the cache has a word
+  /** A configuration created from the picker, picked once the cache has a word
     * on each of its models — a model registered with it has none yet, and no
     * word reads as nothing missing.
     */
@@ -56,7 +56,8 @@ class ModelPicker(
   private val creating = Var(false)
 
   /** Bumped when a switch is declined, so the select shows the live model again
-    * rather than the one the user let go of.
+    * rather than the one the user let go of — and when the entry creating a
+    * configuration is chosen, which is an action, not a pick.
     */
   private val redraw = Var(0)
 
@@ -145,47 +146,60 @@ class ModelPicker(
         // stays listed, marked, so the select names what actually runs.
         val configurations =
           listed.filter((c, fits) => fits || liveConfiguration.contains(c.id))
-        div(
-          cls := "control",
-          select(
-            cls := (if (prominent) "select is-medium" else "select"),
-            onChange.mapToValue --> Observer[String] { id =>
-              if (id.isEmpty) picked.set(None)
-              else choose(id, live, missing)
-            },
-            option(
-              value := "",
-              selected := shown.isEmpty,
-              if (configurations.isEmpty)
-                kind
-                  .fold("no configuration")(k => s"no ${k.noun} configuration")
-              else "choose a model…"
-            ),
-            configurations.map((c, fits) =>
-              option(
-                value := c.id,
-                selected := shown.contains(c.id),
-                c.label + (
-                  // the upstream engine goes without saying (`specs/43`)
-                  if (c.runner == RuntimeEngine.upstream(tool)) ""
-                  else s" · ${c.runner.displayName}"
-                ) + (
-                  missing
-                    .get(c.id)
-                    .fold("")(lacks =>
-                      s" · ⬇ ${LaunchPrerequisites.describe(lacks)}"
-                    )
-                ) + (
-                  if (!liveConfiguration.contains(c.id)) ""
-                  else if (fits) " (live)"
-                  else
-                    kind
-                      .fold(" (live)")(k => s" (live, not a ${k.noun} model)")
-                )
-              )
+        val noun = ModelPicker.configurationNoun(tool, kind)
+        val control: HtmlElement =
+          // Nothing to choose from: the one thing to do, said outright rather
+          // than behind an empty select.
+          if (configurations.isEmpty)
+            button(
+              cls := (if (prominent) "button is-medium is-info"
+                      else "button is-info"),
+              span(cls := "plus-icon", "+"),
+              s" New $noun",
+              onClick --> (_ => creating.set(true))
             )
-          )
-        )
+          else
+            select(
+              cls := (if (prominent) "select is-medium" else "select"),
+              onChange.mapToValue --> Observer[String] { id =>
+                if (id == ModelPicker.createValue) {
+                  creating.set(true)
+                  redraw.update(_ + 1)
+                } else if (id.isEmpty) picked.set(None)
+                else choose(id, live, missing)
+              },
+              option(
+                value := "",
+                selected := shown.isEmpty,
+                "choose a model…"
+              ),
+              configurations.map((c, fits) =>
+                option(
+                  value := c.id,
+                  selected := shown.contains(c.id),
+                  c.label + (
+                    // the upstream engine goes without saying (`specs/43`)
+                    if (c.runner == RuntimeEngine.upstream(tool)) ""
+                    else s" · ${c.runner.displayName}"
+                  ) + (
+                    missing
+                      .get(c.id)
+                      .fold("")(lacks =>
+                        s" · ⬇ ${LaunchPrerequisites.describe(lacks)}"
+                      )
+                  ) + (
+                    if (!liveConfiguration.contains(c.id)) ""
+                    else if (fits) " (live)"
+                    else
+                      kind
+                        .fold(" (live)")(k => s" (live, not a ${k.noun} model)")
+                  )
+                )
+              ),
+              hr(),
+              option(value := ModelPicker.createValue, s"+ New $noun…")
+            )
+        div(cls := "control", control)
       },
     // No runtime to run this tool's models: said once beside the picker, with
     // the install (`specs/46`).
@@ -210,20 +224,6 @@ class ModelPicker(
             )
           )
       ),
-    div(
-      cls := "control",
-      button(
-        // The size of the session's controls beside it, not a size above.
-        cls := (if (prominent) "button is-medium is-info"
-                else "button is-small is-info"),
-        span(cls := "plus-icon", "+"),
-        " New",
-        title <-- heading.map(name =>
-          s"Create a configuration for the ${name.toLowerCase} and pick it"
-        ),
-        onClick --> (_ => creating.set(true))
-      )
-    ),
     child <-- creating.signal.combineWith(kind).map {
       case (false, _)   => emptyNode
       case (true, kind) =>
@@ -254,9 +254,27 @@ class ModelPicker(
 
 object ModelPicker {
 
-  /** A picker's **+ New** (François, 2026-09-28): the run configurations page's
-    * own modal, offering the architectures of the picker's tool that make the
-    * kind asked for.
+  /** The value of the select's entry creating a configuration, which no
+    * configuration's id is.
+    */
+  private val createValue = "+new"
+
+  /** What a picker's configurations are called, in its entry creating one and
+    * in the modal that opens.
+    */
+  private def configurationNoun(
+      tool: RuntimeTool,
+      kind: Option[ProjectKind]
+  ): String =
+    tool match {
+      case RuntimeTool.LlamaCpp => "chat configuration"
+      case _                    =>
+        kind.fold("run configuration")(k => s"${k.noun} configuration")
+    }
+
+  /** Creating a configuration from a picker (François, 2026-09-28): the run
+    * configurations page's own modal, offering the architectures of the
+    * picker's tool that make the kind asked for.
     */
   def newConfiguration(
       runConfigurationService: RunConfigurationService,
@@ -281,12 +299,6 @@ object ModelPicker {
       runtimeService.runtimes,
       onClose = onClose,
       onCreated = onCreated,
-      heading = tool match {
-        case RuntimeTool.LlamaCpp => "New chat configuration"
-        case _                    =>
-          kind.fold("New run configuration")(k =>
-            s"New ${k.noun} configuration"
-          )
-      }
+      heading = s"New ${configurationNoun(tool, kind)}"
     ).element
 }

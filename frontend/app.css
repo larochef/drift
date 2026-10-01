@@ -1971,8 +1971,8 @@ select.select:focus {
   padding: 0.75rem 1rem;
   margin-bottom: 1.5rem;
 }
-/* Each picker a row of the same grid — label, select, then + New, the
-   status and the session's controls — so the selects line up whatever their
+/* Each picker a row of the same grid — label, select, then the status and
+   the session's controls — so the selects line up whatever their
    longest option, and nothing runs out of the card (François, 2026-09-29). */
 .workspace-model-bar .field.is-grouped {
   display: grid;

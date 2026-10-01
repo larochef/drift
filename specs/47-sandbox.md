@@ -50,7 +50,8 @@ play to a page of its own and leaves the Models page to configurations.
 - `pages/projects/ModelPicker`, cut out of `WorkspaceHeader`, serves both the
   workspace's model bar and the Sandbox; it takes the launching project and a
   `confirmReplace` the Sandbox uses to ask before stopping a project's model.
-  `ModelPicker.newConfiguration` is the **+ New** modal both use.
+  `ModelPicker.newConfiguration` is the modal both open from the select's
+  last entry.
 - Leaving: a capture-phase click listener on `window` asks before an in-app
   link leaves `/sandbox` (it runs ahead of frontroute's `LinkHandler`), and
   `beforeunload` covers reload and close. Unmount sends `ClearScratch` and

@@ -121,10 +121,15 @@ final private[postprocess] class Edit(
                   height = input.window.height,
                   seed = seed,
                   refImages = List(input.image),
-                  lora = loras,
-                  sampleParams = request.steps.fold(defaults.sampleParams)(
-                    steps => defaults.sampleParams.copy(sampleSteps = steps)
-                  ),
+                  lora = loras.selections,
+                  // the session's sampling under the configuration's LoRAs'
+                  // (`specs/49`), under the steps the request asks for
+                  sampleParams = {
+                    val sampling = loras.sampling.over(defaults.sampleParams)
+                    request.steps.fold(sampling)(steps =>
+                      sampling.copy(sampleSteps = steps)
+                    )
+                  },
                   vaeTilingParams = defaults.vaeTilingParams
                 )
               ),
@@ -137,7 +142,7 @@ final private[postprocess] class Edit(
                 "each tile the model's image to edit, cut from the picture " +
                 "as edited so far and composited over it",
               s"instruction: $instruction"
-            ) ++ TiledJobs.loraNote(loras),
+            ) ++ TiledJobs.loraNote(loras.selections),
             derivation = Derivation(
               parentId = src.parent.id,
               parentDate = src.date,

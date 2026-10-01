@@ -9,7 +9,7 @@
       "distilled",
       "turbo"
     ],
-    "description": "SenseNova's own distillation LoRA: 8 Euler steps at CFG 1 (flow shift 3) instead of 50 steps at CFG 4. Set the steps and CFG to match when you apply it, a run configuration with it as a default LoRA keeps them together.",
+    "description": "SenseNova's own distillation LoRA: 8 Euler steps at CFG 1 (flow shift 3) instead of 50 steps at CFG 4. Selecting it sets them.",
     "files": [
       {
         "fileName": "SenseNova-U1.5-8B-MoT-LoRA-8step.safetensors",
@@ -22,7 +22,12 @@
         "sizeBytes": 814867236,
         "sha256": "3ef32180cdf1e30a870a83f4f136e897ea50b7ee467f863d75633464ebb25708"
       }
-    ]
+    ],
+    "sampling": {
+      "steps": 8,
+      "cfg": 1.0,
+      "flowShift": 3.0
+    }
   },
   {
     "id": "hunyuanvideo-1.5-lightx2v-4step",
@@ -34,7 +39,7 @@
       "turbo",
       "lightx2v"
     ],
-    "description": "lightx2v's 4-step distillation of the 480p text-to-video checkpoint, as repackaged by Comfy-Org: 4 steps at CFG 1 with flow shift 9 (lightx2v's settings), 848×480. Set those when you apply it; a run configuration with it as a default LoRA keeps them together. Made for the 480p text-to-video weights, not the 720p ones.",
+    "description": "lightx2v's 4-step distillation of the 480p text-to-video checkpoint, as repackaged by Comfy-Org: 4 steps at CFG 1 with flow shift 9 (lightx2v's settings), 848×480. Selecting it sets them. Made for the 480p text-to-video weights, not the 720p ones.",
     "files": [
       {
         "fileName": "hunyuanvideo1.5_t2v_480p_lightx2v_4step_lora_rank_32_bf16.safetensors",
@@ -47,7 +52,12 @@
         "sizeBytes": 341065682,
         "sha256": "8fef6f9b9f2f6aa5259166e78b10a022485391dababc6a8c68585fddd31d5d62"
       }
-    ]
+    ],
+    "sampling": {
+      "steps": 4,
+      "cfg": 1.0,
+      "flowShift": 9.0
+    }
   },
   {
     "id": "boogu-image-turbo-4step",
@@ -58,7 +68,7 @@
       "distilled",
       "turbo"
     ],
-    "description": "The Turbo distillation as a LoRA over the Base checkpoint: 4 steps at CFG 1 instead of 25 to 50 at CFG 4. Set the steps and CFG to match when you apply it — a run configuration with it as a default LoRA keeps them together. Boogu publishes Turbo as a whole checkpoint, not as a LoRA; this is Comfy-Org's rank-128 extraction of it, from the repository drift seeds the checkpoints from, and it spares a second 20 GB download when the Base model is already on disk. The hotfix build is the one offered; the repository also holds the first extraction.",
+    "description": "The Turbo distillation as a LoRA over the Base checkpoint: 4 steps at CFG 1 instead of 25 to 50 at CFG 4. Selecting it sets them. Boogu publishes Turbo as a whole checkpoint, not as a LoRA; this is Comfy-Org's rank-128 extraction of it, from the repository drift seeds the checkpoints from, and it spares a second 20 GB download when the Base model is already on disk. The hotfix build is the one offered; the repository also holds the first extraction.",
     "files": [
       {
         "fileName": "boogu_image_turbo_hotfix_lora_rank_128_bf16.safetensors",
@@ -71,6 +81,39 @@
         "sizeBytes": 1353036872,
         "sha256": "8fcf2eae8a7ca27a53cea570e683a995f028c8489baa2c47a1c2326e6f711af5"
       }
-    ]
+    ],
+    "sampling": {
+      "steps": 4,
+      "cfg": 1.0
+    }
+  },
+  {
+    "id": "qwen-image-2.1-viggle-turbo-6step",
+    "architectureId": "qwen-image-2.1",
+    "label": "Qwen Image 2.1 Viggle Turbo 6-step (rank 256)",
+    "defaultStrength": 1.0,
+    "tags": [
+      "distilled",
+      "turbo"
+    ],
+    "description": "Viggle's distillation LoRA (v0.2.1): 6 Euler steps at CFG 1 with a flow shift of 3, instead of 25 steps at CFG 6. Selecting it sets those; more steps are fine (8 draws text better), fewer break the image. Checked on the drift runner.",
+    "files": [
+      {
+        "fileName": "Qwen-Image-2.1-viggle-turbo-v0.2.1-6step-lora-r256.safetensors",
+        "source": {
+          "type": "huggingface",
+          "repo": "Viggle/Qwen-Image-2.1-viggle-turbo",
+          "filename": "Qwen-Image-2.1-viggle-turbo-v0.2.1-6step-lora-r256.safetensors"
+        },
+        "stage": "General",
+        "sizeBytes": 1359147904,
+        "sha256": "2a0148f5c73abbed5f97da5ea356e439318aadb281d01fce4af39cdf43728803"
+      }
+    ],
+    "sampling": {
+      "steps": 6,
+      "cfg": 1.0,
+      "flowShift": 3.0
+    }
   }
 ]

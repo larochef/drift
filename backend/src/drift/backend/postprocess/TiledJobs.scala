@@ -41,7 +41,7 @@ final private[postprocess] class TiledJobs(
           RunConfiguration,
           Architecture,
           LaunchRuntime,
-          List[LoraSelection]
+          ConfiguredLoras
       ) => Either[String, PostProcessJob]
   ): PostProcessJob =
     jobs
@@ -85,12 +85,15 @@ final private[postprocess] class TiledJobs(
     */
   private def configuredLoras(
       configuration: RunConfiguration
-  ): Either[String, List[LoraSelection]] = {
+  ): Either[String, ConfiguredLoras] = {
     val installed = loraManager.list.map(lora => lora.id -> lora).toMap
     configuration.loras.foldLeft(
-      Right(List.empty): Either[String, List[LoraSelection]]
+      Right(ConfiguredLoras(List.empty, LoraSampling())): Either[
+        String,
+        ConfiguredLoras
+      ]
     ) { (result, configured) =>
-      result.flatMap(selections =>
+      result.flatMap(loras =>
         installed.get(configured.loraId) match {
           case None =>
             Left(
@@ -106,7 +109,12 @@ final private[postprocess] class TiledJobs(
               s"LoRA '${lora.label}', a default of '${configuration.label}', is not fully downloaded"
             )
           case Some(lora) =>
-            Right(selections ++ lora.selections(configured.strength))
+            Right(
+              ConfiguredLoras(
+                loras.selections ++ lora.selections(configured.strength),
+                lora.sampling.over(loras.sampling)
+              )
+            )
         }
       )
     }
@@ -215,6 +223,15 @@ final private[postprocess] class TiledJobs(
       resumed
     ).run()
 }
+
+/** A run configuration's default LoRAs as a job without a form takes them
+  * (`specs/28`, `specs/49`): the request entries, and the sampling they were
+  * made for, the later LoRA's over the earlier ones'.
+  */
+final private[postprocess] case class ConfiguredLoras(
+    selections: List[LoraSelection],
+    sampling: LoraSampling
+)
 
 private[postprocess] object TiledJobs {
 

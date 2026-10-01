@@ -55,10 +55,12 @@ class SamplingSection(
           div(
             cls := "column",
             selectField("Sampler", samplerVar, capabilities.samplers)
+              .amend(onChange --> (_ => state.touch("sampler")))
           ),
           div(
             cls := "column",
             selectField("Scheduler", schedulerVar, capabilities.schedulers)
+              .amend(onChange --> (_ => state.touch("scheduler")))
           )
         ),
         // A turbo LoRA wants the steps nearer the noisy end than the model's
@@ -66,6 +68,7 @@ class SamplingSection(
         div(
           cls := "form-compact-row",
           numberField("Flow shift", flowShiftVar, digits = Some(4))
+            .amend(onInput --> (_ => state.touch("flowShift")))
         ),
         p(
           cls := "help text-secondary",
@@ -80,7 +83,8 @@ class SamplingSection(
             typ := "text",
             placeholder := "1.0, 0.9375, 0.875, 0.75, 0.5, 0.25",
             value <-- sigmasVar.signal,
-            onInput.mapToValue --> sigmasVar
+            onInput.mapToValue --> sigmasVar,
+            onInput --> (_ => state.touch("sigmas"))
           )
         ),
         p(

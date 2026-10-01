@@ -60,6 +60,7 @@ in [`../docs/`](../docs/README.md).
 | [46](46-starter-configurations.md) | Starter run configurations; every launch becomes a download while weights are missing | done in code, not yet run live |
 | [47](47-sandbox.md) | Sandbox page: free play out of the Models page, image / video / text switch | done in code, not run live |
 | [48](48-soundtrack-polish.md) | Soundtrack polish: a post-processing step on a video's audio (loudness, de-harsh, denoise, low cut) through ffmpeg | planned |
+| [49](49-lora-sampling-settings.md) | Sampling settings on LoRAs: a turbo LoRA carries its steps, CFG, flow shift and sigmas, and selecting it sets them | done in code, not yet run live |
 
 ## What is left
 

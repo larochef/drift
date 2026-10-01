@@ -76,6 +76,7 @@ class GuidanceSection(
           div(
             cls := "column",
             numberField("Distilled guidance", distilledGuidanceVar)
+              .amend(onInput --> (_ => state.touch("distilledGuidance")))
           )
         ),
         field(

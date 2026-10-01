@@ -88,7 +88,8 @@ final private[lora] class LoraAdoption(
       triggerWords = sidecar.map(_.trainedWords).getOrElse(Nil),
       tags = sidecar.map(_.tags).getOrElse(Nil),
       description = sidecar.flatMap(_.description).map(_.take(2000)),
-      createdAt = System.currentTimeMillis()
+      createdAt = System.currentTimeMillis(),
+      sampling = LoraSampling()
     )
     val target = lorasRoot.resolve(placed.folderRelativePath)
     val files = weightNames.map { diskName =>

@@ -123,9 +123,11 @@ class CoreFields(
           Some(limits.maxHeight),
           digits = Some(4)
         ),
-        numberField("Steps", stepsVar, Some(1), digits = Some(3)),
+        numberField("Steps", stepsVar, Some(1), digits = Some(3))
+          .amend(onInput --> (_ => touch("steps"))),
         // Two digits and a decimal: 7.5, 3.5.
-        numberField("CFG", cfgVar, digits = Some(4)),
+        numberField("CFG", cfgVar, digits = Some(4))
+          .amend(onInput --> (_ => touch("cfg"))),
         seedField
       ),
       // The high-noise expert's own steps and CFG sit directly under the
@@ -150,8 +152,9 @@ class CoreFields(
                 highNoiseStepsVar,
                 Some(1),
                 digits = Some(3)
-              ),
+              ).amend(onInput --> (_ => touch("highNoiseSteps"))),
               numberField("High-noise CFG", highNoiseCfgVar, digits = Some(4))
+                .amend(onInput --> (_ => touch("highNoiseCfg")))
             )
         }
       },

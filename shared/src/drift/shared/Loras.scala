@@ -96,6 +96,108 @@ object ConfiguredLora {
   given Schema[ConfiguredLora] = Schema.derived
 }
 
+/** The sampling a LoRA was made for (`specs/49-lora-sampling-settings.md`): a
+  * turbo LoRA's steps, CFG and flow shift, typed by the user from its author's
+  * page. One more layer of defaults over the session's, each field overriding
+  * only when set — defaults, never rules: the form shows them and the user may
+  * change every one.
+  */
+case class LoraSampling(
+    /** The count it was made for: more is fine, fewer break the image. */
+    steps: Option[Int] = None,
+    cfg: Option[Double] = None,
+    flowShift: Option[Double] = None,
+    /** Its exact noise levels, which replace the schedule and are their own
+      * step count. Not for a two-expert model.
+      */
+    sigmas: List[Double] = List.empty,
+    sampler: Option[String] = None,
+    scheduler: Option[String] = None,
+    distilledGuidance: Option[Double] = None,
+    /** A pair's high-noise expert, on a two-expert model (wan 2.2). */
+    highNoiseSteps: Option[Int] = None,
+    highNoiseCfg: Option[Double] = None
+) {
+  def isEmpty: Boolean = this == LoraSampling()
+  def nonEmpty: Boolean = !isEmpty
+
+  /** The form fields it sets, by the names the generation form knows them. */
+  def fields: Set[String] =
+    List(
+      steps.map(_ => "steps"),
+      cfg.map(_ => "cfg"),
+      flowShift.map(_ => "flowShift"),
+      Option.when(sigmas.nonEmpty)("sigmas"),
+      sampler.map(_ => "sampler"),
+      scheduler.map(_ => "scheduler"),
+      distilledGuidance.map(_ => "distilledGuidance"),
+      highNoiseSteps.map(_ => "highNoiseSteps"),
+      highNoiseCfg.map(_ => "highNoiseCfg")
+    ).flatten.toSet
+
+  /** What it sets, a phrase a setting: "6 steps", "CFG 1.0", "flow shift 3.0".
+    */
+  def summary: List[String] =
+    List(
+      steps.map(count => s"$count steps"),
+      cfg.map(scale => s"CFG $scale"),
+      flowShift.map(shift => s"flow shift $shift"),
+      Option.when(sigmas.nonEmpty)(s"${sigmas.size} sigmas"),
+      sampler,
+      scheduler,
+      distilledGuidance.map(scale => s"distilled guidance $scale"),
+      highNoiseSteps.map(count => s"$count high-noise steps"),
+      highNoiseCfg.map(scale => s"high-noise CFG $scale")
+    ).flatten
+
+  /** These settings over `base`, a later layer's over an earlier one's. */
+  def over(base: LoraSampling): LoraSampling =
+    LoraSampling(
+      steps = steps.orElse(base.steps),
+      cfg = cfg.orElse(base.cfg),
+      flowShift = flowShift.orElse(base.flowShift),
+      sigmas = if (sigmas.nonEmpty) sigmas else base.sigmas,
+      sampler = sampler.orElse(base.sampler),
+      scheduler = scheduler.orElse(base.scheduler),
+      distilledGuidance = distilledGuidance.orElse(base.distilledGuidance),
+      highNoiseSteps = highNoiseSteps.orElse(base.highNoiseSteps),
+      highNoiseCfg = highNoiseCfg.orElse(base.highNoiseCfg)
+    )
+
+  /** A session's sampling defaults with these settings over them. */
+  def over(base: SampleParameters): SampleParameters =
+    base.copy(
+      sampleSteps = steps.getOrElse(base.sampleSteps),
+      flowShift = flowShift.orElse(base.flowShift),
+      customSigmas = if (sigmas.nonEmpty) sigmas else base.customSigmas,
+      sampleMethod = sampler.orElse(base.sampleMethod),
+      scheduler = scheduler.orElse(base.scheduler),
+      guidance = base.guidance.copy(
+        txtCfg = cfg.getOrElse(base.guidance.txtCfg),
+        distilledGuidance =
+          distilledGuidance.getOrElse(base.guidance.distilledGuidance)
+      )
+    )
+
+  /** The high-noise expert's defaults with these settings over them. */
+  def overHighNoise(base: SampleParameters): SampleParameters =
+    base.copy(
+      sampleSteps = highNoiseSteps.getOrElse(base.sampleSteps),
+      flowShift = flowShift.orElse(base.flowShift),
+      guidance = base.guidance.copy(
+        txtCfg = highNoiseCfg.getOrElse(base.guidance.txtCfg)
+      )
+    )
+}
+object LoraSampling {
+  given JsonValueCodec[LoraSampling] = JsonCodecMaker.make
+  given Schema[LoraSampling] = Schema.derived
+
+  /** The settings of `loras` together, the last one's over the others'. */
+  def of(loras: List[Lora]): LoraSampling =
+    loras.foldLeft(LoraSampling())((merged, lora) => lora.sampling.over(merged))
+}
+
 /** One LoRA the user has installed (`specs/09-lora-management.md`), or one
   * drift offers to install (`specs/33-lora-sources.md`: the catalog is a list
   * of the same entity, never saved until installed).
@@ -126,7 +228,11 @@ case class Lora(
     tags: List[String] = List.empty,
     description: Option[String] = None,
     files: List[LoraFile] = List.empty,
-    createdAt: Long = 0
+    createdAt: Long = 0,
+    /** The sampling it was made for (`specs/49-lora-sampling-settings.md`);
+      * empty for most LoRAs.
+      */
+    sampling: LoraSampling
 ) {
 
   /** The cache folder, relative to the LoRA root. */

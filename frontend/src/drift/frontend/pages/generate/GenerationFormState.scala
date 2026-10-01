@@ -31,6 +31,24 @@ class GenerationFormState {
   val samplerVar = Var("")
   val schedulerVar = Var("")
 
+  /** The sampling fields the user has changed since the form was seeded
+    * (`specs/49-lora-sampling-settings.md`): a selected LoRA's settings are
+    * defaults, and only replace what is still one. A plain set, not a Var: it
+    * is read by the observer that writes the fields, in the transaction that
+    * may just have changed it.
+    */
+  private var touchedFields = Set.empty[String]
+  def touch(field: String): Unit = touchedFields += field
+  def touched(field: String): Boolean = touchedFields.contains(field)
+  def untouch(fields: Set[String]): Unit = touchedFields --= fields
+
+  /** Every sampling field holds a value of the user's: a recipe was laid down.
+    */
+  def touchSampling(): Unit = touchedFields = GenerationFormState.SamplingFields
+
+  /** Every sampling field holds a default: the form was seeded. */
+  def untouchSampling(): Unit = touchedFields = Set.empty
+
   /** The flow shift (sd-cpp's `--flow-shift`): how far the schedule leans
     * toward the noisy end. Empty is the model's own — which for some is a
     * function of the image's size, not a number the session could report.
@@ -165,20 +183,28 @@ object GenerationFormState {
     * or scheduler; sending it back is not worth trusting, so it maps to "omit
     * the field" everywhere.
     */
-  /** Custom sigmas as typed, separated by commas or spaces: none when a piece
-    * is no number, an empty list for an empty field.
+  /** The fields a LoRA's sampling settings write, by the names `touch` takes.
     */
-  def sigmasOf(text: String): Option[List[Double]] = {
-    val values =
-      text.split("[,\\s]+").toList.filter(_.nonEmpty).map(_.toDoubleOption)
-    Option.when(values.forall(_.isDefined))(values.flatten)
-  }
+  val SamplingFields: Set[String] = Set(
+    "steps",
+    "cfg",
+    "highNoiseSteps",
+    "highNoiseCfg",
+    "flowShift",
+    "sigmas",
+    "sampler",
+    "scheduler",
+    "distilledGuidance"
+  )
 
-  def sigmasText(sigmas: List[Double]): String = sigmas.mkString(", ")
+  def sigmasOf(text: String): Option[List[Double]] =
+    SampleParameters.sigmasOf(text)
 
-  /** The steps a list of sigmas is: one a level, the final 0 aside. */
+  def sigmasText(sigmas: List[Double]): String =
+    SampleParameters.sigmasText(sigmas)
+
   def sigmaSteps(sigmas: List[Double]): Int =
-    if (sigmas.lastOption.contains(0.0)) sigmas.size - 1 else sigmas.size
+    SampleParameters.sigmaSteps(sigmas)
 
   def cleanse(parameters: SampleParameters): SampleParameters =
     parameters.copy(

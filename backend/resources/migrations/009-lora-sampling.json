@@ -1,0 +1,7 @@
+{
+  "version": 9,
+  "description": "specs/49: a LoRA carries the sampling it was made for (empty on the ones already installed)",
+  "steps": [
+    { "collection": "loras", "op": "add", "field": "sampling", "value": {} }
+  ]
+}

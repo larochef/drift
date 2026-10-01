@@ -186,7 +186,8 @@ final class LoraManager(
           files = one.files ++ moved,
           triggerWords = (one.triggerWords ++ two.triggerWords).distinct,
           tags = (one.tags ++ two.tags).distinct,
-          description = one.description.orElse(two.description)
+          description = one.description.orElse(two.description),
+          sampling = one.sampling.over(two.sampling)
         )
         storage.save("loras", paired.id, paired)
         delete(two.id)

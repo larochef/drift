@@ -14,6 +14,9 @@ class GenerationForm(
     capabilities: SessionCapabilities,
     /** Built once by the panel, so a mode switch keeps its search. */
     loraPicker: LoraPicker,
+    /** The selected LoRAs that carry sampling settings (`specs/49`). */
+    samplingLoras: Signal[List[Lora]],
+    onApplyLoraSampling: () => Unit,
     onSwitchMode: String => Unit,
     onGenerate: () => Unit
 ) extends Component {
@@ -26,7 +29,12 @@ class GenerationForm(
   lazy val element: HtmlElement = div(
     CoreFields(state, capabilities, onSwitchMode, onGenerate).element,
     child <-- state.mode.signal.map(m =>
-      if (takesLoras(m)) loraPicker.element else div()
+      if (takesLoras(m))
+        div(
+          loraPicker.element,
+          LoraSamplingNote(state, samplingLoras, onApplyLoraSampling).element
+        )
+      else div()
     ),
     // Everything below this point folds away (`specs/14`): one click to
     // reach, out of the way until it is wanted.

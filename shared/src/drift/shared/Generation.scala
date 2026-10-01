@@ -67,6 +67,21 @@ case class SampleParameters(
 )
 object SampleParameters {
   given Schema[SampleParameters] = Schema.derived
+
+  /** Custom sigmas as typed, separated by commas or spaces: none when a piece
+    * is no number, an empty list for an empty text.
+    */
+  def sigmasOf(text: String): Option[List[Double]] = {
+    val values =
+      text.split("[,\\s]+").toList.filter(_.nonEmpty).map(_.toDoubleOption)
+    Option.when(values.forall(_.isDefined))(values.flatten)
+  }
+
+  def sigmasText(sigmas: List[Double]): String = sigmas.mkString(", ")
+
+  /** The steps a list of sigmas is: one a level, the final 0 aside. */
+  def sigmaSteps(sigmas: List[Double]): Int =
+    if (sigmas.lastOption.contains(0.0)) sigmas.size - 1 else sigmas.size
 }
 
 /** The `hires` block of `POST /sdcpp/v1/img_gen` — highres-fix: generate at the

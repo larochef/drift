@@ -34,6 +34,16 @@ class LoraSection(
     * 2026-09-18).
     */
   private val renaming = Var(Option.empty[String])
+
+  /** The LoRAs whose sampling block is open: kept here, since a row is drawn
+    * again each time its LoRA is saved.
+    */
+  private val samplingOpen = Var(Set.empty[String])
+
+  /** Two experts (wan 2.2): a LoRA then sets the high-noise expert's too. */
+  private val twoExperts = architecture.checkpoints.exists(
+    _.flag == "--high-noise-diffusion-model"
+  )
   private val partner = Var("")
   private val pairName = Var("")
 
@@ -251,6 +261,12 @@ class LoraSection(
                 cls := "is-size-7 text-secondary",
                 s"triggers: ${lora.triggerWords.mkString(", ")}"
               )
+            else emptyNode,
+            if (lora.sampling.nonEmpty)
+              p(
+                cls := "is-size-7 text-secondary",
+                s"sets: ${lora.sampling.summary.mkString(" · ")}"
+              )
             else emptyNode
           )
         ),
@@ -298,6 +314,20 @@ class LoraSection(
               title := "This LoRA holds one stage only: join it with the " +
                 "other half, published on its own",
               onClick --> (_ => startPairing(lora, partners))
+            )
+          ),
+          Option.unless(chatModel)(
+            button(
+              cls := "button is-small mr-2",
+              "⚙ Sampling",
+              title := "The steps, CFG and flow shift this LoRA was made " +
+                "for: selecting it sets them in the generation form",
+              onClick --> (_ =>
+                samplingOpen.update(open =>
+                  if (open.contains(lora.id)) open - lora.id
+                  else open + lora.id
+                )
+              )
             )
           ),
           button(
@@ -351,6 +381,11 @@ class LoraSection(
       child <-- pairing.signal.map {
         case Some(id) if id == lora.id => pairPanel(lora, partners)
         case _                         => emptyNode
+      },
+      child <-- samplingOpen.signal.map(_.contains(lora.id)).distinct.map {
+        case true =>
+          new LoraSamplingFields(lora, twoExperts, service).element
+        case false => emptyNode
       }
     )
   }

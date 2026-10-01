@@ -3,7 +3,13 @@ package drift.backend.storage
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 
+import com.github.plokhotnyuk.jsoniter_scala.core.{
+  readFromStream,
+  readFromString
+}
 import utest.*
+
+import drift.shared.*
 
 /** The entity migrations (`specs/38-entity-migrations.md`).
   *
@@ -437,6 +443,71 @@ object MigrationsTests extends TestSuite {
       Migrations(dir).run()
       // the stored built-in goes, to be seeded again with its mtp slot
       assert(!Files.exists(architectures.resolve("qwen3.6-35b-a3b.json")))
+    }
+
+    test("9: a LoRA's sampling settings (specs/49)") {
+      val dir = Files.createTempDirectory("drift-lora-sampling")
+      val loras = Files.createDirectories(dir.resolve("loras"))
+      Files.writeString(dir.resolve("schema.json"), """{"version": 8}""")
+      Files.writeString(
+        loras.resolve("turbo.json"),
+        """{"id": "turbo", "architectureId": "qwen-image-2.1", "label": "Turbo", "files": []}""",
+        StandardCharsets.UTF_8
+      )
+      Migrations(dir).run()
+      // an installed LoRA gains the empty settings, and decodes
+      val migrated = readFromString[Lora](
+        Files.readString(loras.resolve("turbo.json"))
+      )
+      assert(migrated.sampling == LoraSampling())
+    }
+
+    test("the LoRAs drift offers carry their sampling (specs/49)") {
+      val stream = getClass.getResourceAsStream("/reference/loras.json")
+      val catalog =
+        try readFromStream[List[Lora]](stream)
+        finally stream.close()
+      val viggle = catalog.find(_.id == "qwen-image-2.1-viggle-turbo-6step").get
+      assert(
+        viggle.sampling == LoraSampling(
+          steps = Some(6),
+          cfg = Some(1.0),
+          flowShift = Some(3.0)
+        )
+      )
+      assert(catalog.forall(_.sampling.nonEmpty))
+    }
+
+    test(
+      "a LoRA's sampling over a session's, the later LoRA over the earlier"
+    ) {
+      val base = SampleParameters(
+        sampleSteps = 25,
+        guidance = GuidanceParameters(txtCfg = 6.0)
+      )
+      val turbo = LoraSampling(
+        steps = Some(6),
+        cfg = Some(1.0),
+        flowShift = Some(3.0)
+      )
+      val merged = turbo.over(base)
+      assert(merged.sampleSteps == 6)
+      assert(merged.guidance.txtCfg == 1.0)
+      assert(merged.flowShift == Some(3.0))
+      // an empty layer changes nothing
+      assert(LoraSampling().over(base) == base)
+      // the later LoRA wins the fields it sets, and keeps the others
+      val later = LoraSampling(steps = Some(8)).over(turbo)
+      assert(later.steps == Some(8) && later.cfg == Some(1.0))
+      // the high-noise expert takes its own steps and CFG, and the shift
+      val pair = LoraSampling(
+        highNoiseSteps = Some(4),
+        highNoiseCfg = Some(1.0),
+        flowShift = Some(5.0)
+      )
+      val expert = pair.overHighNoise(base)
+      assert(expert.sampleSteps == 4 && expert.guidance.txtCfg == 1.0)
+      assert(expert.flowShift == Some(5.0))
     }
   }
 }

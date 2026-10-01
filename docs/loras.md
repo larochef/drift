@@ -92,6 +92,13 @@ Each installed LoRA shows:
   wan 2.2 pairs are published as two repositories, so they install as two
   LoRAs. Choose the other half, give the two a name, and they become one LoRA
   holding both stages — the other entry goes;
+- **⚙ Sampling**: the settings the LoRA was made for — steps, CFG, flow
+  shift, and where they apply the sampler, the scheduler, the distilled
+  guidance, the exact sigmas, or on wan 2.2 the high-noise steps and CFG.
+  Type them from the LoRA's page (drift does not read them from Civitai or
+  Hugging Face); leave empty what the LoRA does not care about. A turbo LoRA
+  typically wants its step count, CFG 1 and a flow shift around 3. The LoRAs
+  drift offers come with theirs filled in;
 - **delete**, which removes the entity and its files.
 
 ## Using one in a generation
@@ -103,6 +110,16 @@ The generation form has a LoRA picker:
 - Adding a LoRA shows a strength input seeded from its default and its
   trigger words as one-click inserts into the prompt. Nothing is inserted for
   you; the prompt is yours.
+- A LoRA that carries sampling settings (**⚙ sampling**) puts them in the
+  form when you add it: they are one more layer of defaults, over the run
+  configuration's. The fields you have changed yourself keep your value, the
+  others follow the LoRA; removing it gives them back to the configuration.
+  With two such LoRAs the one added last wins where both set a field. Nothing
+  is locked: change any value and generate. The line under the picker says
+  what each LoRA sets, **Apply the LoRA settings** puts them back over what
+  the fields hold (after reusing a gallery entry, for instance, whose own
+  values are kept), and a warning shows when the steps are fewer than the
+  LoRA was made for.
 - "⚠ needs restart" on a LoRA means the running session cannot see its file
   yet (installed or moved after launch). **↻ Restart** at the top of the
   form starts the model again with your form as it is.
@@ -137,9 +154,11 @@ on the configuration's card with the same picker.
 - Launching that configuration pre-fills the picker with the defaults. Reusing
   a gallery entry on the same configuration keeps the entry's own LoRAs
   instead.
+- The defaults' sampling settings apply too, as for a LoRA added by hand.
 - Tiled post-processing jobs (PiD upscale and redraw, see
   [gallery.md](gallery.md)) run without a form, so they apply the
-  configuration's defaults. A job whose default LoRA is missing on disk refuses
+  configuration's defaults. Redraw and edit take the LoRAs' sampling settings
+  with them (the steps you ask for still win); PiD keeps its own 4 steps. A job whose default LoRA is missing on disk refuses
   to start and says which.
 
 ## On disk

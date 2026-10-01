@@ -269,6 +269,40 @@ class GenerationPanel(
       else s"${prompt.trim}, $word"
     }
 
+  private def carrying(ids: List[String], loras: List[Lora]): List[Lora] = {
+    val byId = loras.map(lora => lora.id -> lora).toMap
+    ids.flatMap(byId.get).filter(_.sampling.nonEmpty)
+  }
+
+  /** The selected LoRAs that carry sampling settings, in selection order
+    * (`specs/49-lora-sampling-settings.md`).
+    */
+  private val samplingLoras: Signal[List[Lora]] =
+    state.selectedLoraIdsVar.signal
+      .combineWith(loraService.loadedLoras)
+      .map((ids, loaded) => carrying(ids, loaded.getOrElse(Nil)))
+
+  /** The selected LoRAs' settings into the form: over the fields that still
+    * hold a default, or over all of them when the user asks (`force`).
+    */
+  private def applyLoraSampling(force: Boolean): Unit =
+    service.capabilitiesOf(sessionId).foreach { capabilities =>
+      seeding.applyLoraSampling(
+        capabilities,
+        state.mode.now(),
+        selectedSampling,
+        force
+      )
+    }
+
+  private def selectedSampling: LoraSampling =
+    LoraSampling.of(
+      carrying(
+        state.selectedLoraIdsVar.now(),
+        loraService.loadedLorasNow.getOrElse(Nil)
+      )
+    )
+
   private def seedForm(capabilities: SessionCapabilities): Unit = {
     val initialMode =
       if (capabilities.supportedModes.contains(capabilities.currentMode))
@@ -288,6 +322,13 @@ class GenerationPanel(
     service.capabilitiesOf(sessionId).foreach { capabilities =>
       state.mode.set(newMode)
       seeding.seedModeFields(capabilities, newMode)
+      // the selection is the same, so nothing else lays its settings again
+      seeding.applyLoraSampling(
+        capabilities,
+        newMode,
+        selectedSampling,
+        force = false
+      )
     }
 
   /** The session's Log, Restart and Stop buttons. */
@@ -437,6 +478,19 @@ class GenerationPanel(
         seedForm(capabilities)
       case _ => ()
     },
+    // A LoRA is one more layer of defaults (`specs/49`): whenever the
+    // selection's settings, the mode or the session's defaults change, the
+    // fields the user has not changed follow.
+    samplingLoras
+      .map(LoraSampling.of)
+      .combineWith(state.mode.signal, capabilitiesSignal)
+      .distinct --> Observer[
+      (LoraSampling, String, Option[SessionCapabilities])
+    ] {
+      case (sampling, mode, Some(capabilities)) =>
+        seeding.applyLoraSampling(capabilities, mode, sampling, force = false)
+      case _ => ()
+    },
     // A reuse may name LoRAs before the collection has been listed.
     loraService.loadedLoras --> Observer[Option[List[Lora]]](
       seeding.resolvePendingLoras
@@ -526,6 +580,8 @@ class GenerationPanel(
                     state,
                     c,
                     loraPicker,
+                    samplingLoras,
+                    () => applyLoraSampling(force = true),
                     switchMode,
                     () => handleSubmit()
                   ).element

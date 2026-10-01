@@ -5,6 +5,8 @@ import drift.frontend.services.*
 import drift.frontend.services.GenerationService.Reuse
 import drift.shared.*
 
+import com.raquo.laminar.api.L.Var
+
 /** Lays values over the form: a mode's defaults, a reused generation
   * (`specs/12-gallery.md`), a project version (`specs/19-…`) and the
   * configuration's default LoRAs (`specs/28-configuration-loras.md`). It only
@@ -34,6 +36,7 @@ class RecipeSeeding(
     val defaults =
       capabilities.defaultsByMode.getOrElse(newMode, GenerationDefaults())
     val sample = cleanse(defaults.sampleParams)
+    untouchSampling()
     widthVar.set(defaults.width.toString)
     heightVar.set(defaults.height.toString)
     stepsVar.set(sample.sampleSteps.toString)
@@ -279,6 +282,8 @@ class RecipeSeeding(
       sample: SampleParameters
   ): Unit = {
     val cleansed = cleanse(sample)
+    // a recording's values are the user's: no LoRA's settings replace them
+    touchSampling()
     stepsVar.set(cleansed.sampleSteps.toString)
     cfgVar.set(cleansed.guidance.txtCfg.toString)
     applyGuidance(cleansed.guidance)
@@ -430,6 +435,58 @@ class RecipeSeeding(
   }
 
   // ------------------------------------------------------------------ loras
+
+  /** The selected LoRAs' sampling settings over the mode's defaults
+    * (`specs/49-lora-sampling-settings.md`), into the fields that still hold a
+    * default — and, when `force`d, into the ones the LoRAs set whatever they
+    * hold, which makes those defaults again. With no setting a field goes back
+    * to the session's own, so removing a LoRA takes its values away with it.
+    */
+  def applyLoraSampling(
+      capabilities: SessionCapabilities,
+      newMode: String,
+      sampling: LoraSampling,
+      force: Boolean
+  ): Unit = {
+    val defaults =
+      capabilities.defaultsByMode.getOrElse(newMode, GenerationDefaults())
+    val takesLoras = capabilities.featuresByMode
+      .getOrElse(newMode, Map.empty)
+      .getOrElse("lora", false)
+    val layer = if (takesLoras) sampling else LoraSampling()
+    val sample = layer.over(cleanse(defaults.sampleParams))
+    if (force) untouch(layer.fields)
+    def write(field: String, target: Var[String], value: String): Unit =
+      if (!touched(field)) target.set(value)
+    write("steps", stepsVar, sample.sampleSteps.toString)
+    write("cfg", cfgVar, sample.guidance.txtCfg.toString)
+    write("flowShift", flowShiftVar, sample.flowShift.fold("")(_.toString))
+    write(
+      "sigmas",
+      sigmasVar,
+      GenerationFormState.sigmasText(sample.customSigmas)
+    )
+    write(
+      "sampler",
+      samplerVar,
+      sample.sampleMethod.filter(capabilities.samplers.contains).getOrElse("")
+    )
+    write(
+      "scheduler",
+      schedulerVar,
+      sample.scheduler.filter(capabilities.schedulers.contains).getOrElse("")
+    )
+    write(
+      "distilledGuidance",
+      distilledGuidanceVar,
+      sample.guidance.distilledGuidance.toString
+    )
+    defaults.highNoiseSampleParams.foreach { highNoise =>
+      val expert = layer.overHighNoise(cleanse(highNoise))
+      write("highNoiseSteps", highNoiseStepsVar, expert.sampleSteps.toString)
+      write("highNoiseCfg", highNoiseCfgVar, expert.guidance.txtCfg.toString)
+    }
+  }
 
   /** The configuration's default LoRAs (`specs/28-configuration-loras.md`) as
     * the picker's whole selection, ids and strengths straight from the

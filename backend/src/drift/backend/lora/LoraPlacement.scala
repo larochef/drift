@@ -97,7 +97,8 @@ final private[lora] class LoraPlacement(
             architectureId = architectureId,
             label = label,
             files = files,
-            createdAt = System.currentTimeMillis()
+            createdAt = System.currentTimeMillis(),
+            sampling = LoraSampling()
           )
         )
     }

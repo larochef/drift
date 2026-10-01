@@ -6,5 +6,6 @@
   "005-flux2-dev-runner.json",
   "006-qwen36-mtp-head.json",
   "007-umt5-xxl-family.json",
-  "008-hidream-o1-runner.json"
+  "008-hidream-o1-runner.json",
+  "009-lora-sampling.json"
 ]

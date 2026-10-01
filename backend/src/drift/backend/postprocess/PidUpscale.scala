@@ -86,7 +86,7 @@ final private[postprocess] class PidUpscale(tiles: TiledJobs) {
                   seed = seed,
                   refImages = List(input.image),
                   autoResizeRefImage = Some(false),
-                  lora = loras,
+                  lora = loras.selections,
                   sampleParams = defaults.sampleParams.copy(
                     sampleSteps = request.steps,
                     guidance = defaults.sampleParams.guidance
@@ -97,7 +97,7 @@ final private[postprocess] class PidUpscale(tiles: TiledJobs) {
               ),
             target = target,
             rows = rows,
-            notes = notes ++ TiledJobs.loraNote(loras),
+            notes = notes ++ TiledJobs.loraNote(loras.selections),
             derivation = Derivation(
               parentId = src.parent.id,
               parentDate = src.date,

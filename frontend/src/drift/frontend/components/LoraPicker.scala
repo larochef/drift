@@ -92,6 +92,13 @@ class LoraPicker(
           lora.label,
           if (lora.nsfw) span(cls := "tag is-danger is-small ml-1", "nsfw")
           else emptyNode,
+          if (lora.sampling.nonEmpty)
+            span(
+              cls := "tag is-info is-light is-small ml-1",
+              title := s"Sets ${lora.sampling.summary.mkString(", ")}",
+              "⚙ sampling"
+            )
+          else emptyNode,
           if (invisible)
             span(
               cls := "tag is-warning is-small ml-1",

@@ -217,10 +217,15 @@ final private[postprocess] class Redraw(
                     else List.empty,
                   autoResizeRefImage =
                     Option.when(useReference && keepsReference)(false),
-                  lora = loras,
-                  sampleParams = request.steps.fold(defaults.sampleParams)(
-                    steps => defaults.sampleParams.copy(sampleSteps = steps)
-                  ),
+                  lora = loras.selections,
+                  // the session's sampling under the configuration's LoRAs'
+                  // (`specs/49`), under the steps the request asks for
+                  sampleParams = {
+                    val sampling = loras.sampling.over(defaults.sampleParams)
+                    request.steps.fold(sampling)(steps =>
+                      sampling.copy(sampleSteps = steps)
+                    )
+                  },
                   vaeTilingParams = defaults.vaeTilingParams
                 )
               ),
@@ -242,7 +247,7 @@ final private[postprocess] class Redraw(
                 (if (request.contextMargin > 0)
                    s"; each tile seen with up to ${request.contextMargin} px of the picture as redrawn so far around it, kept as it is under a mask, tiles in order"
                  else "")
-            ) ++ TiledJobs.loraNote(loras),
+            ) ++ TiledJobs.loraNote(loras.selections),
             prepareTile =
               if (request.softenRadius > 0)
                 PostProcessImages.softened(_, request.softenRadius)

@@ -140,6 +140,33 @@ final class ImageServer(
       ujson.Obj("error" -> s"$family generates with $mode only")
     )
 
+  /** The flow shift a request starts from: the launch's, else sd-server's
+    * default — or none for a family that derives its own.
+    */
+  private val defaultShift: Option[Double] = options.flowShift.orElse(
+    pipeline match {
+      case image: ImagePipeline if image.ownShift => None
+      case _ => Some(FlowSchedule.DefaultShift)
+    }
+  )
+
+  /** `--sigmas`, for a model that takes them. */
+  private val launchSigmas: Seq[Double] = pipeline match {
+    case image: ImagePipeline if image.takesSigmas => options.sigmas
+    case _                                         => Nil
+  }
+
+  /** A request's `sample_params.custom_sigmas`. */
+  private def requestSigmas(
+      sample: collection.Map[String, ujson.Value]
+  ): Seq[Double] =
+    sample
+      .get("custom_sigmas")
+      .filterNot(_.isNull)
+      .toSeq
+      .flatMap(_.arr)
+      .map(_.num)
+
   private def capabilities: ujson.Value = {
     val name = options.diffusionModel.getFileName.toString
     val sampleParams = ujson.Obj(
@@ -148,8 +175,8 @@ final class ImageServer(
       "sample_steps" -> steps,
       "eta" -> 0.0,
       "shifted_timestep" -> 0,
-      "custom_sigmas" -> ujson.Arr(),
-      "flow_shift" -> options.flowShift,
+      "custom_sigmas" -> ujson.Arr.from(launchSigmas),
+      "flow_shift" -> defaultShift.fold[ujson.Value](ujson.Null)(ujson.Num(_)),
       "guidance" -> ujson.Obj(
         "txt_cfg" -> options.cfgScale,
         "img_cfg" -> options.cfgScale,
@@ -286,6 +313,9 @@ final class ImageServer(
         "reference images"
       ),
       Option.when(loras.nonEmpty && !pipeline.takesLoras)("LoRAs"),
+      Option.when(requestSigmas(sample).nonEmpty && !pipeline.takesSigmas)(
+        "custom sigmas"
+      ),
       Option.when(
         field("hires").exists(h => h.obj.get("enabled").exists(_.bool))
       )("hires fix"),
@@ -315,13 +345,25 @@ final class ImageServer(
         return json(exchange, 400, ujson.Obj("error" -> problem))
     }
     val stretch = field("auto_resize_ref_image").forall(_.bool)
+    // the request's levels, else the launch's: a list is its own step count
+    val sigmas = Some(requestSigmas(sample))
+      .filter(_.nonEmpty)
+      .orElse(Some(launchSigmas).filter(_.nonEmpty))
+      .map(FlowSchedule.custom) match {
+      case Some(Left(problem)) =>
+        return json(exchange, 400, ujson.Obj("error" -> problem))
+      case Some(Right(schedule)) => Some(schedule)
+      case None                  => None
+    }
     val request = ImageRequest(
       prompt = field("prompt").map(_.str).getOrElse(options.prompt),
       negativePrompt =
         field("negative_prompt").map(_.str).getOrElse(options.negativePrompt),
       width = width,
       height = height,
-      steps = sample.get("sample_steps").map(_.num.toInt).getOrElse(steps),
+      steps = sigmas.fold(
+        sample.get("sample_steps").map(_.num.toInt).getOrElse(steps)
+      )(_.size - 1),
       cfgScale = guidance
         .flatMap(_.get("txt_cfg"))
         .map(_.num.toFloat)
@@ -338,7 +380,7 @@ final class ImageServer(
         .get("flow_shift")
         .filterNot(_.isNull)
         .map(_.num)
-        .getOrElse(options.flowShift),
+        .orElse(defaultShift),
       loras = loras.map { lora =>
         val path = Paths.get(lora("path").str)
         val resolved =
@@ -350,7 +392,8 @@ final class ImageServer(
       strength = field("strength").fold(0.75f)(_.num.toFloat),
       references =
         if (stretch) references.map(Images.resized(_, width, height))
-        else references
+        else references,
+      sigmas = sigmas
     )
     val missing = request.loras.map(_._1).filterNot(Files.isRegularFile(_))
     if (missing.nonEmpty)
@@ -358,6 +401,12 @@ final class ImageServer(
         exchange,
         400,
         ujson.Obj("error" -> s"no such LoRA: ${missing.mkString(", ")}")
+      )
+    if (request.shift.exists(_ <= 0))
+      return json(
+        exchange,
+        400,
+        ujson.Obj("error" -> s"a flow shift of ${request.shift.get}: above 0")
       )
     if (request.width % 16 != 0 || request.height % 16 != 0)
       return json(
@@ -407,6 +456,7 @@ final class ImageServer(
           !pipeline.takesControl
       )("control videos"),
       Option.when(present("lora") && !pipeline.takesLoras)("LoRAs"),
+      Option.when(requestSigmas(sample).nonEmpty)("custom sigmas"),
       Option.when(
         field("vae_tiling_params").exists(t =>
           t.obj.get("enabled").exists(_.bool)
@@ -499,7 +549,8 @@ final class ImageServer(
         .get("flow_shift")
         .filterNot(_.isNull)
         .map(_.num)
-        .getOrElse(options.flowShift),
+        .orElse(options.flowShift)
+        .getOrElse(FlowSchedule.DefaultShift),
       highNoiseSteps = highNoise
         .get("sample_steps")
         .filterNot(_.isNull)

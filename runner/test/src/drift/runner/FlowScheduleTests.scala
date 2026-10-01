@@ -62,5 +62,14 @@ object FlowScheduleTests extends TestSuite {
         )
       )
     }
+    test("custom sigmas: a turbo LoRA's levels, the final 0 added") {
+      val turbo = Seq(1.0, 0.9375, 0.875, 0.75, 0.5, 0.25)
+      assert(FlowSchedule.custom(turbo).exists(close(_, turbo :+ 0.0)))
+      assert(FlowSchedule.custom(turbo :+ 0.0).exists(_.size == 7))
+      assert(FlowSchedule.custom(Seq(1.0, 0.5, 0.5)).isLeft)
+      assert(FlowSchedule.custom(Seq(1.5, 0.5)).isLeft)
+      assert(FlowSchedule.custom(Seq(0.0)).isLeft)
+      assert(FlowSchedule.custom(Nil).isLeft)
+    }
   }
 }

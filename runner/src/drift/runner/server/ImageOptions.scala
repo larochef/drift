@@ -26,7 +26,8 @@ final case class ImageOptions(
       * models that embed one (FLUX.2 [dev]), noted and ignored by the others.
       */
     guidance: Option[Double],
-    flowShift: Double,
+    /** `--flow-shift`, when given; else the family's own (`ImageServer`). */
+    flowShift: Option[Double],
     seed: Long,
     prompt: String,
     negativePrompt: String,
@@ -61,6 +62,10 @@ final case class ImageOptions(
       * ControlNet union.
       */
     controlNet: Option[Path],
+    /** Noise levels in place of the model's schedule (`--sigmas`, comma
+      * separated), for the models that take them; none is the schedule.
+      */
+    sigmas: Seq[Double],
     notes: Seq[String]
 )
 
@@ -127,7 +132,7 @@ object ImageOptions {
             "--llm_vision" | "--audio-vae" | "--video-frames" |
             "--high-noise-diffusion-model" | "--t5xxl" | "--high-noise-steps" |
             "--high-noise-cfg-scale" | "--moe-boundary" | "--fps" |
-            "--control-net" =>
+            "--control-net" | "--sigmas" =>
           value().foreach(v => values(canonical(flag)) = v)
         case other if NotYet.contains(other) =>
           problem = Some(s"$other is not supported yet: ${NotYet(other)}")
@@ -161,7 +166,7 @@ object ImageOptions {
         values.get("--steps").map(_.toInt),
         values.get("--cfg-scale").fold(1.0)(_.toDouble),
         values.get("--guidance").map(_.toDouble),
-        values.get("--flow-shift").fold(1.15)(_.toDouble),
+        values.get("--flow-shift").map(_.toDouble),
         values.get("-s").fold(-1L)(_.toLong),
         values.getOrElse("-p", ""),
         values.getOrElse("-n", ""),
@@ -177,6 +182,11 @@ object ImageOptions {
         values.get("--moe-boundary").fold(0.875)(_.toDouble),
         values.get("--fps").map(_.toInt),
         values.get("--control-net").map(Paths.get(_)),
+        values
+          .get("--sigmas")
+          .toSeq
+          .flatMap(_.split(',').map(_.trim).filter(_.nonEmpty))
+          .map(_.toDouble),
         notes.result()
       )
     }

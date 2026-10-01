@@ -1773,6 +1773,30 @@ on the old tool.
       - **Fixed with it:** the text encoder read the residual stream after
         the second-to-last layer; diffusers and sd-cpp read it after the
         last.
+      - **Flow shift, 2026-10-01.** The model's schedule shifts by the image's
+        size (about 2 at 1024²) and is stretched to a last level of 0.02; a
+        turbo LoRA wants its steps nearer the noisy end. A given shift (the
+        request's `flow_shift`, else `--flow-shift`) is now the whole
+        schedule: `s σ / (1 + (s − 1) σ)` on the linear levels, not
+        stretched. With none the model's own runs, unchanged (the same seed,
+        the same pixels), and the capabilities report `flow_shift: null`, so
+        that drift does not send a default back as an override (`ownShift`;
+        the other families keep sd-server's 1.15). **Live**, Viggle's 6-step
+        LoRA, 1024², CFG 1: shift 3 at 6 steps is as clean as its published
+        levels, and at 8 steps the sign's text reads; stretched to 0.02, or
+        on fewer steps than the LoRA's (4, from its own levels or resampled),
+        the images break. One seed, one prompt.
+      - **Custom sigmas, 2026-10-01** (`FlowSchedule.custom`): a request's
+        `sample_params.custom_sigmas`, else the launch's `--sigmas`, replace
+        the schedule (shift and stretch included) — a turbo LoRA's own noise
+        levels. From at most 1 strictly down; the final 0 is added when the
+        list stops above it; the steps are the list's. Anything else is a
+        400. Qwen Image 2.1 only: the other families refuse a request's
+        sigmas and say at startup that they ignore `--sigmas`. **Live:**
+        Viggle's 6-step turbo LoRA (v0.2.1, r256) at 1024², CFG 1, 5.2 s a
+        step, 36 s: with its levels (1.0, 0.9375, 0.875, 0.75, 0.5, 0.25) a
+        clean photograph; on the model's own schedule, the same seed comes
+        out with debris and broken structures.
     - **Done 2026-09-29: HiDream O1 Image** (Dev and full), txt2img and
       img2img (`models/HiDreamO1`, `diffusion/HiDreamO1Pipeline`).
       - **Reference.** HiDream-ai's own code (`HiDream-O1-Image`, main:

@@ -14,6 +14,11 @@ object FlowSchedule {
   def firstStep(steps: Int, strength: Float): Int =
     steps - math.min((steps * strength).toInt, steps)
 
+  /** sd-server's flow shift when neither the flags nor the request give one,
+    * for the families that read it.
+    */
+  val DefaultShift = 1.15
+
   def sigmas(steps: Int, shift: Double): IndexedSeq[Float] = {
     require(steps >= 1, s"$steps steps")
     val e = math.exp(shift)
@@ -38,6 +43,24 @@ object FlowSchedule {
       val a = (m200 - m10) / 190
       a * steps + (m200 - 200 * a)
     }
+  }
+
+  /** A request's own noise levels (sd-cpp's `--sigmas`, `custom_sigmas`) as a
+    * schedule: from at most 1 down, strictly, with the final 0 added when the
+    * list stops above it — a step-distilled model's levels, which its turbo
+    * LoRA was trained on and no shift reproduces.
+    */
+  def custom(levels: Seq[Double]): Either[String, IndexedSeq[Float]] = {
+    val schedule =
+      if (levels.lastOption.contains(0.0)) levels else levels :+ 0.0
+    if (schedule.size < 2) Left("custom sigmas: no noise level above 0")
+    else if (schedule.exists(level => level.isNaN || level < 0 || level > 1))
+      Left(
+        s"custom sigmas: ${levels.mkString(", ")} are not all within 0 and 1"
+      )
+    else if (schedule.zip(schedule.tail).exists((a, b) => b >= a))
+      Left(s"custom sigmas: ${levels.mkString(", ")} do not go strictly down")
+    else Right(schedule.map(_.toFloat).toIndexedSeq)
   }
 
   /** Qwen Image 2.1's μ for `imageTokens` (its scheduler's configuration): the

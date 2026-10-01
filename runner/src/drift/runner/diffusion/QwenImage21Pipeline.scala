@@ -42,6 +42,8 @@ final class QwenImage21Pipeline(
   def takesInitImage: Boolean = true
   def takesReferences: Boolean = tower.isDefined
   def takesLoras: Boolean = true
+  override def takesSigmas: Boolean = true
+  override def ownShift: Boolean = true
   def takesGuidance: Boolean = false
 
   private val encoder = Qwen3.open(ops, textEncoder)
@@ -226,12 +228,21 @@ final class QwenImage21Pipeline(
       val unconditional = Option.when(guided)(
         keep(prefix(request.negativePrompt, tokens, references.toSeq))
       )
-      val sigmas = FlowSchedule.stretched(
-        FlowSchedule.sigmas(
-          request.steps,
-          FlowSchedule.qwenImage21Shift(tokens)
-        ),
-        0.02
+      // a given flow shift is the whole schedule, not stretched to the
+      // terminal: what a turbo LoRA wants (stretched, its images break)
+      val sigmas = request.sigmas.getOrElse(
+        request.shift match {
+          case Some(shift) =>
+            FlowSchedule.sigmas(request.steps, math.log(shift))
+          case None =>
+            FlowSchedule.stretched(
+              FlowSchedule.sigmas(
+                request.steps,
+                FlowSchedule.qwenImage21Shift(tokens)
+              ),
+              0.02
+            )
+        }
       )
       val random = new SplittableRandom(request.seed)
       val noise = Array.fill(tokens * channels)(Images.gaussian(random))

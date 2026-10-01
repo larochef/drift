@@ -21,7 +21,11 @@ final case class ImageRequest(
     cfgScale: Float,
     guidance: Float,
     seed: Long,
-    shift: Double,
+    /** The flow shift (sd-cpp's `--flow-shift`, `flow_shift`): the request's,
+      * else the launch's, else `FlowSchedule.DefaultShift` — or none of them
+      * for a family with its own (`ownShift`), which then runs that.
+      */
+    shift: Option[Double],
     /** LoRA files, each with its multiplier. */
     loras: Seq[(Path, Float)],
     /** img2img's starting image, already `width × height`. */
@@ -29,7 +33,11 @@ final case class ImageRequest(
     /** How much of the schedule img2img runs, in (0, 1]. */
     strength: Float,
     /** Reference images, each its own size. */
-    references: Seq[BufferedImage]
+    references: Seq[BufferedImage],
+    /** The noise levels to step through in place of the model's schedule, 0
+      * last (`FlowSchedule.custom`): `steps` is one less than their count.
+      */
+    sigmas: Option[IndexedSeq[Float]]
 )
 
 /** A model family end to end, from a prompt to an image. */
@@ -49,6 +57,14 @@ trait ImagePipeline extends AutoCloseable {
 
   /** Whether the model reads the distilled guidance scale. */
   def takesGuidance: Boolean
+
+  /** Whether the family derives its flow shift itself (from the image's size)
+    * and only reads one that a request or the launch gives.
+    */
+  def ownShift: Boolean = false
+
+  /** Whether requests may carry their own noise levels (custom sigmas). */
+  def takesSigmas: Boolean = false
 
   /** The image of `request`; `progress(0, steps)` before the first step,
     * `progress(step, steps)` after each.

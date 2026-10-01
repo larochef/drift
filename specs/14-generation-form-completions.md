@@ -15,7 +15,11 @@ and SLG, and the high-noise pass of two-expert video models.
   steps and CFG when the session reports high-noise defaults (wan 2.2's two
   experts), frames on video, seed with Random, and the LoRA picker (09).
 - Folded sections, each a `CollapsibleSection`: **Sampling** (sampler,
-  scheduler), **Inputs** (init image, reference images for edit, end image on
+  scheduler, flow shift — empty is the model's own, which the session reports
+  as none when the model derives it from the image's size — and custom sigmas: noise levels typed as a list, in place of the
+  scheduler's — what a turbo LoRA is distilled on; the list is its own step
+  count, and a list that does not read is flagged and not sent),
+  **Inputs** (init image, reference images for edit, end image on
   video, mask shown only once an init image is attached, strength),
   **Hires** (10), **VAE tiling** (10), **Guidance & SLG** (image CFG, blank
   = the model's own; distilled guidance; SLG layers, scale, start, end),
@@ -23,7 +27,8 @@ and SLG, and the high-noise pass of two-expert video models.
   image mode only — the native video request has no batch).
 - A closed section says so when it is doing something: Hires and VAE tiling
   when enabled, Inputs when an image is attached, Sampling only when sampler
-  or scheduler differ from the session's defaults.
+  scheduler or flow shift differ from the session's defaults, or sigmas are
+  set.
 - Open/closed state is per user, not per project: it lives on
   `CollapsibleSection`'s companion, so it survives the panel being rebuilt for
   another configuration and a version being applied. It does not survive a

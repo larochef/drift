@@ -118,12 +118,20 @@ class GenerationSubmission(
 
     // The form's sampling fields over a base — the session's defaults or,
     // after a reuse, the recorded request — so what the form never shows
-    // (SLG, eta, flow shift, custom sigmas) rides along unchanged. An empty
-    // sampler or scheduler is "(model default)": the field is omitted.
+    // (SLG, eta) rides along unchanged. An empty sampler, scheduler or flow
+    // shift is "(model default)": the field is omitted. Custom sigmas
+    // are their own step count; a list that does not read keeps the base's.
     def sampleOver(base: SampleParameters): SampleParameters = {
       val cleansed = cleanse(base)
+      val sigmas = GenerationFormState
+        .sigmasOf(sigmasVar.now())
+        .getOrElse(cleansed.customSigmas)
       cleansed.copy(
-        sampleSteps = intOf(stepsVar, cleansed.sampleSteps),
+        sampleSteps =
+          if (sigmas.isEmpty) intOf(stepsVar, cleansed.sampleSteps)
+          else GenerationFormState.sigmaSteps(sigmas),
+        customSigmas = sigmas,
+        flowShift = flowShiftVar.now().trim.toDoubleOption,
         guidance = guidanceOver(cleansed.guidance),
         sampleMethod = chosen(samplerVar),
         scheduler = chosen(schedulerVar)

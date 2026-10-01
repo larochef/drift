@@ -46,7 +46,15 @@ Always visible:
 Folded sections, opened on click. A closed section says when it is doing
 something (an image attached, hires on, a non-default sampler):
 
-- **Sampling**: sampler and scheduler.
+- **Sampling**: sampler and scheduler; **Flow shift**: how far the steps lean
+  toward the noisy end (empty: the model's own). A turbo LoRA usually wants
+  about 3 with CFG 1 and at least the steps it was made for — more steps are
+  fine, fewer break the image. And **Sigmas**: the noise levels to
+  step through, typed as a list (`1.0, 0.9375, 0.875, 0.75, 0.5, 0.25`), in
+  place of the scheduler's. A turbo LoRA is trained on its own few levels and
+  its page lists them; with a list, the steps are the list's, whatever
+  **Steps** says. sd-cpp takes them for every model, the drift runner for
+  Qwen Image 2.1 so far (it refuses them elsewhere).
 - **Inputs**: init image (img2img) with a strength, reference images (edit),
   and a mask once an init image is attached (inpaint). On video: start and
   end images, references, guides and a control video, as far as the model

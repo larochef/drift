@@ -98,7 +98,11 @@ final class HiDreamO1Pipeline(ops: Ops, modelFile: Path, tokenizerFile: Path)
       println(s"[WARN] LoRA left unapplied: $problem")
     )
     val sigmas =
-      if (guided) FlowSchedule.sigmas(request.steps, math.log(request.shift))
+      if (guided)
+        FlowSchedule.sigmas(
+          request.steps,
+          math.log(request.shift.getOrElse(FlowSchedule.DefaultShift))
+        )
       else distilledSigmas(request.steps)
     val noiseScale = if (guided) GuidedNoise else DistilledNoise
     val random = new SplittableRandom(request.seed)

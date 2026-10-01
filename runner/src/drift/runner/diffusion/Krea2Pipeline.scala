@@ -116,7 +116,10 @@ final class Krea2Pipeline(
     val velocity = ops.allocate(DType.F32, latents.shape)
     val other = unconditional.map(_ => ops.allocate(DType.F32, latents.shape))
     try {
-      val sigmas = FlowSchedule.sigmas(request.steps, request.shift)
+      val sigmas = FlowSchedule.sigmas(
+        request.steps,
+        request.shift.getOrElse(FlowSchedule.DefaultShift)
+      )
       // img2img: x = σ × noise + (1 − σ) × init at the first step run
       val first = request.initImage.fold(0) { init =>
         val start = FlowSchedule.firstStep(request.steps, request.strength)

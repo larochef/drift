@@ -42,6 +42,8 @@ class RecipeSeeding(
     applyGuidance(sample.guidance)
     samplerVar.set(sample.sampleMethod.getOrElse(""))
     schedulerVar.set(sample.scheduler.getOrElse(""))
+    sigmasVar.set(GenerationFormState.sigmasText(sample.customSigmas))
+    flowShiftVar.set(sample.flowShift.fold("")(_.toString))
     seedVar.set(if (defaults.seed < 0) "" else defaults.seed.toString)
     videoFramesVar.set(defaults.videoFrames.toString)
     fpsVar.set(defaults.fps.toString)
@@ -286,6 +288,8 @@ class RecipeSeeding(
     schedulerVar.set(
       cleansed.scheduler.filter(capabilities.schedulers.contains).getOrElse("")
     )
+    sigmasVar.set(GenerationFormState.sigmasText(cleansed.customSigmas))
+    flowShiftVar.set(cleansed.flowShift.fold("")(_.toString))
     // Dropping one is the rule, not a fault — the select could not show it —
     // but doing it silently changes the recipe behind the user's back, and the
     // next run then differs from the version it came from.

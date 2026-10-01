@@ -30,6 +30,17 @@ class GenerationFormState {
   val cfgVar = Var("")
   val samplerVar = Var("")
   val schedulerVar = Var("")
+
+  /** The flow shift (sd-cpp's `--flow-shift`): how far the schedule leans
+    * toward the noisy end. Empty is the model's own — which for some is a
+    * function of the image's size, not a number the session could report.
+    */
+  val flowShiftVar = Var("")
+
+  /** Noise levels in place of the scheduler's (sd-cpp's `--sigmas`), as typed:
+    * what a turbo LoRA was distilled on. Empty is the model's own schedule.
+    */
+  val sigmasVar = Var("")
   val seedVar = Var("")
   val randomSeedVar = Var(true)
   val videoFramesVar = Var("")
@@ -154,6 +165,21 @@ object GenerationFormState {
     * or scheduler; sending it back is not worth trusting, so it maps to "omit
     * the field" everywhere.
     */
+  /** Custom sigmas as typed, separated by commas or spaces: none when a piece
+    * is no number, an empty list for an empty field.
+    */
+  def sigmasOf(text: String): Option[List[Double]] = {
+    val values =
+      text.split("[,\\s]+").toList.filter(_.nonEmpty).map(_.toDoubleOption)
+    Option.when(values.forall(_.isDefined))(values.flatten)
+  }
+
+  def sigmasText(sigmas: List[Double]): String = sigmas.mkString(", ")
+
+  /** The steps a list of sigmas is: one a level, the final 0 aside. */
+  def sigmaSteps(sigmas: List[Double]): Int =
+    if (sigmas.lastOption.contains(0.0)) sigmas.size - 1 else sigmas.size
+
   def cleanse(parameters: SampleParameters): SampleParameters =
     parameters.copy(
       scheduler = parameters.scheduler.filter(_ != "default"),

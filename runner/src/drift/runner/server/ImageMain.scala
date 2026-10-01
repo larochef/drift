@@ -92,6 +92,10 @@ object ImageMain {
         )
         pipeline match {
           case image: ImagePipeline =>
+            if (options.sigmas.nonEmpty && !image.takesSigmas)
+              println(
+                s"--sigmas accepted and ignored: $family runs its own schedule"
+              )
             if (options.guidance.isDefined && !image.takesGuidance)
               println(
                 s"--guidance ${options.guidance.get} accepted and ignored: $family has no guidance embedding"

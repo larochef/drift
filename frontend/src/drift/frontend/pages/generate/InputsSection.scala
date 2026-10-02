@@ -15,7 +15,9 @@ import com.raquo.laminar.api.L.*
 class InputsSection(
     state: GenerationFormState,
     capabilities: SessionCapabilities,
-    currentMode: String
+    currentMode: String,
+    /** The gallery and the assistant, where the page has them. */
+    tools: InputTools
 ) extends Component {
   import state.{
     controlVideoVar,
@@ -97,7 +99,8 @@ class InputsSection(
           singleMediaPicker(
             "Start image (img2vid)",
             initImageVar,
-            MediaAccept.Images
+            MediaAccept.Images,
+            tools
           )
         else emptyNode,
         // No strength input for video: wan-style I2V conditions on the clean
@@ -105,7 +108,12 @@ class InputsSection(
         // conditioning strength, not img2img denoise. The server default
         // passes through untouched.
         if (enabled("end_image"))
-          singleMediaPicker("End image", endImageVar, MediaAccept.Images)
+          singleMediaPicker(
+            "End image",
+            endImageVar,
+            MediaAccept.Images,
+            tools
+          )
         else emptyNode,
         // Order is meaning here: the prompt names references by position.
         if (enabled("references"))
@@ -113,11 +121,13 @@ class InputsSection(
             "References (in the order the prompt names them)",
             referencesVar,
             MediaAccept.AnyMedia,
-            ordered = true
+            ordered = true,
+            tools
           )
         else emptyNode,
-        if (enabled("guides")) GuidesPicker(state).element else emptyNode,
-        if (enabled("control_video")) ControlVideoInputs(state).element
+        if (enabled("guides")) GuidesPicker(state, tools).element
+        else emptyNode,
+        if (enabled("control_video")) ControlVideoInputs(state, tools).element
         else emptyNode
       )
     else
@@ -126,7 +136,8 @@ class InputsSection(
           singleMediaPicker(
             "Init image (img2img)",
             initImageVar,
-            MediaAccept.Images
+            MediaAccept.Images,
+            tools
           )
         else emptyNode,
         strengthField,
@@ -137,7 +148,9 @@ class InputsSection(
               singleMediaPicker(
                 "Mask (inpaint)",
                 maskImageVar,
-                MediaAccept.Images
+                MediaAccept.Images,
+                tools,
+                askable = false
               )
             case None => emptyNode
           }
@@ -147,7 +160,8 @@ class InputsSection(
             "Reference images (edit)",
             refImagesVar,
             MediaAccept.Images,
-            ordered = false
+            ordered = false,
+            tools
           )
         else emptyNode
       )

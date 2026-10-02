@@ -98,23 +98,16 @@ class GalleryPage(
       showNsfw.signal,
       nsfwProjectIds
     )
-    .map { (configuration, kind, search, project, nsfwShown, nsfwProjects) =>
-      val needle = search.trim.toLowerCase
-      generation =>
-        (configuration.isEmpty ||
-          generation.runConfigurationId == configuration) &&
-          (project.isEmpty || generation.projectId.contains(project)) &&
-          (nsfwShown || !generation.projectId.exists(nsfwProjects)) &&
-          // Derived entries (upscale, resize) are images too.
-          (kind.isEmpty ||
-            (if (kind == "vid_gen") generation.kind == "vid_gen"
-             else generation.kind != "vid_gen")) &&
-          (needle.isEmpty ||
-            RecordedParameters
-              .promptOf(generation)
-              .toLowerCase
-              .contains(needle))
-    }
+    .map((configuration, kind, search, project, nsfwShown, nsfwProjects) =>
+      GalleryFilter.matches(
+        configuration,
+        kind,
+        search,
+        project,
+        nsfwShown,
+        nsfwProjects
+      )
+    )
 
   /** Everything the loaded days hold — the pool the detail resolves lineage in
     * and the bulk delete reads its dates from.

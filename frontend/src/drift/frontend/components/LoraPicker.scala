@@ -33,10 +33,49 @@ class LoraPicker(
     /** Beside the NSFW checkbox in the header — a run configuration's picker
       * puts the button that installs more LoRAs there.
       */
-    headerAction: Modifier[HtmlElement] = emptyMod
+    headerAction: Modifier[HtmlElement] = emptyMod,
+    /** The editor of a LoRA's sampling settings
+      * (`specs/49-lora-sampling-settings.md`), opened from a selected LoRA's ⚙
+      * so they are typed where they are tried; without it the mark only says
+      * the LoRA carries some.
+      */
+    samplingEditor: Option[Lora => HtmlElement] = None
 ) extends Component {
 
   private val searchVar = Var("")
+
+  /** The selected LoRAs whose sampling editor is open: kept here, since a row
+    * is drawn again each time its LoRA is saved.
+    */
+  private val samplingOpen = Var(Set.empty[String])
+
+  /** What a LoRA's settings are, on its row: a mark where they are only shown,
+    * the editor's toggle where they can be typed — offered on a LoRA with none
+    * yet too, which is the one that needs them.
+    */
+  private def samplingMark(lora: Lora): Node = {
+    val colour = if (lora.sampling.nonEmpty) " is-info is-light" else ""
+    val sets =
+      if (lora.sampling.nonEmpty)
+        s"Sets ${lora.sampling.summary.mkString(", ")}"
+      else "Sets no sampling yet"
+    samplingEditor match {
+      case Some(_) =>
+        a(
+          cls := s"tag is-small ml-1$colour",
+          title := s"$sets — click to edit the settings this LoRA was made for",
+          "⚙ sampling",
+          onClick --> (_ =>
+            samplingOpen.update(open =>
+              if (open.contains(lora.id)) open - lora.id else open + lora.id
+            )
+          )
+        )
+      case None if lora.sampling.nonEmpty =>
+        span(cls := s"tag is-small ml-1$colour", title := sets, "⚙ sampling")
+      case None => emptyNode
+    }
+  }
 
   private def add(lora: Lora): Unit = {
     selectedIds.update(ids =>
@@ -92,13 +131,7 @@ class LoraPicker(
           lora.label,
           if (lora.nsfw) span(cls := "tag is-danger is-small ml-1", "nsfw")
           else emptyNode,
-          if (lora.sampling.nonEmpty)
-            span(
-              cls := "tag is-info is-light is-small ml-1",
-              title := s"Sets ${lora.sampling.summary.mkString(", ")}",
-              "⚙ sampling"
-            )
-          else emptyNode,
+          samplingMark(lora),
           if (invisible)
             span(
               cls := "tag is-warning is-small ml-1",
@@ -142,7 +175,13 @@ class LoraPicker(
             }
           )
         )
-      else emptyNode
+      else emptyNode,
+      samplingEditor.map(editor =>
+        child <-- samplingOpen.signal.map(_.contains(lora.id)).distinct.map {
+          case true  => editor(lora)
+          case false => emptyNode
+        }
+      )
     )
   }
 

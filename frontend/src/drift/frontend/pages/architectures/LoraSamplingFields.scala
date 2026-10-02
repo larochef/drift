@@ -162,3 +162,10 @@ class LoraSamplingFields(
       )
     )
 }
+
+object LoraSamplingFields {
+
+  /** Two experts (wan 2.2): a LoRA then sets the high-noise expert's too. */
+  def twoExperts(architecture: Architecture): Boolean =
+    architecture.checkpoints.exists(_.flag == "--high-noise-diffusion-model")
+}

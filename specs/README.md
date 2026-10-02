@@ -61,6 +61,7 @@ in [`../docs/`](../docs/README.md).
 | [47](47-sandbox.md) | Sandbox page: free play out of the Models page, image / video / text switch | done in code, not run live |
 | [48](48-soundtrack-polish.md) | Soundtrack polish: a post-processing step on a video's audio (loudness, de-harsh, denoise, low cut) through ffmpeg | planned |
 | [49](49-lora-sampling-settings.md) | Sampling settings on LoRAs: a turbo LoRA carries its steps, CFG, flow shift and sigmas, and selecting it sets them | done in code, not yet run live |
+| [50](50-inputs-from-the-gallery.md) | Inputs from the gallery: every input slot and the assistant pick from the gallery with its filters; an input goes to the assistant in one click | partial |
 
 ## What is left
 

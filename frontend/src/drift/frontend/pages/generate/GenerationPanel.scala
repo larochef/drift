@@ -1,6 +1,8 @@
 package drift.frontend.pages.generate
 
 import drift.frontend.components.*
+import drift.frontend.pages.architectures.LoraSamplingFields
+import drift.frontend.pages.gallery.GalleryPicker
 import drift.frontend.services.*
 import drift.frontend.services.GenerationService.Reuse
 import drift.shared.*
@@ -58,6 +60,10 @@ class GenerationPanel(
       * made from.
       */
     project: Option[GenerationPanel.ProjectBinding] = None,
+    /** The gallery as a source of inputs (`specs/50`), on the pages that host
+      * its picker.
+      */
+    pickFromGallery: Option[GalleryPicker.Open] = None,
     /** Opens one of this generation's outputs full screen, on pages that have a
       * detail view to open it in — the workspace's. A result is a result
       * wherever it is clicked (`specs/19-…`).
@@ -128,6 +134,42 @@ class GenerationPanel(
     scratch,
     () => submitContext
   )
+
+  /** The gallery entries picked into this form, by the URL their slot holds:
+    * what the assistant is told of one it is shown.
+    */
+  private var pickedOutputs = Map.empty[String, GalleryPicker.Picked]
+
+  private val inputTools = InputTools(
+    fromGallery = pickFromGallery.map(open =>
+      (accepted, multiple, onPicked) =>
+        open(
+          accepted,
+          multiple,
+          picked => {
+            pickedOutputs ++= picked.map(entry => entry.output.url -> entry)
+            onPicked(picked.map(_.output.url))
+          }
+        )
+    ),
+    askAssistant = Some(askAssistant)
+  )
+
+  /** An input shown to the assistant: a gallery entry as the gallery stages it,
+    * with its parameters; anything else uploaded as the file it is.
+    */
+  private def askAssistant(source: String): Unit =
+    pickedOutputs.get(source) match {
+      case Some(picked) =>
+        assistantService.attach(
+          AssistantService.outputAttachment(
+            picked.generation,
+            picked.output,
+            picked.configurationLabel
+          )
+        )
+      case None => assistantService.uploadFrom(source, "input image")
+    }
 
   /** Puts a proposal into the two prompt fields, from the assistant column of a
     * workspace or the pending hand-off of the Assistant page.
@@ -254,6 +296,18 @@ class GenerationPanel(
       _.map(architecture =>
         LoraInstallButton(browsers, architecture, loraService).element
       ).getOrElse(emptyNode)
+    ),
+    // A LoRA's own settings, typed where they are tried: saved on the LoRA,
+    // they reach the form as its layer of defaults does.
+    samplingEditor = Some(lora =>
+      div(
+        child <-- targetArchitecture
+          .map(_.exists(LoraSamplingFields.twoExperts))
+          .distinct
+          .map(twoExperts =>
+            LoraSamplingFields(lora, twoExperts, loraService).element
+          )
+      )
     )
   )
 
@@ -544,7 +598,8 @@ class GenerationPanel(
                     samplingLoras,
                     () => applyLoraSampling(force = true),
                     switchMode,
-                    () => handleSubmit()
+                    () => handleSubmit(),
+                    inputTools
                   ).element
                 )
                 .getOrElse(emptyNode)

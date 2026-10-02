@@ -434,6 +434,23 @@ object Derivation {
   given Schema[Derivation] = Schema.derived
 }
 
+/** An input that was picked from the gallery rather than from the disk
+  * (`specs/50-inputs-from-the-gallery.md`): which slot of the request it filled
+  * — "init", "end", "mask", "ref0", "reference1", "control"… the names the
+  * persisted inputs carry — and the output it was. The generation keeps its own
+  * copy of the input all the same; this is the way back to the entry.
+  */
+case class InputSource(
+    slot: String,
+    generationId: String,
+    outputIndex: Int,
+    date: String,
+    fileName: String
+)
+object InputSource {
+  given Schema[InputSource] = Schema.derived
+}
+
 /** One generation job, drift's view: the native job's lifecycle plus what drift
   * adds — which session and run configuration produced it, the full request,
   * and the files persisted on completion. Written as the sidecar JSON next to
@@ -468,6 +485,10 @@ case class Generation(
       * anything drift made.
       */
     importedFileName: Option[String],
+    /** The gallery entries its inputs were picked from (`specs/50`); none for
+      * inputs browsed from the disk.
+      */
+    inputSources: List[InputSource],
     /** The project and version this generation belongs to
       * (`specs/19-projects-and-prompt-versions.md`); derived entries inherit
       * their parent's.

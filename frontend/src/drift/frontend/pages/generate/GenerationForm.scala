@@ -18,7 +18,9 @@ class GenerationForm(
     samplingLoras: Signal[List[Lora]],
     onApplyLoraSampling: () => Unit,
     onSwitchMode: String => Unit,
-    onGenerate: () => Unit
+    onGenerate: () => Unit,
+    /** The gallery and the assistant, for the input slots (`specs/50`). */
+    inputTools: InputTools
 ) extends Component {
 
   private def takesLoras(currentMode: String): Boolean =
@@ -42,7 +44,7 @@ class GenerationForm(
       SamplingSection(state, capabilities, m).element
     ),
     child <-- state.mode.signal.map(m =>
-      InputsSection(state, capabilities, m).element
+      InputsSection(state, capabilities, m, inputTools).element
     ),
     child <-- state.mode.signal.map(m =>
       HiresSection(state, capabilities, m).element

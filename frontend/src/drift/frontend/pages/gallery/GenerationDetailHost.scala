@@ -358,9 +358,21 @@ class GenerationDetailHost(
           generation.derivation.flatMap(d => loaded.find(_.id == d.parentId))
         )
         .distinct,
+      inputs = pool
+        .map(loaded =>
+          generation.inputSources
+            .map(_.generationId)
+            .distinct
+            .flatMap(id => loaded.find(_.id == id))
+        )
+        .distinct,
+      // What a post-processing made of it, and what took it as an input
+      // (`specs/50`).
       derivatives = pool.distinct.map(
-        _.filter(_.derivation.exists(_.parentId == generation.id))
-          .sortBy(_.submittedAt)
+        _.filter(entry =>
+          entry.derivation.exists(_.parentId == generation.id) ||
+            entry.inputSources.exists(_.generationId == generation.id)
+        ).sortBy(_.submittedAt)
       ),
       sourcePrompt = shown.sourcePrompt,
       onOpen = id => open.set(Some(GenerationDetailHost.Open(id))),

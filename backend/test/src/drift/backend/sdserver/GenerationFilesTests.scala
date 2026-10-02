@@ -1,5 +1,7 @@
 package drift.backend.sdserver
 
+import drift.shared.InputSource
+
 import utest.*
 
 import java.nio.file.Files
@@ -67,6 +69,52 @@ object GenerationFilesTests extends TestSuite {
           .decodeMediaData(dataUrl("application/octet-stream"))
           ._2 == "png"
       )
+    }
+
+    // `specs/50-inputs-from-the-gallery.md`: a picked entry arrives as the URL
+    // it is served from; the bytes sd-server takes and the way back to the
+    // entry are both read off the outputs.
+    test("a gallery output's URL becomes its bytes and names its entry") {
+      val root = Files.createTempDirectory("drift-served")
+      val day = Files.createDirectories(root.resolve("2026-10-02"))
+      Files.write(day.resolve("g7-1-0.png"), bytes)
+      Files.write(day.resolve("g7-1-1.png"), bytes)
+      Files.write(day.resolve("g7-1-init.png"), bytes)
+      // A sidecar as it was written before inputs had sources: no such field.
+      Files.writeString(
+        day.resolve("g7-1.json"),
+        """{"id":"g7-1","session_id":"s","run_configuration_id":"c",
+          |"kind":"img_gen","status":"Completed","submitted_at":1,
+          |"outputs":[
+          |{"date":"2026-10-02","file_name":"g7-1-0.png",
+          | "url":"/api/outputs/2026-10-02/g7-1-0.png",
+          | "mime_type":"image/png","format":"png"},
+          |{"date":"2026-10-02","file_name":"g7-1-1.png",
+          | "url":"/api/outputs/2026-10-02/g7-1-1.png",
+          | "mime_type":"image/png","format":"png","index":1}]}""".stripMargin
+      )
+      val files = GenerationFiles(root)
+
+      val output = files.servedInput("/api/outputs/2026-10-02/g7-1-1.png")
+      assert(output.exists(_.isRight))
+      val served = output.get.toOption.get
+      assert(served.data == dataUrl("image/png"))
+      assert(
+        served.source.contains(
+          InputSource("", "g7-1", 1, "2026-10-02", "g7-1-1.png")
+        )
+      )
+
+      // An input kept beside the outputs is a file, and no entry's output.
+      val input = files.servedInput("/api/outputs/2026-10-02/g7-1-init.png")
+      assert(input.exists(_.exists(_.source.isEmpty)))
+
+      // Bytes are left alone; a file that is gone is said to be.
+      assert(files.servedInput(dataUrl("image/png")).isEmpty)
+      assert(
+        files.servedInput("/api/outputs/2026-10-02/gone.png").exists(_.isLeft)
+      )
+      assert(files.servedInput("/api/outputs/../secret.png").isEmpty)
     }
   }
 }

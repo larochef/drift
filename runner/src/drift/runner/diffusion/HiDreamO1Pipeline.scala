@@ -35,6 +35,7 @@ final class HiDreamO1Pipeline(ops: Ops, modelFile: Path, tokenizerFile: Path)
   def takesInitImage: Boolean = true
   def takesReferences: Boolean = false
   def takesLoras: Boolean = true
+  override def takesSigmas: Boolean = true
   def takesGuidance: Boolean = false
 
   private val tokenizer: Tokenizer = TokenizerJson.load(tokenizerFile)
@@ -97,13 +98,15 @@ final class HiDreamO1Pipeline(ops: Ops, modelFile: Path, tokenizerFile: Path)
     useLoras(request.loras).foreach(problem =>
       println(s"[WARN] LoRA left unapplied: $problem")
     )
-    val sigmas =
+    // a request's own levels (a turbo LoRA's) in place of either schedule
+    val sigmas = request.sigmas.getOrElse(
       if (guided)
         FlowSchedule.sigmas(
           request.steps,
           math.log(request.shift.getOrElse(FlowSchedule.DefaultShift))
         )
       else distilledSigmas(request.steps)
+    )
     val noiseScale = if (guided) GuidedNoise else DistilledNoise
     val random = new SplittableRandom(request.seed)
     val shape = Shape.of(count, model.patchValues)

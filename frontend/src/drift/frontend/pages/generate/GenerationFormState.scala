@@ -49,6 +49,15 @@ class GenerationFormState {
   /** Every sampling field holds a default: the form was seeded. */
   def untouchSampling(): Unit = touchedFields = Set.empty
 
+  /** The mode whose defaults the fields were last seeded from. Plain, like the
+    * touched fields: `mode` is a Var, and in the transaction that seeds a form
+    * it still reads the mode from before — a video form's "img_gen" — to the
+    * observer laying the LoRAs' settings, which must not write for that one.
+    */
+  private var seededMode = Option.empty[String]
+  def seedFor(seeded: String): Unit = seededMode = Some(seeded)
+  def seededFor(asked: String): Boolean = seededMode.contains(asked)
+
   /** The flow shift (sd-cpp's `--flow-shift`): how far the schedule leans
     * toward the noisy end. Empty is the model's own — which for some is a
     * function of the image's size, not a number the session could report.

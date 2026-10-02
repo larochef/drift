@@ -42,6 +42,7 @@ final class Flux2Pipeline(
   def takesInitImage: Boolean = true
   def takesReferences: Boolean = true
   def takesLoras: Boolean = true
+  override def takesSigmas: Boolean = true
   def takesGuidance: Boolean = transformer.config.guidance
 
   private val encoder = reading.open(ops, textEncoder)
@@ -156,9 +157,12 @@ final class Flux2Pipeline(
         val (tensor, g) = latents(Images.resized(reference, width, height))
         (hold(tensor), g)
       }
-      val sigmas = FlowSchedule.sigmas(
-        request.steps,
-        FlowSchedule.flux2Shift(grid.tokens, request.steps)
+      // a request's own levels (a turbo LoRA's) in place of the schedule
+      val sigmas = request.sigmas.getOrElse(
+        FlowSchedule.sigmas(
+          request.steps,
+          FlowSchedule.flux2Shift(grid.tokens, request.steps)
+        )
       )
       val random = new SplittableRandom(request.seed)
       val noise = Array.fill(grid.tokens * features)(Images.gaussian(random))

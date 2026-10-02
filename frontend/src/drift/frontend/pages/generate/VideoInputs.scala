@@ -9,7 +9,8 @@ import com.raquo.laminar.api.L.*
   * updates the row in place instead of rebuilding the list, which would take
   * the input's focus away mid-number.
   */
-class GuidesPicker(state: GenerationFormState) extends Component {
+class GuidesPicker(state: GenerationFormState, tools: InputTools)
+    extends Component {
   import state.guidesVar
 
   /** One guide: its medium never changes under its key, only the frame. */
@@ -21,6 +22,7 @@ class GuidesPicker(state: GenerationFormState) extends Component {
     thumbnail(
       initial.media,
       () => guidesVar.update(_.filterNot(_.key == key)),
+      tools.askButton(initial.media),
       span(cls := "is-size-7 text-secondary ml-1", "frame"),
       input(
         cls := "input is-small is-digits",
@@ -50,10 +52,12 @@ class GuidesPicker(state: GenerationFormState) extends Component {
         ),
         // A new guide lands on the last frame: the first is what a start
         // image is for.
-        fileInput(
+        inputSources(
           "Add a guide",
           MediaAccept.AnyMedia,
-          media => state.addGuide(media, "-1")
+          multiple = true,
+          tools,
+          _.foreach(media => state.addGuide(media, "-1"))
         )
       )
     )
@@ -64,7 +68,8 @@ class GuidesPicker(state: GenerationFormState) extends Component {
   * move — the fraction of the steps it applies over, then an optional mask
   * whose white is regenerated over an optional source video.
   */
-class ControlVideoInputs(state: GenerationFormState) extends Component {
+class ControlVideoInputs(state: GenerationFormState, tools: InputTools)
+    extends Component {
   import state.*
   import FormFields.numberField
 
@@ -75,7 +80,8 @@ class ControlVideoInputs(state: GenerationFormState) extends Component {
       singleMediaPicker(
         "Control video (pose, depth, edges…)",
         controlVideoVar,
-        MediaAccept.Videos
+        MediaAccept.Videos,
+        tools
       ),
       child <-- controlVideoVar.signal.map(_.isDefined).distinct.map {
         case false => emptyNode
@@ -98,12 +104,15 @@ class ControlVideoInputs(state: GenerationFormState) extends Component {
                 singleMediaPicker(
                   "Mask (white is regenerated)",
                   controlMaskVar,
-                  MediaAccept.ImagesAndVideos
+                  MediaAccept.ImagesAndVideos,
+                  tools,
+                  askable = false
                 ),
                 singleMediaPicker(
                   "Source video (under the mask)",
                   sourceVideoVar,
-                  MediaAccept.Videos
+                  MediaAccept.Videos,
+                  tools
                 )
               )
             ).element

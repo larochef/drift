@@ -114,6 +114,9 @@ The generation form has a LoRA picker:
   form when you add it: they are one more layer of defaults, over the run
   configuration's. The fields you have changed yourself keep your value, the
   others follow the LoRA; removing it gives them back to the configuration.
+  Click **⚙ sampling** on a selected LoRA to type or change its settings
+  right there — the same fields as on its card, saved on the LoRA itself, so
+  they hold wherever it is used; a LoRA with none yet shows the mark in grey.
   With two such LoRAs the one added last wins where both set a field. Nothing
   is locked: change any value and generate. The line under the picker says
   what each LoRA sets, **Apply the LoRA settings** puts them back over what

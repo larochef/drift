@@ -91,6 +91,8 @@ class GenerationDetail(
       * it.
       */
     parent: Signal[Option[Generation]],
+    /** The loaded gallery entries its inputs were picked from (`specs/50`). */
+    inputs: Signal[List[Generation]],
     derivatives: Signal[List[Generation]],
     /** The prompt the PiD panel prefills — inherited through the derivation
       * chain (`RecordedParameters.sourcePromptOf`).
@@ -190,10 +192,12 @@ class GenerationDetail(
       "History",
       parent
         .combineWith(derivatives)
-        .map((from, made) => from.size + made.size)
+        .map((from, made) =>
+          from.size + generation.inputSources.size + made.size
+        )
         .distinct
         .map(count => Option.when(count > 0)(count.toString)),
-      GenerationLineage(generation, parent, derivatives, onOpen).element
+      GenerationLineage(generation, parent, inputs, derivatives, onOpen).element
     )
   )
 

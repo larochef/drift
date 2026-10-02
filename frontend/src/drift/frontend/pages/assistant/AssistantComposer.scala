@@ -1,6 +1,7 @@
 package drift.frontend.pages.assistant
 
 import drift.frontend.components.*
+import drift.frontend.pages.gallery.GalleryPicker
 import drift.frontend.services.AssistantService
 import drift.shared.*
 
@@ -31,7 +32,11 @@ class AssistantComposer(
       * one that knows what is being thrown away.
       */
     onRestart: () => Unit,
-    onStop: () => Unit
+    onStop: () => Unit,
+    /** The gallery as a source of pictures (`specs/50`), where the page hosts
+      * its picker.
+      */
+    pickFromGallery: Option[GalleryPicker.Open]
 ) extends Component {
 
   private val draft = Var("")
@@ -83,6 +88,30 @@ class AssistantComposer(
         if (element.files.length > 0) service.uploadFile(element.files(0))
         element.value = ""
       }
+    ),
+    // Staged as the gallery's own "Ask the assistant" stages them, with their
+    // parameters. Pictures only, as there.
+    pickFromGallery.map(open =>
+      button(
+        cls := "button is-small ml-2",
+        "From the gallery",
+        title := "Attach pictures the gallery holds",
+        onClick --> (_ =>
+          open(
+            "image/*",
+            true,
+            _.foreach(picked =>
+              service.attach(
+                AssistantService.outputAttachment(
+                  picked.generation,
+                  picked.output,
+                  picked.configurationLabel
+                )
+              )
+            )
+          )
+        )
+      )
     ),
     child <-- service.uploadError.map {
       case Some(error) => p(cls := "has-text-danger is-size-7", error)

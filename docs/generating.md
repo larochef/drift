@@ -54,11 +54,20 @@ something (an image attached, hires on, a non-default sampler):
   place of the scheduler's. A turbo LoRA is trained on its own few levels and
   its page lists them; with a list, the steps are the list's, whatever
   **Steps** says. sd-cpp takes them for every model, the drift runner for
-  Qwen Image 2.1 so far (it refuses them elsewhere).
+  its image models — Qwen Image 2.1, Krea 2, FLUX.2 [klein] and HiDream O1 —
+  and not for video or PiD, where it refuses them.
 - **Inputs**: init image (img2img) with a strength, reference images (edit),
   and a mask once an init image is attached (inpaint). On video: start and
   end images, references, guides and a control video, as far as the model
   takes them (see [Video inputs](#video-inputs)).
+  Each slot takes a file from the disk or, with **From the gallery**, one of
+  the gallery's entries: a picker with the gallery's tiles and its project,
+  configuration, NSFW and prompt filters, opened on the project's own results
+  in a workspace. It offers what the slot takes — images, videos or both —
+  and a slot that takes several lets you tick them in order. A result made
+  from a picked entry links back to it (see [gallery.md](gallery.md)).
+  **🤖** on an image input stages it for the assistant's next message, so a
+  file you browsed for is not browsed for again.
   A reference keeps its own shape whatever the output's: drift sizes it the
   way sd-cli would (about a megapixel) before sending it, or — on an sd-cpp
   older than master-892, whose server stretches references to the output —

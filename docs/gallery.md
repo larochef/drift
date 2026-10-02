@@ -39,7 +39,10 @@ Click a tile to open it:
   the seed shown is the one of the image on screen.
 - **Made from** / **Made from this** links for derived entries, and an
   **Original** / **Result** toggle at matched zoom on an upscaled or redrawn
-  image.
+  image. **Inputs from** lists the gallery entries a generation's inputs were
+  picked from (init image, references…), and such an entry lists the
+  generation under **Made from this**. Only inputs picked with **From the
+  gallery** are linked; a file from the disk is not.
 - **🤖 Ask the assistant**, **🗑 Delete**, and the reuse buttons.
 
 ## Reusing parameters

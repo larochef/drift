@@ -60,6 +60,56 @@ final private[sdserver] class GenerationFiles(outputsRoot: Path) {
         "<input not saved>"
     }
 
+  /** An input given as the URL a file under the outputs is served from, rather
+    * than as its bytes (`specs/50-inputs-from-the-gallery.md`): the file as the
+    * data URL sd-server takes, and the gallery entry it is an output of, when
+    * it is one. None for anything else — bytes, as ever; a reason when the URL
+    * names nothing that is there any more.
+    */
+  def servedInput(value: String): Option[Either[String, ServedInput]] =
+    value match {
+      case GenerationFiles.ServedUrl(date, fileName)
+          if GenerationHistory.isDate(date) ||
+            date == GenerationManager.ScratchDirectory =>
+        val file = outputsRoot.resolve(date).resolve(fileName)
+        Some(
+          if (!Files.isRegularFile(file))
+            Left(s"$fileName is no longer in the gallery: pick the input again")
+          else {
+            val extension = fileName.drop(fileName.lastIndexOf('.') + 1)
+            val data =
+              s"data:${GenerationManager.mimeTypeFor(extension)};base64," +
+                Base64.getEncoder.encodeToString(Files.readAllBytes(file))
+            Right(ServedInput(data, ownerOf(date, fileName)))
+          }
+        )
+      case _ => None
+    }
+
+  /** The generation `fileName` is an output of, and which one: its sidecar is
+    * named by the id the file's name starts with.
+    */
+  private def ownerOf(date: String, fileName: String): Option[InputSource] = {
+    val stem = fileName.take(fileName.lastIndexOf('.'))
+    List(stem, stem.take(math.max(stem.lastIndexOf('-'), 0)))
+      .filter(_.nonEmpty)
+      .iterator
+      .map(id => outputsRoot.resolve(date).resolve(s"$id.json"))
+      .filter(Files.isRegularFile(_))
+      .flatMap { sidecar =>
+        try {
+          val generation =
+            readFromArray[Generation](Files.readAllBytes(sidecar))
+          generation.outputs
+            .find(_.fileName == fileName)
+            .map(output =>
+              InputSource("", generation.id, output.index, date, fileName)
+            )
+        } catch { case NonFatal(_) => None }
+      }
+      .nextOption()
+  }
+
   /** Decodes the base64 payload(s) into files under the generation's directory.
     * Images come one per batch index; a video is a single encoded container.
     */
@@ -155,7 +205,18 @@ final private[sdserver] class GenerationFiles(outputsRoot: Path) {
     )
 }
 
+/** A served file as an input: its bytes as a data URL, and the gallery output
+  * it is, its slot still to be named.
+  */
+private[sdserver] case class ServedInput(
+    data: String,
+    source: Option[InputSource]
+)
+
 private[sdserver] object GenerationFiles {
+
+  /** `/api/outputs/<directory>/<file>`, a file directly under a day. */
+  private val ServedUrl = """/api/outputs/([^/]+)/([^/]+)""".r
 
   /** Base64 payload plus file extension, from a raw base64 string or a data URL
     * of any medium drift serves (`GenerationManager.extensionFor`): an image,

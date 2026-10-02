@@ -272,7 +272,7 @@ class AssistantService(val library: PromptTemplateService) {
   val contextFull: Signal[Boolean] =
     contextUsed.combineWith(properties).map(isFull)
 
-  export staged.{attach, removeAttachment, uploadFile}
+  export staged.{attach, removeAttachment, uploadFile, uploadFrom}
 
   // ------------------------------------------------ a project's conversation
 

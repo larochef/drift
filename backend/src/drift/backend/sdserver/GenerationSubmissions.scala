@@ -39,10 +39,18 @@ final private[sdserver] class GenerationSubmissions(
       context: SubmitContext,
       scratch: Boolean
   ): Generation = {
-    val parameters =
+    val seeded =
       if (requested.seed < 0)
         requested.copy(seed = GenerationManager.randomSeed())
       else requested
+    val inputs = ServedInputs(files)
+    val parameters = seeded.copy(
+      initImage = seeded.initImage.map(inputs.inlined("init", _)),
+      maskImage = seeded.maskImage.map(inputs.inlined("mask", _)),
+      refImages = seeded.refImages.zipWithIndex.map((image, index) =>
+        inputs.inlined(s"ref$index", image)
+      )
+    )
     val submittedAt = System.currentTimeMillis()
     val generationId = nextGenerationId(submittedAt)
     val recorded = parameters.copy(
@@ -76,6 +84,7 @@ final private[sdserver] class GenerationSubmissions(
       ),
       context = context,
       scratch = scratch,
+      inputs = inputs,
       attachParameters = _.copy(imageParameters = Some(recorded))
     )
   }
@@ -86,10 +95,27 @@ final private[sdserver] class GenerationSubmissions(
       context: SubmitContext,
       scratch: Boolean
   ): Generation = {
-    val parameters =
+    val seeded =
       if (requested.seed < 0)
         requested.copy(seed = GenerationManager.randomSeed())
       else requested
+    val inputs = ServedInputs(files)
+    val parameters = seeded.copy(
+      initImage = seeded.initImage.map(inputs.inlined("init", _)),
+      endImage = seeded.endImage.map(inputs.inlined("end", _)),
+      controlFrames = seeded.controlFrames.zipWithIndex.map((image, index) =>
+        inputs.inlined(s"frame$index", image)
+      ),
+      references = seeded.references.zipWithIndex.map((media, index) =>
+        inputs.inlined(s"reference$index", media)
+      ),
+      guides = seeded.guides.zipWithIndex.map((guide, index) =>
+        guide.copy(media = inputs.inlined(s"guide$index", guide.media))
+      ),
+      controlVideo = seeded.controlVideo.map(inputs.inlined("control", _)),
+      controlMask = seeded.controlMask.map(inputs.inlined("control-mask", _)),
+      sourceVideo = seeded.sourceVideo.map(inputs.inlined("source", _))
+    )
     val submittedAt = System.currentTimeMillis()
     val generationId = nextGenerationId(submittedAt)
     val recorded = parameters.copy(
@@ -154,6 +180,7 @@ final private[sdserver] class GenerationSubmissions(
       body = writeToString(parameters),
       context = context,
       scratch = scratch,
+      inputs = inputs,
       attachParameters = _.copy(videoParameters = Some(recorded))
     )
   }
@@ -183,7 +210,8 @@ final private[sdserver] class GenerationSubmissions(
       body: String,
       attachParameters: Generation => Generation,
       context: SubmitContext,
-      scratch: Boolean
+      scratch: Boolean,
+      inputs: ServedInputs
   ): Generation = {
 
     def blank(runConfigurationId: String): Generation = attachParameters(
@@ -195,11 +223,14 @@ final private[sdserver] class GenerationSubmissions(
         status = GenerationStatus.Queued,
         submittedAt = submittedAt,
         importedFileName = None,
+        inputSources = inputs.sources,
         scratch = scratch
       )
     )
 
-    registry.readySession(sessionId) match {
+    registry
+      .readySession(sessionId)
+      .flatMap(ready => inputs.checked(ready)) match {
       case Left(reason) =>
         record(
           blank(runConfigurationId = "").copy(
@@ -283,4 +314,34 @@ final private[sdserver] class GenerationSubmissions(
           port = port
         )
     }
+}
+
+/** The inputs of one submission that arrive as the URL of a file drift serves —
+  * a gallery output picked in the form (`specs/50-inputs-from-the-gallery.md`)
+  * — turned into the bytes sd-server takes, each remembered with the slot it
+  * fills, which is what the generation records as where its inputs came from.
+  */
+final private[sdserver] class ServedInputs(files: GenerationFiles) {
+  private var found = List.empty[InputSource]
+  private var missing = Option.empty[String]
+
+  /** `value` as bytes: itself, unless it names a served file. */
+  def inlined(slot: String, value: String): String =
+    files.servedInput(value) match {
+      case None                => value
+      case Some(Right(served)) =>
+        found = found ++ served.source.map(_.copy(slot = slot))
+        served.data
+      case Some(Left(reason)) =>
+        missing = missing.orElse(Some(reason))
+        value
+    }
+
+  /** The gallery entries the inputs came from, in the request's order. */
+  def sources: List[InputSource] = found
+
+  /** `ready` unless an input named a file that is gone, which refuses the
+    * submission rather than sending the server a URL.
+    */
+  def checked[A](ready: A): Either[String, A] = missing.toLeft(ready)
 }

@@ -1791,8 +1791,13 @@ on the old tool.
         the schedule (shift and stretch included) — a turbo LoRA's own noise
         levels. From at most 1 strictly down; the final 0 is added when the
         list stops above it; the steps are the list's. Anything else is a
-        400. Qwen Image 2.1 only: the other families refuse a request's
-        sigmas and say at startup that they ignore `--sigmas`. **Live:**
+        400. The image families that step through a flow schedule take
+        them (`takesSigmas`): Qwen Image 2.1, and since 2026-10-02 Krea 2,
+        FLUX.2 [klein] and HiDream O1 (over its guided and its distilled
+        schedule alike) — those three not run live with a list yet. PiD
+        keeps its four distilled levels, and the video families refuse a
+        request's sigmas: the others say at startup that they ignore
+        `--sigmas`. **Live:**
         Viggle's 6-step turbo LoRA (v0.2.1, r256) at 1024², CFG 1, 5.2 s a
         step, 36 s: with its levels (1.0, 0.9375, 0.875, 0.75, 0.5, 0.25) a
         clean photograph; on the model's own schedule, the same seed comes

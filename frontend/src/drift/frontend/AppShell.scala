@@ -163,6 +163,7 @@ class AppShell(
               assistantService,
               loraService,
               projectService,
+              historyService,
               runtimeService,
               logService,
               prerequisites,

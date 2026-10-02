@@ -1,6 +1,7 @@
 package drift.frontend.pages.assistant
 
 import drift.frontend.components.*
+import drift.frontend.pages.gallery.GalleryPicker
 import drift.frontend.services.{AssistantService, GenerationService}
 import drift.shared.*
 
@@ -30,7 +31,9 @@ class AssistantPanel(
       * which is the question being asked of it. A workspace starts at the
       * default plus the project's brief. The toggle stays either way.
       */
-    freePlay: Boolean = false
+    freePlay: Boolean = false,
+    /** The gallery as a source of pictures to attach (`specs/50`). */
+    pickFromGallery: Option[GalleryPicker.Open] = None
 ) extends Component {
   private val showSystemPrompt = Var(false)
   private val showArchive = Var(false)
@@ -256,7 +259,8 @@ class AssistantPanel(
       contextPercent,
       showSystemPrompt,
       () => confirmRestart(),
-      onStop
+      onStop,
+      pickFromGallery
     ).element,
     contextMeter,
     conversationStatus,

@@ -48,7 +48,11 @@ Images are never sent on their own. You attach one when you want to:
 - Click 🤖 **Ask** on any result, in the workspace, the generation panel or a
   gallery detail. The image is staged with the prompt and parameters that
   made it, so the model compares what you asked for with what came out.
-- Use the file input in the composer for any other image or video.
+- Use the file input in the composer for any other image or video, or
+  **From the gallery** beside it for pictures the gallery holds — each comes
+  with its prompt and parameters, like a result.
+- Click 🤖 on an image input of the generation form (an init image, a
+  reference): it is staged as it is, without browsing for it again.
 
 Staged files go with your next message only. A text-only model gets the
 parameters and a note that it did not see the picture.

@@ -43,16 +43,34 @@ final class AssistantAttachments {
   /** Uploads a local file once over HTTP and stages the reference; the preview
     * is the backend serving it back. Videos ride the same way.
     */
-  def uploadFile(file: dom.File): Unit = {
+  def uploadFile(file: dom.File): Unit =
+    upload(file, file.name, file.`type`)
+
+  /** An input the generation form already holds
+    * (`specs/50-inputs-from-the-gallery.md`), a data URL or a served one,
+    * staged without being browsed for again: fetched where it is and uploaded
+    * like a file.
+    */
+  def uploadFrom(source: String, name: String): Unit =
+    dom
+      .fetch(source)
+      .toFuture
+      .flatMap(_.blob().toFuture)
+      .onComplete {
+        case Success(blob) => upload(blob, name, blob.`type`)
+        case Failure(err)  => _uploadError.set(Some(err.getMessage))
+      }
+
+  private def upload(content: dom.Blob, named: String, typed: String): Unit = {
     _uploadError.set(None)
-    val name = js.URIUtils.encodeURIComponent(file.name)
-    val mimeType = js.URIUtils.encodeURIComponent(file.`type`)
+    val name = js.URIUtils.encodeURIComponent(named)
+    val mimeType = js.URIUtils.encodeURIComponent(typed)
     dom
       .fetch(
         s"/api/assistant/uploads?name=$name&type=$mimeType",
         new dom.RequestInit {
           method = dom.HttpMethod.POST
-          body = file
+          body = content
         }
       )
       .toFuture

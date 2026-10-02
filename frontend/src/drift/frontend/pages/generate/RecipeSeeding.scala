@@ -37,6 +37,7 @@ class RecipeSeeding(
       capabilities.defaultsByMode.getOrElse(newMode, GenerationDefaults())
     val sample = cleanse(defaults.sampleParams)
     untouchSampling()
+    seedFor(newMode)
     widthVar.set(defaults.width.toString)
     heightVar.set(defaults.height.toString)
     stepsVar.set(sample.sampleSteps.toString)
@@ -188,7 +189,8 @@ class RecipeSeeding(
           submittedAt = version.createdAt,
           imageParameters = version.imageParameters,
           videoParameters = version.videoParameters,
-          importedFileName = None
+          importedFileName = None,
+          inputSources = List.empty
         )
       )
     )
@@ -441,13 +443,18 @@ class RecipeSeeding(
     * default — and, when `force`d, into the ones the LoRAs set whatever they
     * hold, which makes those defaults again. With no setting a field goes back
     * to the session's own, so removing a LoRA takes its values away with it.
+    *
+    * Only for the mode the form was seeded for: asked for another — the mode a
+    * form held before the seeding that is still under way — it would write that
+    * mode's defaults, or drift's own where the session has none, over the ones
+    * just laid down (a video form came up at 20 steps and CFG 7).
     */
   def applyLoraSampling(
       capabilities: SessionCapabilities,
       newMode: String,
       sampling: LoraSampling,
       force: Boolean
-  ): Unit = {
+  ): Unit = if (seededFor(newMode)) {
     val defaults =
       capabilities.defaultsByMode.getOrElse(newMode, GenerationDefaults())
     val takesLoras = capabilities.featuresByMode

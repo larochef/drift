@@ -23,6 +23,70 @@ private[frontend] def readAsDataUrl(
   reader.readAsDataURL(blob)
 }
 
+/** Where an input can come from besides the disk, and where it can go
+  * (`specs/50-inputs-from-the-gallery.md`): the gallery, whose entries are
+  * picked as the URLs they are served from — the backend reads the file and
+  * remembers the entry — and the assistant, which an input is shown to without
+  * being browsed for a second time.
+  */
+class InputTools(
+    /** Opens the gallery on what a slot accepts, for one entry or several, and
+      * hands back the URLs picked.
+      */
+    fromGallery: Option[(String, Boolean, List[String] => Unit) => Unit],
+    /** Stages an input, a data URL or a gallery URL, for the next message. */
+    askAssistant: Option[String => Unit]
+) {
+
+  def galleryButton(
+      accepted: String,
+      multiple: Boolean,
+      onPicked: List[String] => Unit
+  ): Modifier[HtmlElement] =
+    fromGallery.map(open =>
+      button(
+        cls := "button is-small",
+        "From the gallery",
+        title := "Pick one of the gallery's entries instead of a file",
+        onClick --> (_ => open(accepted, multiple, onPicked))
+      )
+    )
+
+  /** On an image only: nothing sends a clip or a sound from the form to a
+    * vision model.
+    */
+  def askButton(source: String): Modifier[HtmlElement] =
+    askAssistant
+      .filter(_ => MediaPreview.kindOf(source) == MediaPreview.Kind.Image)
+      .map(ask =>
+        button(
+          cls := "button is-small is-ghost px-1",
+          "🤖",
+          title := "Ask the assistant: stages this image for the next message",
+          onClick --> (_ => ask(source))
+        )
+      )
+}
+
+object InputTools {
+  val none: InputTools = InputTools(None, None)
+}
+
+/** A slot's two ways in: a file from the disk, an entry from the gallery. */
+private[generate] def inputSources(
+    labelText: String,
+    accepted: String,
+    multiple: Boolean,
+    tools: InputTools,
+    onLoaded: List[String] => Unit
+): HtmlElement =
+  div(
+    cls := "is-flex is-align-items-center is-flex-wrap-wrap",
+    styleAttr := "gap: 0.5rem;",
+    fileInput(labelText, accepted, dataUrl => onLoaded(List(dataUrl))),
+    tools.galleryButton(accepted, multiple, onLoaded)
+  )
+
 /** What a file input offers: stills only, or any medium a video model reads. */
 object MediaAccept {
   val Images = "image/*"
@@ -116,11 +180,15 @@ private[generate] def thumbnail(
     )
   )
 
-/** One optional input — init/start/end image, a control video, its mask. */
+/** One optional input — init/start/end image, a control video, its mask.
+  * `askable`: a mask is not something to show the assistant.
+  */
 def singleMediaPicker(
     labelText: String,
     state: Var[Option[String]],
-    accepted: String
+    accepted: String,
+    tools: InputTools,
+    askable: Boolean = true
 ): HtmlElement =
   div(
     cls := "field",
@@ -129,9 +197,19 @@ def singleMediaPicker(
       cls := "control",
       child <-- state.signal.map {
         case None =>
-          fileInput(labelText, accepted, dataUrl => state.set(Some(dataUrl)))
+          inputSources(
+            labelText,
+            accepted,
+            multiple = false,
+            tools,
+            picked => state.set(picked.headOption)
+          )
         case Some(dataUrl) =>
-          thumbnail(dataUrl, () => state.set(None))
+          thumbnail(
+            dataUrl,
+            () => state.set(None),
+            if (askable) tools.askButton(dataUrl) else emptyMod
+          )
       }
     )
   )
@@ -145,7 +223,8 @@ def multiMediaPicker(
     labelText: String,
     state: Var[List[String]],
     accepted: String,
-    ordered: Boolean
+    ordered: Boolean,
+    tools: InputTools
 ): HtmlElement = {
   def move(index: Int, by: Int): Unit =
     state.update { list =>
@@ -180,10 +259,17 @@ def multiMediaPicker(
         thumbnail(
           dataUrl,
           () => state.update(_.patch(index, Nil, 1)),
-          orderControls(index)
+          orderControls(index),
+          tools.askButton(dataUrl)
         )
       }),
-      fileInput(labelText, accepted, dataUrl => state.update(_ :+ dataUrl))
+      inputSources(
+        labelText,
+        accepted,
+        multiple = true,
+        tools,
+        picked => state.update(_ ++ picked)
+      )
     )
   )
 }

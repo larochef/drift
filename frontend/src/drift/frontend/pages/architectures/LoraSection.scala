@@ -41,9 +41,7 @@ class LoraSection(
   private val samplingOpen = Var(Set.empty[String])
 
   /** Two experts (wan 2.2): a LoRA then sets the high-noise expert's too. */
-  private val twoExperts = architecture.checkpoints.exists(
-    _.flag == "--high-noise-diffusion-model"
-  )
+  private val twoExperts = LoraSamplingFields.twoExperts(architecture)
   private val partner = Var("")
   private val pairName = Var("")
 

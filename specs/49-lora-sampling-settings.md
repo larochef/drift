@@ -47,7 +47,11 @@ LoRAs', then what the user types.
 - A LoRA on a **run configuration** (28) applies its settings when the form
   is seeded, and to redraw and edit, the jobs that have no form (under the
   steps their request asks for). PiD keeps its own steps.
-- The LoRA picker marks the LoRAs that carry settings.
+- The LoRA picker marks the LoRAs that carry settings. In the generation
+  form — a project's or the Sandbox's — the mark on a selected LoRA, shown
+  even on one with no settings yet, opens the same editor as the LoRA's card:
+  the settings are typed where they are tried, saved on the LoRA, and reach
+  the form as its layer does.
 - The **catalog**'s turbo LoRAs (09) come with their settings filled in, so
   installing one is enough: Viggle's 6-step LoRA for Qwen Image 2.1 (6 steps,
   CFG 1, flow shift 3), and the others the catalog lists. One installed
@@ -61,8 +65,9 @@ LoRAs', then what the user types.
   `LoraSampling` (the later LoRA's over the earlier's, `LoraSampling.of`),
   over a session's `SampleParameters`, and over the high-noise expert's.
   Migration 009 adds the empty record to stored LoRAs.
-- `LoraSamplingFields` on the LoRA's card, behind **⚙ Sampling**: a field a
-  setting, saved as it is left; the high-noise ones on an architecture with a
+- `LoraSamplingFields` on the LoRA's card, behind **⚙ Sampling**, and in the
+  generation form's `LoraPicker` (its `samplingEditor`, which the run
+  configuration's pickers leave out): a field a setting, saved as it is left; the high-noise ones on an architecture with a
   `--high-noise-diffusion-model` checkpoint, sigmas on the others.
 - The generation form keeps the sampling fields the user has changed
   (`GenerationFormState.touch`, a plain set: it is read by the observer that

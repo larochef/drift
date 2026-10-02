@@ -2,9 +2,9 @@ package drift.frontend.pages.sandbox
 
 import drift.frontend.Page
 import drift.frontend.components.*
-import drift.frontend.pages.assistant.AssistantPanel
+import drift.frontend.pages.assistant.{AssistantPanel, AssistantTurns}
 import drift.frontend.pages.generate.GenerationPanel
-import drift.frontend.pages.projects.{ModelPicker, WorkspaceSessions}
+import drift.frontend.pages.projects.{ModelBar, ModelPicker, WorkspaceSessions}
 import drift.frontend.services.*
 import drift.shared.*
 
@@ -15,9 +15,10 @@ import org.scalajs.dom
 
 /** The Sandbox (`specs/47-sandbox.md`): a model tried out, nothing kept. Shaped
   * like a project workspace without the project — no brief, no versions — with
-  * an Image / Video / Text switch over the picker of that kind and the panel it
-  * runs. A result is saved to the gallery or a project one by one; the rest
-  * goes as the page is left.
+  * an Image / Video / Text switch over that kind's workspace: the model bar
+  * over the generation panel, the assistant a drawer on its right; for text,
+  * the bar over the chat alone. A result is saved to the gallery or a project
+  * one by one; the rest goes as the page is left.
   */
 class SandboxPage(
     runConfigurationService: RunConfigurationService,
@@ -89,6 +90,22 @@ class SandboxPage(
       .distinct
   private val unsavedNow = Var(false)
 
+  /** The generation panel on screen, for its controls in the model bar and for
+    * the assistant's proposals.
+    */
+  private val panelNow = Var(Option.empty[GenerationPanel])
+
+  /** Whether the assistant drawer is open — once an assistant is live. */
+  private val drawerOpen = Var(true)
+
+  private val drawerShown: Signal[Boolean] =
+    sessions
+      .liveKey(RuntimeTool.LlamaCpp)
+      .map(_.isDefined)
+      .combineWith(drawerOpen.signal)
+      .map(_ && _)
+      .distinct
+
   private def projectLabel(id: String): String =
     projectsNow.now().find(_.id == id).map(_.label).getOrElse("a project")
 
@@ -150,9 +167,11 @@ class SandboxPage(
         )
     }
 
-  private def toolOf(kind: ProjectKind): RuntimeTool = kind match {
-    case ProjectKind.Text => RuntimeTool.LlamaCpp
-    case _                => RuntimeTool.SdCpp
+  /** The models a tab runs: its own, and for images and video the assistant.
+    */
+  private def toolsOf(kind: ProjectKind): List[RuntimeTool] = kind match {
+    case ProjectKind.Text => List(RuntimeTool.LlamaCpp)
+    case _                => List(RuntimeTool.SdCpp, RuntimeTool.LlamaCpp)
   }
 
   private val newConfiguration = ModelPicker.newConfiguration(
@@ -163,57 +182,70 @@ class SandboxPage(
     browsers
   )
 
-  private def picker(kind: ProjectKind): HtmlElement =
-    ModelPicker(
-      toolOf(kind),
-      Val(kind match {
-        case ProjectKind.Text  => "Chat model"
-        case ProjectKind.Video => "Video model"
-        case ProjectKind.Image => "Image model"
-      }),
-      Val(Option.unless(kind == ProjectKind.Text)(kind)),
+  /** The workspace's model bar, launching for no project: the pickers of the
+    * kind, each live session's controls beside its own.
+    */
+  private def modelBar(kind: ProjectKind): HtmlElement =
+    ModelBar(
+      Val(Some(kind)),
       prominent = false,
-      Val(emptyNode),
       sessionService,
+      assistantService,
       sessions,
       prerequisites,
       newConfiguration,
       projectId = None,
-      confirmReplace = confirmReplace
+      confirmReplace = confirmReplace,
+      imageControls = panelNow.signal.map(
+        _.fold[Node](emptyNode)(_.sessionControls)
+      ),
+      drawerOpen = drawerOpen,
+      notice = sharedNotice(kind)
     ).element
 
-  /** A model the Sandbox shares with a project, said once under the picker. */
-  private def sharedNotice(tool: RuntimeTool): Signal[Node] =
+  /** The models the Sandbox shares with a project, said once under the pickers.
+    */
+  private def sharedNotice(kind: ProjectKind): Signal[Node] =
     sessionService.sessions
-      .map(
-        _.values
-          .find(s => s.status.isActive && s.tool == tool)
-          .flatMap(_.projectId)
+      .map(live =>
+        toolsOf(kind).flatMap(tool =>
+          live.values
+            .find(s => s.status.isActive && s.tool == tool)
+            .flatMap(_.projectId)
+            .map(tool -> _)
+        )
       )
       .distinct
       .combineWith(projectService.projects)
-      .map {
-        case (None, _)                   => emptyNode
-        case (Some(projectId), projects) =>
-          p(
-            cls := "text-secondary is-size-7 mt-2 mb-0",
-            "Running for ",
-            a(
-              href := Page.ProjectWorkspace(projectId).path,
-              projects
-                .find(_.id == projectId)
-                .map(_.label)
-                .getOrElse("a project")
-            ),
-            " — shared rather than loaded twice. What you make here is " +
-              "still not saved."
-          )
+      .map { (shared, projects) =>
+        if (shared.isEmpty) emptyNode
+        else
+          div(shared.map { (tool, projectId) =>
+            val assistant =
+              kind != ProjectKind.Text && tool == RuntimeTool.LlamaCpp
+            p(
+              cls := "text-secondary is-size-7 mt-2 mb-0",
+              if (assistant) "The assistant is running for "
+              else "Running for ",
+              a(
+                href := Page.ProjectWorkspace(projectId).path,
+                projects
+                  .find(_.id == projectId)
+                  .map(_.label)
+                  .getOrElse("a project")
+              ),
+              " — shared rather than loaded twice. " +
+                (if (assistant)
+                   "The chat here is the Sandbox's own, not the project's."
+                 else "What you make here is still not saved.")
+            )
+          })
       }
 
-  private def generationElement(
+  private def generationPanel(
       sessionId: String,
       configurationId: String
-  ): HtmlElement =
+  ): GenerationPanel =
     GenerationPanel(
       sessionId = sessionId,
       configurationId = configurationId,
@@ -248,48 +280,96 @@ class SandboxPage(
       onRestart =
         () => sessionService.push(SessionService.Command.Restart(sessionId)),
       browsers = browsers
-    ).element
-
-  private def assistantElement(
-      sessionId: String,
-      configurationId: String
-  ): HtmlElement =
-    AssistantPanel(
-      sessionId = sessionId,
-      configurationLabel = sessions.labelOf(configurationId),
-      sessionSignal =
-        sessionService.sessions.map(_.get(configurationId)).distinct,
-      service = assistantService,
-      generationService = generationService,
-      onStop =
-        () => sessionService.push(SessionService.Command.Stop(sessionId)),
-      freePlay = true
-    ).element
-
-  private def body(kind: ProjectKind): HtmlElement = {
-    val tool = toolOf(kind)
-    div(
-      div(
-        cls := "workspace-model-bar",
-        picker(kind),
-        child <-- sharedNotice(tool)
-      ),
-      child <-- sessions.liveKey(tool).map {
-        case None =>
-          p(
-            cls := "text-secondary mt-4",
-            s"Pick a ${kind.noun} model above to try it. Nothing made here " +
-              "is kept unless you save it."
-          )
-        case Some((sessionId, configurationId)) =>
-          tool match {
-            case RuntimeTool.LlamaCpp =>
-              assistantElement(sessionId, configurationId)
-            case _ => generationElement(sessionId, configurationId)
-          }
-      }
     )
-  }
+
+  /** The generation panel while an image or video model is live. */
+  private def mainColumn(kind: ProjectKind): HtmlElement = div(
+    cls := "workspace-main",
+    onUnmountCallback(_ => panelNow.set(None)),
+    child <-- sessions.liveKey(RuntimeTool.SdCpp).map {
+      case None =>
+        panelNow.set(None)
+        p(
+          cls := "text-secondary mt-4",
+          s"Pick ${if (kind == ProjectKind.Image) "an" else "a"} " +
+            s"${kind.noun} model above to try it. Nothing made here is " +
+            "kept unless you save it. The assistant is optional: it talks " +
+            "the prompt over with you."
+        )
+      case Some((sessionId, configurationId)) =>
+        val panel = generationPanel(sessionId, configurationId)
+        panelNow.set(Some(panel))
+        panel.element
+    }
+  )
+
+  /** The chat with the live chat model: the assistant beside a generation
+    * panel, its proposals going to that panel's form, or — on the Text tab —
+    * the raw model, the conversation being the page.
+    */
+  private def assistantColumn(text: Boolean): HtmlElement = div(
+    cls := "workspace-assistant",
+    child <-- sessions.liveKey(RuntimeTool.LlamaCpp).map {
+      case None =>
+        if (text)
+          p(
+            cls := "text-secondary",
+            "Pick a chat model above to try it. The conversation goes when " +
+              "you leave."
+          )
+        else emptyNode
+      case Some((sessionId, configurationId)) =>
+        AssistantPanel(
+          sessionId = sessionId,
+          sessionSignal =
+            sessionService.sessions.map(_.get(configurationId)).distinct,
+          service = assistantService,
+          generationService = generationService,
+          onStop =
+            () => sessionService.push(SessionService.Command.Stop(sessionId)),
+          proposalTarget = Option.unless(text)(
+            AssistantTurns.ProposalTarget(
+              apply = proposal =>
+                panelNow.now() match {
+                  case Some(panel) => panel.applyProposal(proposal)
+                  // No image model live yet, so there is no form to fill:
+                  // hold the proposal, and the panel takes it when the
+                  // picker launches one.
+                  case None =>
+                    generationService.requestPromptProposal(proposal)
+                },
+              applyAndRun = proposal =>
+                panelNow.now().foreach(_.applyProposalAndRun(proposal)),
+              canRun = sessions
+                .liveStatus(RuntimeTool.SdCpp)
+                .map(_.contains(SessionStatus.Ready))
+            )
+          ),
+          freePlay = true
+        ).element
+    }
+  )
+
+  private def body(kind: ProjectKind): HtmlElement = div(
+    modelBar(kind),
+    kind match {
+      case ProjectKind.Text =>
+        div(cls := "workspace-columns is-text", assistantColumn(text = true))
+      case _ =>
+        div(
+          cls := "workspace-body",
+          cls("has-drawer") <-- drawerShown,
+          mainColumn(kind),
+          // Kept mounted while closed, so the conversation's scroll and what
+          // is typed survive a toggle.
+          div(
+            cls := "workspace-drawer",
+            display <-- drawerShown.map(shown => if (shown) "" else "none"),
+            assistantColumn(text = false)
+          )
+        )
+    }
+  )
 
   private def tab(target: ProjectKind, label: String): HtmlElement = li(
     cls <-- kind.map(current =>
@@ -338,6 +418,14 @@ class SandboxPage(
     kind --> kindNow,
     unsaved --> unsavedNow,
     unsavedResults --> unsavedResultsNow,
+    // An assistant just launched opens its drawer.
+    sessions
+      .liveKey(RuntimeTool.LlamaCpp)
+      .map(_.map(_._1))
+      .changes
+      .filter(_.isDefined) --> Observer[Option[String]](_ =>
+      drawerOpen.set(true)
+    ),
     onMountCallback { _ =>
       runConfigurationService.push(RunConfigurationService.Command.Load)
       runConfigurationService.architectureService.push(

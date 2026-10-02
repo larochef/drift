@@ -20,8 +20,8 @@ import com.raquo.laminar.api.L.*
   * workspace is the chat column alone (`specs/41-text-projects.md`).
   *
   * The pieces live beside this file (`specs/29-split-oversized-files.md`):
-  * `WorkspaceHeader`, `VersionHistory`, and what they read of the sessions,
-  * `WorkspaceSessions`.
+  * `WorkspaceHeader`, `ModelBar`, `VersionHistory`, and what they read of the
+  * sessions, `WorkspaceSessions`.
   */
 class ProjectWorkspacePage(
     projectId: String,
@@ -164,7 +164,7 @@ class ProjectWorkspacePage(
     * image model is live, else the history — or, with nothing yet, the model
     * bar in the middle of the page.
     */
-  private def mainColumn(header: WorkspaceHeader): HtmlElement = div(
+  private def mainColumn: HtmlElement = div(
     cls := "workspace-main",
     child <-- sessions.liveKey(RuntimeTool.SdCpp).map {
       case None =>
@@ -187,7 +187,7 @@ class ProjectWorkspacePage(
                 "Every generation becomes a version of the project. The " +
                   "assistant is optional: it talks the prompt over with you."
               ),
-              header.modelBar(prominent = true)
+              modelBar(prominent = true)
             )
         })
       case Some((sessionId, configurationId)) =>
@@ -273,14 +273,12 @@ class ProjectWorkspacePage(
       case Some((sessionId, configurationId)) =>
         AssistantPanel(
           sessionId = sessionId,
-          configurationLabel = sessions.labelOf(configurationId),
           sessionSignal =
             sessionService.sessions.map(_.get(configurationId)).distinct,
           service = assistantService,
           generationService = generationService,
           onStop =
             () => sessionService.push(SessionService.Command.Stop(sessionId)),
-          showHeader = false,
           proposalTarget = Option.unless(text)(
             AssistantTurns.ProposalTarget(
               apply = proposal =>
@@ -315,56 +313,30 @@ class ProjectWorkspacePage(
   )
 
   private val header = WorkspaceHeader(
-    projectId,
     project,
     () => currentProject.now(),
-    projectService,
-    sessionService,
-    sessions,
-    prerequisites,
-    newConfiguration,
-    imageControls = panelNow.signal.map(
-      _.fold[Node](emptyNode)(_.sessionControls)
-    ),
-    assistantControls = assistantSessionControls(withDrawer = true),
-    chatModelControls = assistantSessionControls(withDrawer = false)
+    projectService
   )
 
-  /** The live assistant's controls in the model bar, as the image model has its
-    * own there: the chat drawer's toggle, Stop, and what the server applied —
-    * out of the chat, which keeps the room (François, 2026-09-29). A text
-    * project's conversation is the page, so it has no drawer.
+  /** The pickers, one per row: at the top of the page, or — `prominent` — in
+    * the middle of an empty project, as the one thing to do there.
     */
-  private def assistantSessionControls(withDrawer: Boolean): Signal[Node] =
-    sessions
-      .liveKey(RuntimeTool.LlamaCpp)
-      .map(_.map(_._1))
-      .distinct
-      .map {
-        case None            => emptyNode
-        case Some(sessionId) =>
-          div(
-            cls := "is-flex is-align-items-center",
-            styleAttr := "gap: 0.5rem;",
-            Option.when(withDrawer)(
-              button(
-                cls := "button is-small",
-                cls("is-active") <-- drawerOpen.signal,
-                child.text <-- drawerOpen.signal
-                  .map(open => if (open) "💬 Hide chat" else "💬 Show chat"),
-                onClick --> (_ => drawerOpen.update(!_))
-              )
-            ),
-            button(
-              cls := "button is-small is-warning",
-              "⏹ Stop session",
-              onClick --> (_ =>
-                sessionService.push(SessionService.Command.Stop(sessionId))
-              )
-            ),
-            AssistantSessionFacts(assistantService).element
-          )
-      }
+  private def modelBar(prominent: Boolean): HtmlElement =
+    ModelBar(
+      project.map(_.map(_.kind)).distinct,
+      prominent,
+      sessionService,
+      assistantService,
+      sessions,
+      prerequisites,
+      newConfiguration,
+      projectId = Some(projectId),
+      confirmReplace = _ => true,
+      imageControls = panelNow.signal.map(
+        _.fold[Node](emptyNode)(_.sessionControls)
+      ),
+      drawerOpen = drawerOpen
+    ).element
 
   lazy val element: HtmlElement = div(
     cls := "content workspace",
@@ -521,7 +493,7 @@ class ProjectWorkspacePage(
     child <-- isText.map {
       case true =>
         div(
-          header.modelBar(prominent = false),
+          modelBar(prominent = false),
           div(cls := "workspace-columns is-text", assistantColumn(text = true))
         )
       case false =>
@@ -534,13 +506,13 @@ class ProjectWorkspacePage(
             .map((live, versions) => live || versions.contains(true))
             .distinct
             .map {
-              case true  => header.modelBar(prominent = false)
+              case true  => modelBar(prominent = false)
               case false => emptyNode
             },
           div(
             cls := "workspace-body",
             cls("has-drawer") <-- drawerShown,
-            mainColumn(header),
+            mainColumn,
             // Kept mounted while closed, so the conversation's scroll and
             // what is typed survive a toggle.
             div(

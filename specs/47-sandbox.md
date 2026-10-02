@@ -12,9 +12,18 @@ play to a page of its own and leaves the Models page to configurations.
 
 - A **Sandbox** item in the menu opens a page shaped like a project workspace
   without its project: no brief, no versions, no project gallery. An
-  **Image / Video / Text** switch at the top picks the kind; each kind shows a
-  configuration picker filtered to it, then the same generation panel (image,
-  video) or chat (text, the raw model, no system prompt) a workspace mounts.
+  **Image / Video / Text** switch at the top picks the kind; each kind is laid
+  out as a workspace of that kind is. Image and video: the model bar — the
+  model's picker filtered to the kind, then the assistant's, each with its
+  live session's controls beside it (Log, Restart, Stop; Show/Hide chat, Stop)
+  — over the generation panel, the assistant a drawer on its right. Text: the
+  bar with the chat model's picker over the chat alone (the raw model, no
+  system prompt).
+- **The assistant** beside an image or video model is the workspace's: it
+  reads the form's prompt and the model's prompting notes, follows the
+  architecture's system template, and its proposals offer **Apply to form**
+  and **Apply and run**; a result offers **Ask the assistant**. Its chat is
+  scratch, like the results.
 - The panel shows the latest result, with its duration, and the queue, as
   22's did. A result offers **Save into** the gallery only or a project
   (22's Keep). Nothing else survives.
@@ -24,12 +33,14 @@ play to a page of its own and leaves the Models page to configurations.
   also cleared when the session stops and at startup, as before.
 - **Switching kind** stops the image/video session and resets the assistant
   (clears the chat) if it was started, after a confirmation naming what goes.
-  One exception: a chat reply's *Apply to generation form* opens the Image tab
-  without stopping or clearing anything, since the proposal has to reach the
-  form.
+  The chat model itself keeps running: the assistant of the Image and Video
+  tabs is the Text tab's chat model. One exception: a Text reply's *Apply to generation form* opens
+  the Image tab without stopping or clearing anything, since the proposal has
+  to reach the form.
 - **Sharing a loaded model.** When the configuration picked is already
   running for a project, the Sandbox uses that session rather than reloading
-  it, and says so: *Running for* ⟨project⟩. Its results are still scratch.
+  it, and says so: *Running for* ⟨project⟩. Its results are still scratch, and
+  a shared assistant talks in the Sandbox's own chat, not the project's.
   Picking another configuration of the same kind says it will stop the
   project's model before doing it.
 - **The Models page shows configurations only.** A live session no longer
@@ -46,10 +57,17 @@ play to a page of its own and leaves the Models page to configurations.
 - `pages/sandbox/SandboxPage` at `/sandbox/<image|video|text>`; without a
   kind it follows the live session (the image/video one first). It mounts
   `GenerationPanel` without a project (so `scratch` still derives from the
-  missing project) and `AssistantPanel` with `freePlay`.
-- `pages/projects/ModelPicker`, cut out of `WorkspaceHeader`, serves both the
-  workspace's model bar and the Sandbox; it takes the launching project and a
-  `confirmReplace` the Sandbox uses to ask before stopping a project's model.
+  missing project) and `AssistantPanel` with `freePlay` — in the workspace's
+  own `workspace-body` / `workspace-drawer` layout, with the workspace's
+  `ProposalTarget`; `freePlay` makes the template follow the live image
+  model's and fall back to none on the Text tab, where no panel is up.
+- `pages/projects/ModelBar`, cut out of `WorkspaceHeader`, is the bar of both
+  pages: the `ModelPicker`s of a kind, the generation panel's
+  `sessionControls` beside the image or video one and
+  `pages/assistant/AssistantSessionControls` beside the assistant's. It takes
+  the launching project and a `confirmReplace` the Sandbox uses to ask before
+  stopping a project's model. Neither panel draws a header of its own any
+  more.
   `ModelPicker.newConfiguration` is the modal both open from the select's
   last entry.
 - Leaving: a capture-phase click listener on `window` asks before an in-app
@@ -63,8 +81,7 @@ play to a page of its own and leaves the Models page to configurations.
   cards show *Running in* the Sandbox or the project, with **Open** and
   **Stop**.
 - The gallery's reuse and *Just try a model* open the Sandbox, staging for
-  the assistant opens its Text tab. A scratch result offers no *Ask the
-  assistant*: the Sandbox has no chat beside its images.
+  the assistant opens its Text tab.
 - Keep is labelled **Save** now; the backend (`Generation.scratch`,
   `outputs/scratch/`, `ScratchRoutes`, `ScratchGenerations`) is spec 22's,
   unchanged.

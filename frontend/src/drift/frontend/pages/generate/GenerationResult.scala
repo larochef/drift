@@ -88,12 +88,11 @@ class GenerationResult(
     * assistant (`specs/21-assistant-page.md`). Images only: nothing sends a
     * video to a vision model yet.
     *
-    * In a workspace the assistant is the column beside this one, so staging the
-    * image is the whole action. The Sandbox has no chat beside its images
-    * (`specs/47-sandbox.md`), so a scratch result does not offer it.
+    * The assistant is the drawer beside this panel, in a workspace and in the
+    * Sandbox alike, so staging the image is the whole action.
     */
   private def askAssistantButton(output: GenerationOutput): Node =
-    if (!output.mimeType.startsWith("image/") || scratch) emptyNode
+    if (!output.mimeType.startsWith("image/")) emptyNode
     else
       button(
         cls := "button is-small mt-1",

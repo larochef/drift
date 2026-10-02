@@ -331,57 +331,38 @@ class GenerationPanel(
       )
     }
 
-  /** The session's Log, Restart and Stop buttons. */
-  private def controls(small: Boolean): Seq[HtmlElement] = {
-    val size = if (small) " is-small" else ""
-    Seq(
-      button(
-        cls := s"button mr-2$size",
-        child.text <-- showLog.signal.map(open =>
-          if (open) "▼ Log" else "▶ Log"
-        ),
-        onClick --> { _ =>
-          val opening = !showLog.now()
-          showLog.set(opening)
-          if (opening) logService.follow(sessionId) else logService.stop()
-        }
-      ),
-      button(
-        cls := s"button mr-2$size",
-        "↻ Restart",
-        title := "Stop the model and start it again on the same runtime, " +
-          "keeping this form: it picks up LoRAs installed since it " +
-          "started, and starts afresh if it misbehaves",
-        onClick --> (_ => restart())
-      ),
-      button(
-        cls := s"button is-warning$size",
-        "⏹ Stop session",
-        onClick --> (_ => onStop())
-      )
+  /** The session's Log, Restart and Stop buttons, which the page places in its
+    * model bar, beside the picker that names the model (François, 2026-09-29) —
+    * a workspace and the Sandbox alike.
+    */
+  lazy val sessionControls: HtmlElement = div(
+    cls := "control is-flex",
+    button(
+      cls := "button mr-2 is-small",
+      child.text <-- showLog.signal.map(open => if (open) "▼ Log" else "▶ Log"),
+      onClick --> { _ =>
+        val opening = !showLog.now()
+        showLog.set(opening)
+        if (opening) logService.follow(sessionId) else logService.stop()
+      }
+    ),
+    button(
+      cls := "button mr-2 is-small",
+      "↻ Restart",
+      title := "Stop the model and start it again on the same runtime, " +
+        "keeping this form: it picks up LoRAs installed since it " +
+        "started, and starts afresh if it misbehaves",
+      onClick --> (_ => restart())
+    ),
+    button(
+      cls := "button is-warning is-small",
+      "⏹ Stop session",
+      onClick --> (_ => onStop())
     )
-  }
-
-  /** The controls a workspace places in its model bar. */
-  lazy val sessionControls: HtmlElement =
-    div(cls := "control is-flex", controls(small = true))
+  )
 
   private def handleSubmit(): Unit =
     service.capabilitiesOf(sessionId).foreach(submission.submit)
-
-  private def statusTag(session: Session): HtmlElement = {
-    val (colour, text) = session.status match {
-      case SessionStatus.Starting => ("is-info", "starting…")
-      case SessionStatus.Ready    =>
-        (
-          "is-success",
-          session.port.map(p => s"ready on :$p").getOrElse("ready")
-        )
-      case SessionStatus.Failed  => ("is-danger", "failed")
-      case SessionStatus.Stopped => ("", "stopped")
-    }
-    span(cls := s"tag is-small mr-2 $colour", text)
-  }
 
   /** What free play is, said once above the results, with the way to empty it.
     */
@@ -513,26 +494,6 @@ class GenerationPanel(
       service.push(GenerationService.Command.LoadGenerations(sessionId))
       loraService.push(LoraService.Command.Load)
     },
-    // Inside a workspace these controls sit in the model bar, beside the
-    // picker that names the model (François, 2026-09-29).
-    Option.when(scratch)(
-      div(
-        cls := "level panel-header",
-        div(
-          cls := "level-left",
-          h1(
-            cls := "title text-primary",
-            child.text <-- configurationLabel
-          ),
-          child <-- sessionSignal.map {
-            case Some(session) => statusTag(session)
-            case None          => emptyNode
-          }
-        ),
-        div(cls := "level-right", controls(small = false))
-      )
-    ),
-    Option.when(scratch)(hr()),
     onUnmountCallback(_ => logService.stop()),
     child <-- showLog.signal.map {
       case true =>

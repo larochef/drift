@@ -131,9 +131,13 @@ Per model, on the drift runner:
 ## Sandbox or project
 
 - The **Sandbox** (sidebar) is for trying a model: nothing is saved. Tabs pick
-  **Image**, **Video** or **Text**, each with its model picker; Text is a chat
-  with the raw model. Results show their duration and a **Save into** row:
-  "the gallery only" or an existing project. Saved images become gallery
+  **Image**, **Video** or **Text**, each laid out like a project workspace of
+  that kind: the model pickers at the top, with **Log**, **Restart** and
+  **Stop session** beside the live model. Image and Video also have an
+  **Assistant** picker: its chat opens as a drawer on the right, with **Apply
+  to form** and **Apply and run** on its proposals, as in a project. Text is a
+  chat with the raw model. Results show their duration and a **Save into**
+  row: "the gallery only" or an existing project. Saved images become gallery
   entries (and a version of the project, if one is picked).
 - Everything not saved goes when you leave the page (drift asks first), when
   you switch tabs (which also stops the image or video model and clears the

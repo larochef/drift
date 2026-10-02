@@ -105,8 +105,14 @@ Inside a project the conversation is kept and comes back when you reopen it.
 
 ## Sandbox
 
-The Sandbox's **Text** tab, outside any project, gives a scratch chat with no
-template by default: the raw model. Pick one from the System prompt select to
-change that. It goes when you leave the page or switch tabs; **Clear chat**
-empties it. Apply to generation form hands a proposal to the Sandbox's image
-form.
+The Sandbox's **Image** and **Video** tabs have the assistant a project has:
+pick a model in the **Assistant** row and its chat opens as a drawer beside
+the form. It reads the prompt in the form, uses the system prompt the image or
+video model is set up for, and its proposals offer **Apply to form** and
+**Apply and run**. The chat is not kept: it goes when you leave the page or
+switch tabs.
+
+The **Text** tab gives a scratch chat with no template by default: the raw
+model. Pick one from the System prompt select to change that. It goes when you
+leave the page or switch tabs; **Clear chat** empties it. Apply to
+generation form hands a proposal to the Sandbox's image form.

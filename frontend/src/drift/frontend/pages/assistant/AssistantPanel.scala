@@ -8,14 +8,13 @@ import com.raquo.laminar.api.L.*
 import org.scalajs.dom
 
 /** The chat with a live assistant session (`specs/21-assistant-page.md`,
-  * `specs/20`): the session's applied properties, the turns with reasoning
-  * folded away, a composer with staged images, a context meter, and "Apply to
-  * form" on every proposal. In a workspace it is the project's conversation —
-  * kept, compacted and restarted; in free play a scratch chat that just clears.
+  * `specs/20`): the turns with reasoning folded away, a composer with staged
+  * images, a context meter, and "Apply to form" on every proposal. In a
+  * workspace it is the project's conversation — kept, compacted and restarted;
+  * in free play a scratch chat that just clears.
   */
 class AssistantPanel(
     sessionId: String,
-    configurationLabel: Signal[String],
     sessionSignal: Signal[Option[Session]],
     service: AssistantService,
     generationService: GenerationService,
@@ -31,12 +30,7 @@ class AssistantPanel(
       * which is the question being asked of it. A workspace starts at the
       * default plus the project's brief. The toggle stays either way.
       */
-    freePlay: Boolean = false,
-    /** The model's name, status, facts and Stop above the chat. A workspace
-      * shows them in its model bar instead, beside the image model's own
-      * controls, and leaves the chat its room.
-      */
-    showHeader: Boolean = true
+    freePlay: Boolean = false
 ) extends Component {
   private val showSystemPrompt = Var(false)
   private val showArchive = Var(false)
@@ -51,17 +45,6 @@ class AssistantPanel(
       case _ => None
     }
 
-  private def statusTag(status: Option[SessionStatus]): HtmlElement =
-    status match {
-      case Some(SessionStatus.Ready) =>
-        span(cls := "tag is-success is-small ml-2", "ready")
-      case Some(SessionStatus.Starting) =>
-        span(cls := "tag is-info is-small ml-2", "loading the model…")
-      case Some(SessionStatus.Failed) =>
-        span(cls := "tag is-danger is-small ml-2", "failed")
-      case _ => span(cls := "tag is-small ml-2", "stopped")
-    }
-
   private def confirmRestart(): Unit = {
     val count = service.turnsNow.count(turn => !turn.streaming)
     if (
@@ -71,34 +54,6 @@ class AssistantPanel(
       )
     ) service.restart()
   }
-
-  private def header: HtmlElement = div(
-    cls := "level panel-header",
-    div(
-      cls := "level-left",
-      div(
-        p(
-          cls := "title is-5 text-primary mb-1",
-          child.text <-- configurationLabel,
-          // The status alone: the session changes with every progress tick.
-          child <-- sessionSignal.map(_.map(_.status)).distinct.map(statusTag)
-        ),
-        p(AssistantSessionFacts(service).element)
-      )
-    ),
-    div(
-      cls := "level-right",
-      // The same session control as the generation panel, in the same size
-      // and the same colour (François, 2026-09-09): the two columns of a
-      // workspace run the same kind of thing. The conversation's own controls
-      // sit in the composer card.
-      button(
-        cls := "button is-warning",
-        "⏹ Stop session",
-        onClick --> (_ => onStop())
-      )
-    )
-  )
 
   /** Offered when the image model that just started prefers another system
     * template than the conversation uses (`specs/32`): switch, or keep — a kept
@@ -273,7 +228,6 @@ class AssistantPanel(
       if (ready) service.loadProperties(sessionId)
       else service.clearProperties()
     },
-    Option.when(showHeader)(header),
     // A text project talks to the raw model (`specs/41-text-projects.md`):
     // no template to pick, none to switch to.
     child <-- showSystemPrompt.signal

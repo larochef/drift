@@ -1,0 +1,7 @@
+{
+  "version": 11,
+  "description": "specs/46: starter configurations run on the drift runner where it is installed and their architecture runs on it",
+  "steps": [
+    { "collection": "run-configurations", "op": "coded", "name": "starters-on-runner" }
+  ]
+}

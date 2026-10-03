@@ -154,8 +154,9 @@ final class RuntimeManager(
     * (`specs/46-starter-configurations.md`): ROCm only where the ROCm driver
     * exposes an AMD GPU, paired for its gfx target; Vulkan and CPU always;
     * drift's runner where this drift carries it and the GPU is the one its
-    * kernels are built for. Recommended: ROCm for sd-cpp when there is one,
-    * Vulkan otherwise.
+    * kernels are built for. Recommended: the runner where it is offered — the
+    * default wherever it is available (François, 2026-10-03) — else ROCm for
+    * sd-cpp when there is one, Vulkan otherwise.
     */
   def installOptions: List[RuntimeInstallOption] = {
     val gfx = GpuDetection.amdGfxTarget()
@@ -179,7 +180,7 @@ final class RuntimeManager(
               case RuntimeBackend.Vulkan => "Vulkan"
               case RuntimeBackend.Cpu    => "CPU"
             }}" + target.fold("")(t => s" ($t)"),
-          recommended = backend == preferred
+          recommended = !runner && backend == preferred
         )
       } ++ Option.when(runner)(
         RuntimeInstallOption(
@@ -188,7 +189,7 @@ final class RuntimeManager(
           None,
           RunnerFiles.id(tool),
           RunnerFiles.label(tool),
-          recommended = false
+          recommended = true
         )
       )
     }

@@ -8,5 +8,6 @@
   "007-umt5-xxl-family.json",
   "008-hidream-o1-runner.json",
   "009-lora-sampling.json",
-  "010-qwen-image-21-reference-context.json"
+  "010-qwen-image-21-reference-context.json",
+  "011-starters-on-runner.json"
 ]

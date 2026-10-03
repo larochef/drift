@@ -192,12 +192,24 @@ class RunConfigurationForm(
             )
           )
       },
-      // a new architecture starts on its first runner, its upstream engine
-      selectedArchitecture.changes --> (_.foreach(a =>
-        runnerVar.set(
-          a.runners.headOption.getOrElse(RuntimeEngine.upstream(a.tool))
-        )
-      )),
+      // a new architecture starts on the drift runner where it runs on it and
+      // the runner is installed — the default wherever it is available —
+      // else on its first runner, its upstream engine
+      selectedArchitecture.changes.withCurrentValueOf(runtimes) --> {
+        (selected, installed) =>
+          selected.foreach(a =>
+            runnerVar.set(
+              if (
+                a.runners.contains(RuntimeEngine.DriftRunner) &&
+                installed.exists(r =>
+                  r.tool == a.tool &&
+                    r.engine == RuntimeEngine.DriftRunner && r.valid
+                )
+              ) RuntimeEngine.DriftRunner
+              else a.runners.headOption.getOrElse(RuntimeEngine.upstream(a.tool))
+            )
+          )
+      },
       RunConfigurationForm
         .runnerField(selectedArchitecture, runtimes, runnerVar),
       child <-- archIdVar.signal.combineWith(architectures).map {

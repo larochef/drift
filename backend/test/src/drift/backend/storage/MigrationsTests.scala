@@ -445,6 +445,65 @@ object MigrationsTests extends TestSuite {
       assert(!Files.exists(architectures.resolve("qwen3.6-35b-a3b.json")))
     }
 
+    test("11: starters on the drift runner where it is installed (specs/46)") {
+      val dir = Files.createTempDirectory("drift-starters-on-runner")
+      Files.writeString(dir.resolve("schema.json"), """{"version": 10}""")
+      def write(collection: String, id: String, json: String): Unit =
+        Files.writeString(
+          Files
+            .createDirectories(dir.resolve(collection))
+            .resolve(s"$id.json"),
+          json,
+          StandardCharsets.UTF_8
+        )
+      def runnerOf(id: String) =
+        ujson
+          .read(Files.readString(dir.resolve(s"run-configurations/$id.json")))
+          .obj
+          .get("runner")
+      write(
+        "settings",
+        "seeded-run-configurations",
+        """{"ids": ["starter-pid", "starter-chat"]}"""
+      )
+      write(
+        "architectures",
+        "pid",
+        """{"id": "pid", "tool": "SdCpp", "runners": ["SdCpp", "DriftRunner"]}"""
+      )
+      write(
+        "architectures",
+        "chat",
+        """{"id": "chat", "tool": "LlamaCpp", "runners": ["LlamaCpp", "DriftRunner"]}"""
+      )
+      write(
+        "runtimes",
+        "drift-runner-images",
+        """{"id": "drift-runner-images", "tool": "SdCpp", "valid": true}"""
+      )
+      write(
+        "run-configurations",
+        "starter-pid",
+        """{"id": "starter-pid", "architectureId": "pid", "runner": "SdCpp"}"""
+      )
+      // the chat runner is not installed
+      write(
+        "run-configurations",
+        "starter-chat",
+        """{"id": "starter-chat", "architectureId": "chat", "runner": "LlamaCpp"}"""
+      )
+      // the user's own, not a starter
+      write(
+        "run-configurations",
+        "mine",
+        """{"id": "mine", "architectureId": "pid", "runner": "SdCpp"}"""
+      )
+      Migrations(dir).run()
+      assert(runnerOf("starter-pid").contains(ujson.Str("DriftRunner")))
+      assert(runnerOf("starter-chat").contains(ujson.Str("LlamaCpp")))
+      assert(runnerOf("mine").contains(ujson.Str("SdCpp")))
+    }
+
     test("9: a LoRA's sampling settings (specs/49)") {
       val dir = Files.createTempDirectory("drift-lora-sampling")
       val loras = Files.createDirectories(dir.resolve("loras"))

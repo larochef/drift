@@ -333,6 +333,38 @@ private[storage] object Migrations {
         record
       }
     },
+    // `specs/46`: a starter configuration still on its upstream engine runs on
+    // the drift runner when its architecture does and the runner for its tool
+    // is installed — the runner is the default wherever it is available
+    // (François, 2026-10-03); a PiD starter left on sd-cpp cut a 4096²
+    // upscale into nine tiles where the runner decodes it in one
+    "starters-on-runner" -> { (record, stored) =>
+      val seeded = stored("settings", "seeded-run-configurations")
+        .flatMap(_.obj.get("ids"))
+        .map(_.arr.map(_.str).toSet)
+        .getOrElse(Set.empty)
+      val runnerOf = Map("SdCpp" -> "drift-runner-images", "LlamaCpp" -> "drift-runner")
+      val architecture = record.obj
+        .get("architectureId")
+        .flatMap(id => stored("architectures", id.str))
+      Option.when(
+        record.obj.get("id").exists(id => seeded.contains(id.str)) &&
+          !record.obj.get("runner").contains(ujson.Str("DriftRunner")) &&
+          architecture.exists(
+            _.obj
+              .get("runners")
+              .exists(_.arr.contains(ujson.Str("DriftRunner")))
+          ) &&
+          architecture
+            .flatMap(_.obj.get("tool"))
+            .flatMap(tool => runnerOf.get(tool.str))
+            .flatMap(stored("runtimes", _))
+            .exists(_.obj.get("valid").contains(ujson.Bool(true)))
+      ) {
+        record.obj("runner") = ujson.Str("DriftRunner")
+        record
+      }
+    },
     // `specs/03`: a checkpoint slot's family is what the browser searches,
     // and Wan 2.2's text encoder is umt5-xxl — `t5xxl` found Google's T5s
     "umt5-xxl-family" -> { (record, _) =>

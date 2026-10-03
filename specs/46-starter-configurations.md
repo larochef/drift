@@ -16,8 +16,9 @@ missing runtime or download is offered in place of the launch.
   models, whose reference stays authoritative, a starter is an ordinary
   configuration from the moment it lands — edited, deleted, never rewritten
   or brought back. An id a user configuration already holds is skipped. Six
-  starters, all on the upstream engine (sd-cpp or llama.cpp, which run
-  everywhere):
+  starters, seeded on the upstream engine (sd-cpp or llama.cpp, which run
+  everywhere) and moved to the drift runner wherever it is available — the
+  runner is the default wherever it is (François, 2026-10-03):
   - `starter-flux2-klein-9b` — Flux.2 Klein 9B, Q4_K_M
   - `starter-krea2` — Krea 2 Turbo, Q4_K_M
   - `starter-qwen-image-2.1` — Qwen Image 2.1, Q4_K, with the vision projector
@@ -44,8 +45,8 @@ missing runtime or download is offered in place of the launch.
   it and this drift carries it for the GPU (gfx1151), then ROCm (offered only
   when the ROCm kernel driver exposes an AMD GPU, paired with TheRock for its
   gfx target), Vulkan and CPU. The first is preselected and marked
-  recommended: the runner where offered, else ROCm for sd-cpp on such a GPU,
-  else Vulkan. An upstream build installs the newest release like any
+  recommended: the runner where offered (`RuntimeManager.installOptions`
+  marks it so), else ROCm for sd-cpp on such a GPU, else Vulkan. An upstream build installs the newest release like any
   latest-tracking runtime; the runner installs both its runtimes as Settings
   does. Picking another engine than a configuration's moves the
   configuration to it (`43`: a configuration names its engine) — on the
@@ -73,6 +74,17 @@ missing runtime or download is offered in place of the launch.
 
 ## Shape
 
+- Migration 011 (`Migrations.coded` "starters-on-runner"): a seeded starter
+  (its id in `settings/seeded-run-configurations.json`) still on its
+  upstream engine moves to the drift runner when its architecture runs there
+  and the runner's runtime for its tool is installed and valid. Once, as a
+  migration is, so a starter moved back by hand stays where it was put. It
+  came of a PiD starter left on sd-cpp on an install whose runtimes predate
+  the starters: a 4096² upscale proposed nine 1536² tiles, where the runner
+  decodes it in one.
+- A new configuration's form starts on the drift runner when the chosen
+  architecture runs there and the runner is installed, else on the
+  architecture's first engine.
 - `StorageService.seedOnce`: writes each reference item absent from
   `settings/seeded-<entityType>.json`, then records its id there — the records
   cannot say it themselves once the user may delete them.

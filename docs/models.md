@@ -122,7 +122,10 @@ any parameter overrides, default LoRAs, and optionally the assistant prompt
 it prefers over its architecture's default. Its **Runner** is the engine it
 runs on, among its architecture's runners. Every launch uses it: the launch
 control, projects, text projects, the assistant, PiD, redraw and edit. The card
-says which one, and a runner that isn't installed is marked so. Chat models get
+says which one, and a runner that isn't installed is marked so. The drift
+runner is the default wherever it is installed and the architecture runs on
+it: a new configuration starts on it, and so do the starter configurations
+drift ships. Chat models get
 configurations the same way. **New run configuration** creates one; the card's **Edit** changes it.
 
 A slot whose model isn't registered yet doesn't need a trip to the

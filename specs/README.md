@@ -56,7 +56,7 @@ in [`../docs/`](../docs/README.md).
 | [42](42-drift-runner.md) | drift runner: own inference engine for Strix Halo (HIP kernels, Scala via FFM), chat first with MTP | partial — steps 1–9 done, 10–13 in part; step 14: MiniMax H3, Wan 2.2 A14B, LTX 2.5 (videos; H3 and LTX with their soundtracks) |
 | [43](43-runners-per-architecture.md) | Runners per architecture: the drift runner installed from the runtimes page, supported runners and model kind, a runner per configuration | done in code, run on a copy of the configuration |
 | [44](44-generation-progress.md) | Generation progress: batch and image bars, the runner reporting its own progress | planned |
-| [45](45-redraw-steps-and-reference.md) | Redraw: full steps at any strength, a reference at the tile's scale, reference-taking models only | planned |
+| [45](45-redraw-steps-and-reference.md) | Redraw: full steps at any strength, the 3×3 neighbourhood as reference, reference-taking models only, colour-matched parts | planned (measured 2026-10-03) |
 | [46](46-starter-configurations.md) | Starter run configurations; every launch becomes a download while weights are missing | done in code, not yet run live |
 | [47](47-sandbox.md) | Sandbox page: free play out of the Models page, image / video / text switch | done in code, not run live |
 | [48](48-soundtrack-polish.md) | Soundtrack polish: a post-processing step on a video's audio (loudness, de-harsh, denoise, low cut) through ffmpeg | planned |

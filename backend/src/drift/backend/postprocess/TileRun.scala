@@ -44,6 +44,10 @@ final private[postprocess] class TileRun(
       * redraw softens away the artifacts it is meant to remove.
       */
     prepareTile: BufferedImage => BufferedImage,
+    /** What each returned tile goes through before it is kept, against the
+      * source's crop of it as it was before `prepareTile`.
+      */
+    correctTile: Option[(BufferedImage, BufferedImage) => BufferedImage],
     finish: PictureFinish,
     keepTiles: Boolean,
     finishTile: Option[TileWindow.FinishTile],
@@ -352,6 +356,36 @@ final private[postprocess] class TileRun(
                             "the image is entirely black — the model's result was NaN"
                           )
                       }).toLeft(())
+                    }
+                    .flatMap { _ =>
+                      correctTile.fold[Either[String, Unit]](Right(()))(
+                        correct =>
+                          Option(ImageIO.read(output.toFile))
+                            .toRight("the image cannot be decoded")
+                            .map { returned =>
+                              if (keepTiles)
+                                ImageIO.write(
+                                  returned,
+                                  "png",
+                                  tileFile(index, "output-raw").toFile
+                                )
+                              // The crop is the window; the tile sits in it.
+                              val sourceTile =
+                                if (window == tile) crop
+                                else
+                                  crop.getSubimage(
+                                    tile.x - window.x,
+                                    tile.y - window.y,
+                                    tile.width,
+                                    tile.height
+                                  )
+                              ImageIO.write(
+                                correct(returned, sourceTile),
+                                "png",
+                                output.toFile
+                              )
+                            }
+                      )
                     }
                     .flatMap { _ =>
                       finishing

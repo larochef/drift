@@ -1,0 +1,7 @@
+{
+  "version": 10,
+  "description": "specs/45: Qwen Image 2.1 takes a reference image as context (measured on sd-cpp and the runner), so it redraws",
+  "steps": [
+    { "collection": "architectures", "op": "reseed", "where": { "id": "qwen-image-2.1", "builtIn": true } }
+  ]
+}

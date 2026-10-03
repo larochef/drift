@@ -138,12 +138,13 @@ class GenerationDetailHost(
     configurationsOf(_.pixelDiffusionDecoder)
 
   /** What can redraw (`specs/27-redraw.md`): run configurations of sd-cpp
-    * architectures tagged `image`.
+    * architectures tagged `image` whose model takes a reference as context —
+    * without one a tile is repainted as something else (`specs/45`).
     */
   private val redrawConfigurations: Signal[List[ConfigurationOption]] =
     configurationsOf(a =>
       a.tool == RuntimeTool.SdCpp && a.tags.contains("image")
-    )
+    ).map(_.filter(_.referenceImages)).distinct
 
   /** What can edit by instruction (`specs/39-seamless-edit.md`): run
     * configurations of sd-cpp architectures tagged `edit`.

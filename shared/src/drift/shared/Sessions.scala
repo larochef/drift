@@ -70,6 +70,11 @@ case class Session(
       * Trimmed to something a single line can hold.
       */
     activity: Option[String] = None,
+    /** Which image of a batch the session is generating, read out of its log
+      * like `progress`, which is then that image's bar. `None` outside an image
+      * job.
+      */
+    batch: Option[BatchProgress] = None,
     /** What resolving the parameters had to say — a flag this build cannot take
       * and was dropped, or one it added of its own accord
       * (`specs/16-parameter-resolution.md`). Rendered messages: the card only

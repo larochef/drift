@@ -76,9 +76,11 @@ gallery image, same size in and out; after an upscale you redraw its result.
   tone, hair, facial features, ethnicity), the instructions appended, and a
   position sentence ("This image is the bottom left part of the reference
   image, from 0% to 50% of its width and from 43% to 100% of its height").
-- Every tile gets the whole source, scaled to at most the reference size, as
-  `ref_images` beside the tile crop as `init_image`. This is what keeps a tile
-  from finding the prompt's subject where it is not.
+- Every tile gets a reference beside the tile crop as `init_image`: since
+  spec 45, the 3×3 block of tiles around it rather than the whole source,
+  and redraw is offered only on models that take a reference as context.
+  This is what keeps a tile from finding the prompt's subject where it is
+  not.
 - Instructions are descriptive, not commands ("natural skin texture, visible
   pores"); an img2img model follows descriptions of what should be seen.
 - The job runs on a ready session of the chosen configuration if one exists,
@@ -234,13 +236,11 @@ gallery image, same size in and out; after an upscale you redraw its result.
   the only architectures that carry `initImage: false`, since a decoder
   reconstructs a reference rather than repainting an image handed to it. The
   flag is what a mis-tagged architecture would be refused by.
-- So a redraw runs on **any** image architecture: with the whole image beside
-  each tile where the family has a preset, and as plain img2img where it has
-  none — the prompt then says the tile is part of "a larger photograph"
-  instead of naming a reference image the model never received. `useReference`
-  on the request overrides the architecture either way, and the *reference*
-  group offers it as model default / always / never, hiding the reference size
-  when none is sent.
+- A redraw ran on **any** image architecture until spec 45, which measured
+  what a tile with no reference does on a large picture (sand repainted as
+  rock, an areola erased) and kept redraw to the models that take a reference
+  as context on their engine. `useReference = false` on the request still
+  switches it off for a job.
 - The trade, measured on Krea2 at 768 with strength 0.4, 8 steps
   (François, 2026-09-18): with the reference, composition holds far better
   (block luminance drift 26 against 41) but less texture is repainted (detail

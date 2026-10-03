@@ -718,6 +718,7 @@ final class ImageServer(
       count: Int
   ): ujson.Value = {
     println("sampling using Euler method")
+    val startedAt = System.nanoTime()
     val pngs = (0 until count).map { index =>
       val seeded = request.copy(seed = request.seed + index)
       println(s"generating image ${index + 1}/$count (seed ${seeded.seed})")
@@ -726,6 +727,9 @@ final class ImageServer(
       ImageIO.write(image, "png", png)
       png.toByteArray
     }
+    // sd-cpp's closing line, which is what drift ends the batch count on.
+    val seconds = (System.nanoTime() - startedAt) / 1e9
+    println(f"generate_image completed in $seconds%.2fs")
     ujson.Obj(
       "output_format" -> "png",
       "images" -> ujson.Arr.from(pngs.zipWithIndex.map { (png, index) =>

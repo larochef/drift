@@ -64,8 +64,8 @@ class RedrawPanel(
   private val contextVar = Var("0")
   private val advancedVar = Var(false)
 
-  /** Whether the whole image goes along as a reference: empty follows the
-    * architecture, which is what most jobs want.
+  /** Whether the 3×3 block of tiles goes along as a reference: empty sends it,
+    * which is what a job wants unless it weighs the trade itself.
     */
   private val referenceVar = Var[Option[Boolean]](None)
 
@@ -182,7 +182,7 @@ class RedrawPanel(
         minAttr := "0.05",
         maxAttr := "1",
         title := "how much the model may change — around 0.35–0.45 repaints " +
-          "detail while the whole image, sent beside each tile, holds the " +
+          "detail while the reference sent beside each tile holds the " +
           "anatomy"
       )
     ),
@@ -211,8 +211,8 @@ class RedrawPanel(
     )
   )
 
-  /** What else the model sees: the whole image beside each tile and how big it
-    * goes, and the context shown around each tile.
+  /** What else the model sees: the 3×3 block of tiles around each tile and how
+    * big it goes, and the context shown around each tile.
     */
   private def referenceGroup: HtmlElement = group(
     "reference",
@@ -220,28 +220,18 @@ class RedrawPanel(
       div(
         cls := "select is-small reference-choice",
         select(
-          title := "the whole image sent beside each tile: it holds " +
-            "composition and identity, costs about three times the time per " +
-            "tile, and leaves less new texture. 'model default' sends one " +
-            "only where the preset treats it as context: a model with no " +
-            "preset ignores it, and an editing model would paint the whole " +
-            "picture into every tile.",
+          title := "the 3×3 block of tiles around each tile, sent beside " +
+            "it: it tells the model what the tile shows — without it, sand " +
+            "came back as rock and an areola was erased — and costs about a " +
+            "fifth more time per tile on Qwen Image 2.1.",
           onChange.mapToValue --> Observer[String] {
-            case "on"  => referenceVar.set(Some(true))
             case "off" => referenceVar.set(Some(false))
             case _     => referenceVar.set(None)
           },
           option(
             value := "default",
             selected <-- referenceVar.signal.map(_.isEmpty),
-            child.text <-- architectureReference.map(on =>
-              if (on) "model default (sent)" else "model default (none)"
-            )
-          ),
-          option(
-            value := "on",
-            selected <-- referenceVar.signal.map(_.contains(true)),
-            "always send"
+            "send"
           ),
           option(
             value := "off",
@@ -283,8 +273,8 @@ class RedrawPanel(
     checkField(
       keepTilesVar,
       "keep the tiles",
-      "keep every tile's input and output, and the reference image, beside " +
-        "the job log"
+      "keep every tile's input and output, the output also before its " +
+        "colour was matched, beside the job log"
     )
   )
 
@@ -292,10 +282,8 @@ class RedrawPanel(
   private val costLine: Signal[Node] =
     area.costLine(
       stepsVar.signal
-        .combineWith(strengthVar.signal, contextVar.signal)
-        .map((steps, strength, context) =>
-          RedrawPanel.costOf(_, steps, strength, context)
-        )
+        .combineWith(contextVar.signal)
+        .map((steps, context) => RedrawPanel.costOf(_, steps, context))
     )
 
   private def form: HtmlElement = div(
@@ -355,24 +343,18 @@ class RedrawPanel(
 
 object RedrawPanel {
 
-  /** The line before the button: what is repainted, and what it costs. An
-    * img2img pass walks its schedule from `strength`, so the steps sampled are
-    * a fraction of the steps asked for.
+  /** The line before the button: what is repainted, and what it costs. Every
+    * step asked for runs, whatever the strength (`specs/45`).
     */
   def costOf(
       plan: TilePlan,
       steps: String,
-      strength: String,
       context: String
   ): String = {
+    // Every asked step runs, whatever the strength (`specs/45`).
     val sampling = steps.trim.toIntOption match {
       case None        => "the configuration's steps"
-      case Some(asked) =>
-        val sampled = strength.trim.toDoubleOption
-          .filter(value => value > 0 && value <= 1)
-          .map(value => s", about ${math.round(asked * value)} sampled")
-          .getOrElse("")
-        s"$asked steps each$sampled"
+      case Some(asked) => s"$asked steps each"
     }
     val surroundings = context.trim.toIntOption
       .filter(_ > 0)

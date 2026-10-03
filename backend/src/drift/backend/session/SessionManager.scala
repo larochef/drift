@@ -92,7 +92,8 @@ final class SessionManager(
         val log = Option(logs.get(session.id))
         session.copy(
           progress = log.flatMap(_.progress),
-          activity = log.flatMap(_.activity)
+          activity = log.flatMap(_.activity),
+          batch = log.flatMap(_.batch)
         )
       }
       .toList

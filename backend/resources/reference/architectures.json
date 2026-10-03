@@ -696,7 +696,7 @@
     "label": "Qwen Image 2.1",
     "tool": "SdCpp",
     "builtIn": true,
-    "referenceImages": "Edit",
+    "referenceImages": "Context",
     "civitaiBaseModels": [
       "Qwen 2.1"
     ],

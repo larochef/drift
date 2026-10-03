@@ -8,9 +8,10 @@ import drift.shared.*
 import com.raquo.laminar.api.L.*
 
 /** The gallery as a place to pick inputs from
-  * (`specs/50-inputs-from-the-gallery.md`): its tiles, newest day first, under
-  * its filters, over the page that asked. One tile is picked with a click; a
-  * slot that takes several ticks them, in the order they are to be used.
+  * (`specs/50-inputs-from-the-gallery.md`): everything it holds that matches
+  * its filters, newest first in one grid, over the page that asked. One tile is
+  * picked with a click; a slot that takes several ticks them, in the order they
+  * are to be used.
   *
   * One picker serves a page: whoever needs an input calls `open` with what the
   * slot takes and what to do with the outputs picked. The page mounts `element`
@@ -33,6 +34,11 @@ class GalleryPicker(
   private val searchVar = Var("")
   private val showNsfw = Var(false)
 
+  /** The days asked for since the picker opened, each once: a day that fails to
+    * load is not asked for again on every change.
+    */
+  private var readRequested = Set.empty[String]
+
   /** The outputs ticked, in the order they were. */
   private val ticked = Var(List.empty[Picked])
 
@@ -43,6 +49,7 @@ class GalleryPicker(
     searchVar.set("")
     showNsfw.set(projectsNow.now().exists(p => p.id == project && p.nsfw))
     ticked.set(List.empty)
+    readRequested = Set.empty
     request.set(Some(asked))
     historyService.push(Command.LoadDays)
   }
@@ -144,20 +151,21 @@ class GalleryPicker(
     )
   )
 
-  private def daySection(
-      asked: Request,
-      date: String,
-      daySignal: Signal[HistoryDay]
-  ): HtmlElement = {
-    val loaded: Signal[Option[List[Generation]]] =
-      historyService.generationsByDay.map(_.get(date)).distinct
-    val loading: Signal[Boolean] =
-      historyService.loadingDays.map(_.contains(date)).distinct
-    // One tile per output the slot can take.
-    val shown: Signal[List[Picked]] =
-      loaded.combineWith(filter, labels).map { (loaded, matches, labels) =>
-        loaded
-          .getOrElse(List.empty)
+  /** Every output the slot can take among what matches the filters, newest
+    * first across the days: the picker reads the whole gallery, so nothing
+    * hides behind a day to open (François, 2026-10-02).
+    */
+  private def tiles(asked: Request): Signal[List[Picked]] =
+    Signal
+      .combine(
+        historyService.days,
+        historyService.generationsByDay,
+        filter,
+        labels
+      )
+      .map { (days, byDay, matches, labels) =>
+        days
+          .flatMap(day => byDay.getOrElse(day.date, List.empty))
           .filter(matches)
           .flatMap { generation =>
             val label =
@@ -172,55 +180,56 @@ class GalleryPicker(
               .map(Picked(generation, _, label))
           }
       }
+
+  /** Whether every day has been read. */
+  private val read: Signal[Boolean] =
+    historyService.daysLoaded
+      .combineWith(
+        historyService.days,
+        historyService.generationsByDay,
+        historyService.loadingDays
+      )
+      .map((listed, days, byDay, loading) =>
+        listed && loading.isEmpty &&
+          days
+            .forall(day => byDay.contains(day.date) || readRequested(day.date))
+      )
+      .distinct
+
+  private def grid(asked: Request): HtmlElement = {
+    val shown = tiles(asked)
     div(
-      cls := "gallery-day",
-      div(
-        cls := "gallery-day-heading",
-        h2(cls := "subtitle is-6 text-primary mb-0", date),
-        child <-- loaded.combineWith(loading, daySignal).map {
-          case (None, true, _) =>
-            span(cls := "text-secondary is-size-7", "loading…")
-          case (None, false, day) =>
-            button(
-              cls := "button is-small",
-              s"Show ${day.count} generation${if (day.count == 1) "" else "s"}",
-              onClick --> (_ => historyService.push(Command.LoadDay(date)))
-            )
-          case (Some(_), _, _) => emptyNode
-        }
-      ),
-      child <-- loaded.combineWith(shown).map {
-        case (Some(_), Nil) =>
+      child <-- read.combineWith(shown.map(_.isEmpty).distinct).map {
+        case (false, _)   => p(cls := "text-secondary", "Reading the gallery…")
+        case (true, true) =>
           p(
-            cls := "text-secondary is-size-7",
-            s"Nothing of this day to pick: no ${asked.noun} matches the " +
-              "filters."
+            cls := "text-secondary",
+            s"No ${asked.noun} of the gallery matches the filters."
           )
         case _ => emptyNode
       },
       div(
         cls := "gallery-grid",
-        children <-- shown
-          .split(_.key) { (_, tile, _) =>
-            val generation = tile.generation
-            GenerationCard(
-              generation,
-              tile.configurationLabel,
-              () => pick(asked, List(tile)),
-              outputIndex = generation.outputs.indexOf(tile.output),
-              projectLabel = generation.projectId
-                .map(id => projectLabels.map(_.get(id)))
-                .getOrElse(Val(None)),
-              selecting = Val(asked.multiple),
-              selected = ticked.signal.map(_.exists(_.key == tile.key)),
-              onToggleSelected = () =>
-                ticked.update(current =>
-                  if (current.exists(_.key == tile.key))
-                    current.filterNot(_.key == tile.key)
-                  else current :+ tile
-                )
-            ).element
-          }
+        children <-- shown.split(_.key) { (_, tile, _) =>
+          val generation = tile.generation
+          GenerationCard(
+            generation,
+            tile.configurationLabel,
+            () => pick(asked, List(tile)),
+            outputIndex = generation.outputs.indexOf(tile.output),
+            projectLabel = generation.projectId
+              .map(id => projectLabels.map(_.get(id)))
+              .getOrElse(Val(None)),
+            selecting = Val(asked.multiple),
+            selected = ticked.signal.map(_.exists(_.key == tile.key)),
+            onToggleSelected = () =>
+              ticked.update(current =>
+                if (current.exists(_.key == tile.key))
+                  current.filterNot(_.key == tile.key)
+                else current :+ tile
+              )
+          ).element
+        }
       )
     )
   }
@@ -230,16 +239,7 @@ class GalleryPicker(
       title = Val(s"Pick ${asked.title} from the gallery"),
       body = Seq(
         filters,
-        child <-- historyService.daysLoaded
-          .combineWith(historyService.days.map(_.isEmpty))
-          .map {
-            case (true, true) =>
-              p(cls := "text-secondary", "The gallery is empty.")
-            case _ => emptyNode
-          },
-        children <-- historyService.days.split(_.date)((date, _, daySignal) =>
-          daySection(asked, date, daySignal)
-        )
+        grid(asked)
       ),
       onCancel = () => close(),
       footerLeft = Option.when(asked.multiple)(
@@ -280,8 +280,7 @@ class GalleryPicker(
 
   lazy val element: HtmlElement = div(
     projectService.projects --> projectsNow,
-    // The newest day is what a picker is opened for: loaded without a click,
-    // the older ones on demand as in the gallery.
+    // Opened, the picker reads every day: its grid is the whole gallery.
     historyService.days
       .combineWith(
         request.signal.map(_.isDefined),
@@ -296,10 +295,15 @@ class GalleryPicker(
       )
     ] { (days, opened, loaded, loading) =>
       if (opened)
-        days.headOption
+        days
           .map(_.date)
-          .filterNot(date => loaded.contains(date) || loading(date))
-          .foreach(date => historyService.push(Command.LoadDay(date)))
+          .filterNot(date =>
+            loaded.contains(date) || loading(date) || readRequested(date)
+          )
+          .foreach { date =>
+            readRequested += date
+            historyService.push(Command.LoadDay(date))
+          }
     },
     child <-- request.signal.map {
       case Some(asked) => modal(asked)

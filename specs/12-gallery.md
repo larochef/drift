@@ -18,7 +18,9 @@ in-memory state.
   configuration, kind (images / videos), and a search over prompt text.
 - Paging: the newest days load until about two dozen generations are on
   screen; older days show a "Show n generations" button plus "Show all
-  remaining days". Filters apply to loaded days only.
+  remaining days". Under a filter — any of them, or NSFW projects kept out
+  while some exist — every day is loaded (`GalleryPage.filtering`), and a day
+  appears only with what matches, counted; one with nothing does not appear.
 - A generation completing while the gallery is open appears by itself, folded
   in from the status socket's `generations` topic.
 - Videos play in two places only: the detail's player and the latest

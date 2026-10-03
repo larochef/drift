@@ -92,8 +92,8 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
   why, so a configuration made for sd-cpp runs unchanged. `--guidance` is
   used by FLUX.2 [dev] and ignored, with a note, by the other models.
   - **Krea 2** makes a 1024² image in about half sd-cpp's time, LoRAs
-    included, and does img2img (so redraws run on it). It doesn't do
-    reference images.
+    included, and does img2img. It doesn't do reference images, so it is
+    not offered for redraws, which need one.
   - **FLUX.2 [klein]** does text to image (about 40% faster than sd-cpp),
     img2img, reference images and LoRAs (ComfyUI's, BFL's or diffusers'
     names), all faster than sd-cpp: about half its time for text to image,

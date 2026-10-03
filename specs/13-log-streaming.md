@@ -21,6 +21,11 @@ raw tail on demand.
   when a model runs several ("sampling (high noise) 5/20"). No bar in flight
   → the last non-progress line is shown instead, sd-cpp's
   `[INFO   ] file.cpp:123 - ` prefix stripped.
+- A batch shows two bars in the generation panel: "Image 2 of 4" over a bar of
+  the images already done, then the bar of the image in flight. The position
+  comes from the `generating image 2/4` line each engine prints
+  (`Session.batch`) and ends on `generate_image completed`. A single image
+  shows only its own bar.
 - A log view with the raw tail, autoscroll, and replay of what already
   happened when opened mid-load.
 - A pattern that stops matching degrades to "no bar", never to a wrong or

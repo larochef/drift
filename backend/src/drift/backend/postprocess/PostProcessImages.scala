@@ -199,6 +199,42 @@ object PostProcessImages {
     }
   }
 
+  /** The box radius `colourMatched` blurs with: two passes of it are about the
+    * Gaussian of 24 px that was measured (`specs/45`).
+    */
+  val ColourRadius = 29
+
+  /** `redrawn` with `source`'s colour and shading and its own detail:
+    * `redrawn + blur(source) − blur(redrawn)`, per channel (`specs/45`, Part
+    * 3). A redrawn tile drifts in colour — 3 to 28 levels on average, measured
+    * — and pasted back into the untouched picture that drift is an edge; taking
+    * the low frequencies from the source removes it and keeps every detail the
+    * model drew. Both images are the same size.
+    */
+  def colourMatched(
+      redrawn: BufferedImage,
+      source: BufferedImage
+  ): BufferedImage = {
+    val width = redrawn.getWidth
+    val height = redrawn.getHeight
+    val painted = redrawn.getRGB(0, 0, width, height, null, 0, width)
+    val sourceLow =
+      softened(source, ColourRadius).getRGB(0, 0, width, height, null, 0, width)
+    val paintedLow =
+      softened(redrawn, ColourRadius)
+        .getRGB(0, 0, width, height, null, 0, width)
+    def channel(pixel: Int, shift: Int) = (pixel >> shift) & 0xff
+    val matched = Array.tabulate(painted.length) { index =>
+      def corrected(shift: Int) =
+        (channel(painted(index), shift) + channel(sourceLow(index), shift) -
+          channel(paintedLow(index), shift)).max(0).min(255)
+      0xff000000 | corrected(16) << 16 | corrected(8) << 8 | corrected(0)
+    }
+    val result = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+    result.setRGB(0, 0, width, height, matched, 0, width)
+    result
+  }
+
   /** One box-blur pass along one axis, sampling clamped at the edges. */
   private def blurAxis(
       pixels: Array[Int],

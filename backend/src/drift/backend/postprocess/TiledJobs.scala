@@ -191,6 +191,12 @@ final private[postprocess] class TiledJobs(
         * redraw softens away the artifacts it is meant to remove.
         */
       prepareTile: BufferedImage => BufferedImage = identity,
+      /** What each returned tile goes through before it is kept, given the
+        * source's crop of the tile as it was before `prepareTile` — where a
+        * redraw takes the source's colour back (`specs/45`).
+        */
+      correctTile: Option[(BufferedImage, BufferedImage) => BufferedImage] =
+        None,
       finish: PictureFinish = PictureFinish.AsPainted,
       keepTiles: Boolean = false,
       finishTile: Option[TileWindow.FinishTile] = None,
@@ -216,6 +222,7 @@ final private[postprocess] class TiledJobs(
       notes,
       derivation,
       prepareTile,
+      correctTile,
       finish,
       keepTiles,
       finishTile,

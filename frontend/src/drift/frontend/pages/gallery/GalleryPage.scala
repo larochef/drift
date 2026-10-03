@@ -109,6 +109,31 @@ class GalleryPage(
       )
     )
 
+  /** Whether a filter may be hiding something: then a day cannot be judged by
+    * its count, so every day is loaded and shown only for what it has that
+    * matches — a day left with nothing does not appear at all (François,
+    * 2026-10-02). NSFW projects kept out count as a filter.
+    */
+  private val filtering: Signal[Boolean] = Signal
+    .combine(
+      configurationFilter.signal,
+      kindFilter.signal,
+      searchVar.signal,
+      projectFilter.signal,
+      showNsfw.signal,
+      nsfwProjectIds
+    )
+    .map((configuration, kind, search, project, nsfwShown, nsfwProjects) =>
+      configuration.nonEmpty || kind.nonEmpty || search.trim.nonEmpty ||
+        project.nonEmpty || (!nsfwShown && nsfwProjects.nonEmpty)
+    )
+    .distinct
+
+  /** The days a filter has asked for, each once: a day that fails to load is
+    * not asked for again on every change, and its own button remains.
+    */
+  private var readRequested = Set.empty[String]
+
   /** Everything the loaded days hold — the pool the detail resolves lineage in
     * and the bulk delete reads its dates from.
     */
@@ -185,10 +210,24 @@ class GalleryPage(
     div(
       cls := "gallery-day",
       dataAttr("date") := date,
+      // Under a filter a day shows for what it has that matches: not while it
+      // is still being read, and not at all with nothing to show.
+      display <-- loaded.combineWith(shown, filtering, loading).map {
+        case (Some(_), Nil, _, _)  => "none"
+        case (None, _, true, true) => "none"
+        case _                     => ""
+      },
       div(
         cls := "gallery-day-heading",
         h2(cls := "subtitle text-primary mb-0", date),
-        span(cls := "tag", child.text <-- daySignal.map(_.count.toString)),
+        span(
+          cls := "tag",
+          // What is shown once the day is read; what it holds until then.
+          child.text <-- loaded.combineWith(shown, daySignal).map {
+            case (Some(_), matching, _) => matching.size.toString
+            case (None, _, day)         => day.count.toString
+          }
+        ),
         child <-- loaded.combineWith(loading, daySignal).map {
           case (None, true, _) =>
             span(cls := "text-secondary is-size-7", "loading…")
@@ -212,14 +251,6 @@ class GalleryPage(
             )
         }
       ),
-      child <-- loaded.combineWith(shown).map {
-        case (Some(_), Nil) =>
-          p(
-            cls := "text-secondary is-size-7",
-            "No generation of this day matches the filters."
-          )
-        case _ => emptyNode
-      },
       div(
         cls := "gallery-grid",
         children <-- shown
@@ -560,9 +591,48 @@ class GalleryPage(
           )
         case _ => emptyNode
       },
+    // Under a filter every day is read, so each can be judged.
+    filtering.combineWith(
+      historyService.days,
+      historyService.generationsByDay,
+      historyService.loadingDays
+    ) --> Observer[
+      (
+          Boolean,
+          List[HistoryDay],
+          Map[String, List[Generation]],
+          Set[String]
+      )
+    ] { (filtering, days, byDay, loading) =>
+      if (filtering)
+        days
+          .map(_.date)
+          .filterNot(date =>
+            byDay.contains(date) || loading(date) || readRequested(date)
+          )
+          .foreach { date =>
+            readRequested += date
+            historyService.push(Command.LoadDay(date))
+          }
+    },
     children <-- historyService.days.split(_.date)((date, _, daySignal) =>
       daySection(date, daySignal)
     ),
+    child <-- Signal
+      .combine(
+        filtering,
+        filter,
+        historyService.days,
+        historyService.generationsByDay,
+        historyService.loadingDays
+      )
+      .map { (filtering, matches, days, byDay, loading) =>
+        if (!filtering || days.isEmpty) emptyNode
+        else if (loading.nonEmpty)
+          p(cls := "text-secondary", "Reading the gallery…")
+        else if (byDay.values.exists(_.exists(matches))) emptyNode
+        else p(cls := "text-secondary", "No generation matches the filters.")
+      },
     child <-- historyService.days
       .combineWith(historyService.generationsByDay)
       .map { (days, byDay) =>

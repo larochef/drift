@@ -15,7 +15,8 @@ disk, and a picture already on the page goes to the assistant in one click.
 
 - **From the gallery.** Every input slot of the generation form, and the
   assistant's composer, offers **From the gallery** beside **Browse**. It
-  opens a picker over the page: the gallery's tiles, newest first, with the
+  opens a picker over the page: everything the gallery holds that matches,
+  in one grid, newest first — no days to open — with the
   gallery's filters — project, configuration, kind (image or video), NSFW —
   and a search on the prompt. In a project it opens on that project's
   results; the filter can be cleared.
@@ -60,9 +61,9 @@ disk, and a picture already on the page goes to the assistant in one click.
   generation id, output index, date and file name. Sidecars are not a
   migrated collection: one written before has no such field and reads as an
   empty list.
-- `pages/gallery/GalleryPicker`: a `BrowserModal` over the history's days
-  with `GenerationCard` tiles, one per output the slot takes, the newest day
-  loaded on opening. `GalleryFilter` holds the filter rules, for the picker
+- `pages/gallery/GalleryPicker`: a `BrowserModal` with one grid of
+  `GenerationCard` tiles, one per output the slot takes; opening it reads
+  every day of the history. `GalleryFilter` holds the filter rules, for the picker
   and `GalleryPage`. `WorkspaceBody` hosts one picker for its generation
   panel and its chat, opened on the project in a workspace.
 - `pages/generate/MediaPickers`: `InputTools` carries the two things a slot

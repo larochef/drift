@@ -12,13 +12,16 @@ import javax.imageio.ImageIO
   * repaints the source at `strength`, one img2img job per tile on one
   * sd-server, the tiles blended back at the source's size. The server's
   * defaults — the configuration's steps and cfg — hold unless the request names
-  * steps; the instructions are appended to the built-in restoration prompt.
+  * steps, and those steps all run whatever the strength; the instructions are
+  * appended to the built-in restoration prompt. Each tile is painted beside the
+  * 3×3 block of tiles around it, and comes back with the source's colour
+  * (`specs/45`).
   *
   * A request naming a region repaints that part alone: the tiles cover a window
   * grown around the selection to something the model paints well, and the
   * result is feathered back into the untouched source. Everything else — the
-  * restoration prompt, the instructions, the whole image as reference, the
-  * tiling — is what a full redraw does.
+  * restoration prompt, the instructions, the reference, the tiling — is what a
+  * full redraw does.
   */
 final private[postprocess] class Redraw(
     jobs: PostProcessJobs,
@@ -49,6 +52,17 @@ final private[postprocess] class Redraw(
             Option.unless(architecture.initImage)(
               s"'${architecture.label}' does not repaint an image it is " +
                 "given, so it cannot redraw one"
+            )
+          )
+          // A tile that sees nothing of its surroundings is repainted as
+          // something else: an areola erased, sand turned to rock (`specs/45`).
+          .orElse(
+            Option.unless(
+              architecture.referenceImages == ReferenceImageUse.Context
+            )(
+              s"'${architecture.label}' does not take a reference image as " +
+                "context, and a redraw needs one: without it each tile is " +
+                "repainted as something else"
             )
           )
     ) { (src, configuration, architecture, launch, loras) =>
@@ -115,31 +129,9 @@ final private[postprocess] class Redraw(
           architecture.sizeMultiple
         )
         val target = (area.width, area.height)
-        // What the architecture says the model does with a reference image,
-        // unless the request has weighed the trade itself. A model whose
-        // preset hands the reference to the diffusion model is given none:
-        // Krea2, handed the whole picture beside a tile, returned mosaic
-        // corruption over the face (François, 2026-09-19), and sd-server
-        // exposes no `ref_image_args` to soften the preset.
-        val useReference = request.useReference match {
-          case Some(asked) => asked
-          case None        =>
-            architecture.referenceImages == ReferenceImageUse.Context
-        }
-        // Why none was sent, which is not one reason but three: the job asked
-        // for none, the family has no preset at all, or its preset is an
-        // editing one and drift withholds the reference on purpose.
-        val noReferenceReason =
-          if (request.useReference.contains(false)) "switched off for this job"
-          else
-            architecture.referenceImages match {
-              case ReferenceImageUse.Edit =>
-                s"sd-cpp hands '${architecture.label}' a reference as the " +
-                  "image to edit, which would paint the whole picture into " +
-                  "every tile"
-              case _ =>
-                s"'${architecture.label}' has no reference preset in sd-cpp"
-            }
+        // Only a model that takes a reference as context gets here, so one is
+        // sent unless the job weighed the trade itself and asked for none.
+        val useReference = request.useReference.getOrElse(true)
         val seed =
           if (request.seed < 0) TiledJobs.drawSeed() else request.seed
         // The model sees the picture, so it is told the job rather than the
@@ -148,19 +140,30 @@ final private[postprocess] class Redraw(
           restoration,
           request.instructions.trim
         ).filter(_.nonEmpty).mkString(" ")
-        // The whole source, downscaled once, beside every tile — built only
-        // when it is going to be sent.
-        lazy val whole = fitWithin(image, request.contextSide)
-        lazy val wholeImage = dataUrl(whole)
+        // Each tile's reference is the 3×3 block of tiles around it, cut
+        // from the source and fitted within the reference size: the whole
+        // picture squeezed into it left a 16k tile a few dozen pixels, which
+        // told the model nothing (`specs/45`).
+        def neighbourhoodOf(window: Tiling.Tile): Tiling.Tile =
+          Redraw.neighbourhood(
+            window.copy(x = window.x + area.x, y = window.y + area.y),
+            source
+          )
         // An sd-server before `SdCppBuilds.FirstKeepingReferenceSize` stretches every
         // reference to the tile's width × height, so a portrait beside a
         // square tile came out half again as wide (François, 2026-09-22): on
         // such a build the reference is letterboxed to each tile's shape and
         // scaled evenly; a later one is told to keep it as it is.
         val keepsReference = SdCppBuilds.keepsReferenceSize(launch.runtime)
-        def referenceFor(tile: Tiling.Tile): String =
-          if (keepsReference) wholeImage
-          else dataUrl(letterboxed(whole, tile.width, tile.height))
+        def referenceFor(window: Tiling.Tile): String = {
+          val block = neighbourhoodOf(window)
+          val fitted = fitWithin(
+            image.getSubimage(block.x, block.y, block.width, block.height),
+            request.contextSide
+          )
+          if (keepsReference) dataUrl(fitted)
+          else dataUrl(letterboxed(fitted, window.width, window.height))
+        }
         tiles.startTiles(
           "redraw",
           src,
@@ -172,15 +175,8 @@ final private[postprocess] class Redraw(
             tile.copy(x = tile.x + area.x, y = tile.y + area.y)
           )
         ) { job =>
-          if (request.keepTiles) {
+          if (request.keepTiles)
             Files.createDirectories(jobs.files.tilesDirOf(job))
-            if (useReference)
-              ImageIO.write(
-                whole,
-                "png",
-                jobs.files.tilesDirOf(job).resolve("reference.png").toFile
-              )
-          }
           tiles.runTiles(
             job,
             src,
@@ -201,8 +197,19 @@ final private[postprocess] class Redraw(
                       x = input.window.x + area.x,
                       y = input.window.y + area.y
                     )
-                    s"${Redraw.framing(placed, source, useReference)} " +
-                      instructions
+                    val block = neighbourhoodOf(input.window)
+                    val framing =
+                      if (useReference)
+                        Redraw.framing(
+                          placed.copy(
+                            x = placed.x - block.x,
+                            y = placed.y - block.y
+                          ),
+                          (block.width, block.height),
+                          withReference = true
+                        )
+                      else Redraw.framing(placed, source, withReference = false)
+                    s"$framing $instructions"
                   },
                   negativePrompt = request.negativePrompt,
                   clipSkip = defaults.clipSkip,
@@ -222,9 +229,13 @@ final private[postprocess] class Redraw(
                   // (`specs/49`), under the steps the request asks for
                   sampleParams = {
                     val sampling = loras.sampling.over(defaults.sampleParams)
-                    request.steps.fold(sampling)(steps =>
-                      sampling.copy(sampleSteps = steps)
-                    )
+                    val steps = request.steps.getOrElse(sampling.sampleSteps)
+                    // A custom schedule sets its own steps.
+                    if (sampling.customSigmas.nonEmpty) sampling
+                    else
+                      sampling.copy(sampleSteps =
+                        Redraw.scheduledSteps(steps, request.strength)
+                      )
                   },
                   vaeTilingParams = defaults.vaeTilingParams
                 )
@@ -236,11 +247,14 @@ final private[postprocess] class Redraw(
                 s"selection ${selection.width}x${selection.height} at ${selection.x},${selection.y} of ${source._1}x${source._2}, repainted through a ${area.width}x${area.height} window at ${area.x},${area.y} and feathered back into the source"
               ) + s", padded to ${reference.getWidth}x${reference.getHeight}, cropped back after the redraw; strength ${request.strength}; " +
                 (if (useReference)
-                   s"the whole image as reference at ${whole.getWidth}x${whole.getHeight}" +
+                   s"each tile beside the 3×3 block of tiles around it as reference, within ${request.contextSide} px" +
                      (if (keepsReference) ", kept at that size"
                       else
                         ", letterboxed to each tile's shape (this sd-server stretches a reference to the tile)")
-                 else s"no reference image ($noReferenceReason)") +
+                 else "no reference image (switched off for this job)") +
+                request.steps.fold("")(steps =>
+                  s"; $steps steps run, ${Redraw.scheduledSteps(steps, request.strength)} scheduled"
+                ) + "; each tile given the source's colour back" +
                 (if (request.softenRadius > 0)
                    s"; tiles softened by ${request.softenRadius} px first"
                  else "") +
@@ -252,6 +266,7 @@ final private[postprocess] class Redraw(
               if (request.softenRadius > 0)
                 PostProcessImages.softened(_, request.softenRadius)
               else identity,
+            correctTile = Some(PostProcessImages.colourMatched),
             derivation = Derivation(
               parentId = src.parent.id,
               parentDate = src.date,
@@ -284,6 +299,36 @@ final private[postprocess] class Redraw(
 }
 
 private[postprocess] object Redraw {
+
+  /** The 3×3 block of tiles around `tile`, in the picture's pixels: three tiles
+    * a side less the two overlaps between them, centred on the tile, shifted to
+    * stay inside the picture and no larger than it (`specs/45`). A 1280 tile's
+    * block is 3328 px, so the tile is about a third of its reference whatever
+    * the picture's size; a picture no larger than that is its own block.
+    */
+  def neighbourhood(tile: Tiling.Tile, size: (Int, Int)): Tiling.Tile = {
+    def axis(start: Int, length: Int, total: Int): (Int, Int) = {
+      val side = (3 * length - 2 * Tiling.Overlap).max(length).min(total)
+      val centred = start + length / 2 - side / 2
+      (centred.max(0).min(total - side), side)
+    }
+    val (x, width) = axis(tile.x, tile.width, size._1)
+    val (y, height) = axis(tile.y, tile.height, size._2)
+    Tiling.Tile(x, y, width, height)
+  }
+
+  /** How many steps to schedule so that `steps` of them run at `strength`:
+    * img2img runs only the last ⌊scheduled × strength⌋, sd-cpp and the runner
+    * alike, in single precision as they compute it. Asking for `steps` at 0.4
+    * on a 4-step model ran one, which repaints nothing (`specs/45`, Part 1).
+    */
+  def scheduledSteps(steps: Int, strength: Double): Int =
+    if (strength >= 1) steps
+    else
+      Iterator
+        .from(steps)
+        .find(scheduled => (scheduled * strength.toFloat).toInt >= steps)
+        .get
 
   /** What drift puts in front of the restoration prompt. It differs by what the
     * model was actually handed, which is the whole point: a redraw with no

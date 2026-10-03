@@ -27,6 +27,7 @@ final class SessionLog(capacity: Int = SessionLog.DefaultCapacity) {
   @volatile private var lastError: Option[String] = None
   @volatile private var lastActivity: Option[String] = None
   @volatile private var samplingPass: Option[String] = None
+  @volatile private var currentBatch: Option[BatchProgress] = None
 
   private val subscribers = ConcurrentHashMap[Long, Channel[LogLine]]()
   // Once closed, a new follower is told at once that nothing more is coming.
@@ -42,6 +43,12 @@ final class SessionLog(capacity: Int = SessionLog.DefaultCapacity) {
     * length capped - this is a status line, not the log.
     */
   def activity: Option[String] = lastActivity
+
+  /** Which image of a batch is being generated. Unlike the bar, it outlives the
+    * narrative between an image's passes: only the next image moves it, and
+    * only the job's closing line clears it.
+    */
+  def batch: Option[BatchProgress] = currentBatch
 
   /** The most recent line that read like a failure - what a failed session
     * shows instead of making the user scroll a thousand lines.
@@ -75,6 +82,10 @@ final class SessionLog(capacity: Int = SessionLog.DefaultCapacity) {
           if (rest.nonEmpty) append(rest)
         case None =>
           LogProgress.samplingPassOf(cleaned).foreach(samplingPass = _)
+          LogProgress
+            .batchOf(cleaned)
+            .foreach(position => currentBatch = Some(position))
+          if (LogProgress.endsBatch(cleaned)) currentBatch = None
           // A narrative line means the bar it followed is finished with.
           currentProgress = None
           if (LogProgress.looksLikeError(cleaned)) lastError = Some(cleaned)
@@ -115,6 +126,7 @@ final class SessionLog(capacity: Int = SessionLog.DefaultCapacity) {
     closed = true
     subscribers.keys.asScala.toList.foreach(unsubscribe)
     currentProgress = None
+    currentBatch = None
   }
 }
 

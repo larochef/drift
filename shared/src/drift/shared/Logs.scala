@@ -63,6 +63,19 @@ object SessionProgress {
   given Schema[SessionProgress] = Schema.derived
 }
 
+/** Which image of a batch a session is on: `image` of `total`, counted from 1.
+  * The bar in flight ([[SessionProgress]]) is that image's; this is the batch
+  * around it, the way a tiled job counts its tiles around the tile's own bar.
+  */
+case class BatchProgress(image: Int, total: Int) {
+
+  /** The images finished before the one in flight. */
+  def completed: Int = (image - 1).max(0)
+}
+object BatchProgress {
+  given Schema[BatchProgress] = Schema.derived
+}
+
 /** Reads sd-cpp's progress bars, which it redraws in place with a carriage
   * return and an ANSI erase - so a line-oriented reader sees each redraw as its
   * own line once a carriage return is treated as a terminator.
@@ -155,6 +168,31 @@ object LogProgress {
         case None                                    => None
       }
   }
+
+  /** The line that opens each image of a batch, as both engines write it
+    * (session logs, 2026-10-03):
+    *
+    * {{{
+    *   generating image: 2/4 - seed 43      sd-cpp
+    *   generating image 2/4 (seed 43)       the drift runner
+    * }}}
+    */
+  private val BatchImage = """generating image:?\s*(\d+)\s*/\s*(\d+)""".r
+
+  def batchOf(text: String): Option[BatchProgress] =
+    BatchImage.findFirstMatchIn(clean(text)).flatMap { found =>
+      (found.group(1).toIntOption, found.group(2).toIntOption) match {
+        case (Some(image), Some(total)) if image >= 1 && image <= total =>
+          Some(BatchProgress(image, total))
+        case _ => None
+      }
+    }
+
+  /** Whether a line closes an `img_gen` job - sd-cpp's own closing line, which
+    * the drift runner prints in the same shape. The batch is over with it.
+    */
+  def endsBatch(text: String): Boolean =
+    clean(text).contains("generate_image completed")
 
   /** Whether a line reads like something went wrong - what a failed session
     * surfaces instead of making the user scroll. sd-cpp tags its own levels;

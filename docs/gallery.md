@@ -12,9 +12,11 @@ above them suggests starting one, with the same button.
 - A grid grouped by day, newest first. One tile per image; a batch's images
   sit side by side with a "▦ 2/4" badge.
 - Filters: project, **Show NSFW projects** (off by default), run configuration,
-  images or videos, and a search over prompts. Filters apply to the days
-  already loaded; older days load with **Show n generations** or **Show all
-  remaining days**.
+  images or videos, and a search over prompts. With nothing filtered, older
+  days load with **Show n generations** or **Show all remaining days**. As
+  soon as a filter may hide something — hidden NSFW projects count — the
+  whole gallery is read and a day shows only for what it has that matches,
+  with that count; a day with nothing to show does not appear.
 - A generation completing anywhere appears here by itself.
 - **☑ Select** switches the grid to selection mode: tick tiles, or a whole day
   from its heading, and delete them behind one confirmation. Deleting removes
@@ -104,18 +106,19 @@ last line rather than in the form: they change nothing about the job.
     runtime.
 - **✨ Redraw**: a low-strength img2img pass, tile by tile, that repaints
   texture (skin, hair, fabric) while the composition stays. Pick an image
-  configuration whose model takes reference images (Flux.2), a strength
-  (0.4 by default), and optionally *instructions* describing what should be
-  seen ("clear even skin", "crisp fabric weave"). Each tile sees the whole
-  image as a reference, so anatomy holds.
+  configuration, a strength (0.4 by default), and optionally *instructions*
+  describing what should be seen ("clear even skin", "crisp fabric weave").
+  Each tile is painted beside the block of tiles around it, so the model
+  knows what it is looking at, and comes back with the picture's own colour,
+  so it blends in — a box redrawn on its own included.
 
   The model is all the form shows; everything else is under *Advanced*,
   grouped by what it decides:
   *prompt* (a restoration template from Settings → Prompts, with your
   instructions in a text box under it) and *negative*, a text box too — a
   restoration prompt is prose, and a one-line field showed a sliver of it;
-  *pass* (strength, steps, seed, soften); *reference* (whether the whole image
-  goes along, and at what size, and the *context* around each tile); *area* (tile size 1280, window and margin —
+  *pass* (strength, steps, seed, soften); *reference* (whether the block of
+  tiles goes along, and at what size, and the *context* around each tile); *area* (tile size 1280, window and margin —
   below); *options* (keeping the tiles on disk for inspection).
 - **Which restoration prompt.** Some models add whatever detail the prompt
   names, and more: Krea 2 given "pores, fine hair" sprinkled freckles, moles
@@ -128,9 +131,9 @@ last line rather than in the form: they change nothing about the job.
   takes them away before it sees them (on a quiet model it only flattens the
   texture). *drift skin de-artifacting* describes skin as tissue (pores, vellus
   hair, moles): keep it for the stubborn waxy leftovers below.
-- What drift says to the model changes with the mode: with a reference it
-  places the tile in it and says the reference is context only; without one it
-  says the image is a close crop and to repaint only what is already there.
+- What drift says to the model: where the tile sits in its reference, and
+  that the reference is context only; with the reference switched off, that
+  the image is a close crop and to repaint only what is already there.
   Your *instructions* are added after that, and work best as descriptions of
   what should be seen ("natural skin texture, visible pores") rather than
   orders ("redraw the chest") — an order invites the model to draw that thing
@@ -176,20 +179,33 @@ last line rather than in the form: they change nothing about the job.
 - **The tile size** is rounded up to what the model accepts — most take any
   multiple of 16, Qwen Image 2.1 wants 32 — so the tile count before the button
   may sit on a slightly larger tile than the one you typed.
-- **The reference** is the whole picture sent beside each tile so the model
-  keeps composition and identity. Only Flux.2 gets it by default: it is the
-  one family that treats a reference as context. Krea2, Qwen Image and Qwen
-  Image 2.1, Z-Image, Boogu and Mage-Flow *edit* what they are given a
-  reference of — handed the whole picture, Krea2 painted mosaic corruption over
-  every tile — so they redraw from the tile alone, as do ERNIE, Ideogram 4 and
-  HiDream, which have no reference support at all. The job's first line says
-  which of the two reasons applies, so "no reference image" never reads as a
-  fault. **SenseNova U1.5 cannot redraw**: it returns
-  noise for any input image, so the panel refuses it. It is a real trade — measured on Krea2, a
-  reference holds the composition noticeably better, repaints less texture,
-  and takes about three times as long per tile — so the *reference* group in
-  *Advanced* lets you force it on or off per job.
-- **Context** is for the models that cannot take a reference, Krea 2 first:
+- **Which models redraw.** Only those that take a reference image as
+  context: Flux.2 [dev], Flux.2 Klein 4B and 9B, and Qwen Image 2.1. A tile that sees
+  nothing of its surroundings is repainted as something else — measured on a
+  16k picture, sand came back as rock and an areola was erased — so the other
+  models are not offered. Krea 2, Qwen Image, Z-Image, Boogu and Mage-Flow
+  *edit* what they are given a reference of, and ERNIE, Ideogram 4 and
+  HiDream take none at all. **SenseNova U1.5 cannot redraw**: it returns noise for any
+  input image.
+- **The reference** is the block of three by three tiles around each tile,
+  cut from the picture and fitted within the reference size (768 px): the
+  tile is about a third of it whatever the picture's size. The whole picture
+  is no longer sent — on a large picture a tile was a few dozen pixels in it,
+  which told the model nothing. It costs about a fifth more time per tile on
+  Qwen Image 2.1 on the drift runner (half more on sd-cpp) and three quarters
+  more on Klein; *never send* in the
+  *reference* group switches it off for a job.
+- **Steps.** The steps you ask for (or the configuration's) all run, whatever
+  the strength: drift schedules more so that the strength skips the extra
+  ones. Before, a 4-step model at strength 0.4 ran a single step and gave the
+  picture back nearly unchanged.
+- **Colour.** Each redrawn tile is given the picture's colour and shading
+  back — only the detail the model drew is kept. A redrawn tile drifts a few
+  shades on its own, and pasted into the untouched picture that drift shows as
+  an edge; this is what made a box redrawn alone look wrong. It is always on.
+  It does not make a much stronger repaint blend in: texture follows strength,
+  so redraw a part at the strength its surroundings were redrawn at.
+- **Context** shows the model each tile inside its surroundings at full scale:
   a close-up tile seen alone can be taken for something else — on a zoomed
   belly Krea 2 reshaped the waist and drew a fold that was not there. With
   *context* above 0 the model is handed each tile inside that many px of its

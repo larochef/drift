@@ -137,6 +137,10 @@ class GenerationDetailHost(
   private val pidConfigurations: Signal[List[ConfigurationOption]] =
     configurationsOf(_.pixelDiffusionDecoder)
 
+  /** The SeedVR2 upscalers (`specs/51`), for pictures and videos. */
+  private val seedVr2Configurations: Signal[List[ConfigurationOption]] =
+    configurationsOf(SeedVr2UpscaleRequest.runs)
+
   /** What can redraw (`specs/27-redraw.md`): run configurations of sd-cpp
     * architectures tagged `image` whose model takes a reference as context —
     * without one a tile is repainted as something else (`specs/45`).
@@ -347,6 +351,7 @@ class GenerationDetailHost(
             ),
       upscalers = upscalerService.upscalers.distinct,
       pidConfigurations = pidConfigurations,
+      seedVr2Configurations = seedVr2Configurations,
       redrawConfigurations = redrawConfigurations,
       restorationTemplates =
         assistantService.library.ofKind(PromptKind.RedrawRestoration),
@@ -392,6 +397,11 @@ class GenerationDetailHost(
         postProcessService.push(
           PostProcessService.Command
             .Pid(output.date, output.fileName, request)
+        ),
+      onSeedVr2 = (output, request) =>
+        postProcessService.push(
+          PostProcessService.Command
+            .SeedVr2(output.date, output.fileName, request)
         ),
       onRedraw = (output, request) =>
         postProcessService.push(

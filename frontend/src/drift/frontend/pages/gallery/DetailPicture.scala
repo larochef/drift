@@ -47,15 +47,19 @@ class DetailPicture(
         generation.derivation.map { d =>
           loaded
             .flatMap(_.outputs.find(_.fileName == d.parentFileName))
-            .getOrElse(
+            .getOrElse {
+              // until the parent is loaded: a picture, unless the file's
+              // name says a video (a SeedVR2 upscale's parent may be one)
+              val format = d.parentFileName.split('.').last.toLowerCase
+              val video = Set("webm", "mp4", "mkv", "mov").contains(format)
               GenerationOutput(
                 date = d.parentDate,
                 fileName = d.parentFileName,
                 url = s"/api/outputs/${d.parentDate}/${d.parentFileName}",
-                mimeType = "image/png",
-                format = "png"
+                mimeType = if (video) s"video/$format" else "image/png",
+                format = if (video) format else "png"
               )
-            )
+            }
         }
       )
       .distinct
@@ -173,7 +177,7 @@ class DetailPicture(
             }
           case None =>
             val planned =
-              if (task == PostProcessSection.PidTask) pid
+              if (task == PostProcessSection.UpscaleTask) pid
               else
                 shown.toList.flatMap(picture =>
                   geometry

@@ -15,6 +15,9 @@ def postProcessEndpoints(
   pidUpscaleOutput.serverLogicSuccess[Identity]((date, file, request) =>
     manager.pidUpscale(date, file, request)
   ),
+  seedVr2UpscaleOutput.serverLogicSuccess[Identity]((date, file, request) =>
+    manager.seedVr2Upscale(date, file, request)
+  ),
   redrawOutput.serverLogicSuccess[Identity]((date, file, request) =>
     manager.redraw(date, file, request)
   ),

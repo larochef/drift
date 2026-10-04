@@ -75,7 +75,7 @@ final private[postprocess] class PidUpscale(tiles: TiledJobs) {
             runConfigurationId = configuration.id,
             // The configuration's sampler, scheduler and VAE tiling, as the
             // server's defaults carry them; the request's steps and cfg.
-            request = (defaults, _, input) =>
+            request = TileRequests.Images((defaults, _, input) =>
               Right(
                 ImageGenerationParameters(
                   prompt = request.prompt,
@@ -94,7 +94,7 @@ final private[postprocess] class PidUpscale(tiles: TiledJobs) {
                   ),
                   vaeTilingParams = defaults.vaeTilingParams
                 )
-              ),
+              )),
             target = target,
             rows = rows,
             notes = notes ++ TiledJobs.loraNote(loras.selections),

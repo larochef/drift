@@ -2,6 +2,7 @@ package drift.backend.postprocess
 
 import drift.backend.lora.LoraManager
 import drift.backend.runtime.{LaunchRuntime, RuntimeManager}
+import drift.backend.sdserver.NativeUpscale
 import drift.backend.session.SessionManager
 import drift.shared.*
 
@@ -34,7 +35,8 @@ final private[postprocess] class TiledJobs(
       runConfigurationId: String,
       runtimeId: Option[String],
       resuming: Option[String],
-      accepts: Architecture => Option[String]
+      accepts: Architecture => Option[String],
+      videos: Boolean = false
   )(
       start: (
           PostProcessSource,
@@ -47,7 +49,7 @@ final private[postprocess] class TiledJobs(
     jobs
       .busyWith(date, fileName, resuming)
       .toLeft(())
-      .flatMap(_ => jobs.source(date, fileName))
+      .flatMap(_ => jobs.source(date, fileName, videos))
       .flatMap { src =>
         sessionManager
           .runnerOf(runConfigurationId)
@@ -178,11 +180,7 @@ final private[postprocess] class TiledJobs(
       reference: BufferedImage,
       scale: Int,
       runConfigurationId: String,
-      request: (
-          GenerationDefaults,
-          Map[String, Boolean],
-          TileWindow.TileInput
-      ) => Either[String, ImageGenerationParameters],
+      request: TileRequests,
       target: (Int, Int),
       rows: List[List[Tiling.Tile]],
       notes: List[String],
@@ -229,6 +227,27 @@ final private[postprocess] class TiledJobs(
       context,
       resumed
     ).run()
+}
+
+/** What a tiled job asks its server for, tile by tile: the one thing that
+  * differs between the models that can fill a tile — the tiles, their order,
+  * the blend, the pause and the picture on screen are the same for all.
+  */
+private[postprocess] enum TileRequests {
+
+  /** An `img_gen` job a tile, built from the server's defaults and features
+    * (PiD, redraw, edit).
+    */
+  case Images(
+      make: (
+          GenerationDefaults,
+          Map[String, Boolean],
+          TileWindow.TileInput
+      ) => Either[String, ImageGenerationParameters]
+  )
+
+  /** The drift runner's `upscale` job a tile (SeedVR2, `specs/51`). */
+  case Upscales(make: TileWindow.TileInput => NativeUpscale)
 }
 
 /** A run configuration's default LoRAs as a job without a form takes them

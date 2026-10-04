@@ -23,9 +23,15 @@ final private[postprocess] class JobFiles(
     val logsRoot: Path
 ) {
 
-  /** Where a job writes its result: `<job id>-0.png` in its source's day. */
-  def outputFileOf(job: PostProcessJob, src: PostProcessSource): Path =
-    outputsRoot.resolve(src.date).resolve(s"${job.id}-0.png")
+  /** Where a job writes its result: `<job id>-0.png` in its source's day (or
+    * another `format`, for a video).
+    */
+  def outputFileOf(
+      job: PostProcessJob,
+      src: PostProcessSource,
+      format: String = "png"
+  ): Path =
+    outputsRoot.resolve(src.date).resolve(s"${job.id}-0.$format")
 
   def logFileOf(job: PostProcessJob): Path =
     logsRoot.resolve(s"postprocess-${job.id}.log")

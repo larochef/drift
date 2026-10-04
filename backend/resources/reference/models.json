@@ -1123,5 +1123,57 @@
     "format": "safetensors",
     "parameters": {},
     "builtIn": true
+  },
+  {
+    "id": "seedvr2-7b-fp8",
+    "familyId": "seedvr2-diffusion",
+    "label": "seedvr2_ema_7b_fp8_e4m3fn",
+    "source": {
+      "type": "huggingface",
+      "repo": "numz/SeedVR2_comfyUI",
+      "filename": "seedvr2_ema_7b_fp8_e4m3fn.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "seedvr2-7b-sharp-fp8",
+    "familyId": "seedvr2-diffusion",
+    "label": "seedvr2_ema_7b_sharp_fp8_e4m3fn",
+    "source": {
+      "type": "huggingface",
+      "repo": "numz/SeedVR2_comfyUI",
+      "filename": "seedvr2_ema_7b_sharp_fp8_e4m3fn.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "seedvr2-3b-fp8",
+    "familyId": "seedvr2-diffusion",
+    "label": "seedvr2_ema_3b_fp8_e4m3fn",
+    "source": {
+      "type": "huggingface",
+      "repo": "numz/SeedVR2_comfyUI",
+      "filename": "seedvr2_ema_3b_fp8_e4m3fn.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "seedvr2-vae",
+    "familyId": "seedvr2-vae",
+    "label": "ema_vae_fp16",
+    "source": {
+      "type": "huggingface",
+      "repo": "numz/SeedVR2_comfyUI",
+      "filename": "ema_vae_fp16.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
   }
 ]

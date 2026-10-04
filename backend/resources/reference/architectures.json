@@ -1586,5 +1586,38 @@
       "LlamaCpp",
       "DriftRunner"
     ]
+  },
+  {
+    "id": "seedvr2",
+    "label": "SeedVR2 upscaler",
+    "tool": "SdCpp",
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "seedvr2-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "seedvr2-vae",
+        "flag": "--vae",
+        "required": true
+      }
+    ],
+    "defaultParameters": {},
+    "civitaiBaseModels": [],
+    "builtIn": true,
+    "initImage": false,
+    "pixelDiffusionDecoder": false,
+    "tags": [
+      "upscale"
+    ],
+    "promptingNotes": "An upscaler for pictures and videos: it takes no prompt. It restores in one diffusion step and redraws fine detail, so faces and textures can change.",
+    "sizeMultiple": 16,
+    "modelKind": "seedvr2",
+    "runners": [
+      "DriftRunner"
+    ]
   }
 ]

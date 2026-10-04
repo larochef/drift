@@ -31,11 +31,7 @@ final private[postprocess] class TileRun(
     reference: BufferedImage,
     scale: Int,
     runConfigurationId: String,
-    request: (
-        GenerationDefaults,
-        Map[String, Boolean],
-        TileWindow.TileInput
-    ) => Either[String, ImageGenerationParameters],
+    request: TileRequests,
     target: (Int, Int),
     rows: List[List[Tiling.Tile]],
     notes: List[String],
@@ -201,17 +197,61 @@ final private[postprocess] class TileRun(
                 server.port -> (() => server.exitCode)
               }
           )
-          .flatMap((port, exitCode) =>
-            NativeJobs
-              .imageCapabilities(port)
-              .map((defaults, features) => (port, exitCode, defaults, features))
-          )
-          .map { (port, exitCode, defaults, features) =>
-            jobs.appendLog(
-              job,
-              "img_gen features: " +
-                features.filter(_._2).keys.toList.sorted.mkString(", ")
-            )
+          .flatMap { (port, exitCode) =>
+            // What asks the server for one tile and waits for it: an img_gen
+            // built from the server's defaults, or the runner's upscale job.
+            // The native job's id is noted as soon as the server has it: a
+            // cancel of this drift job cancels the tile it is waiting on.
+            type TileCall =
+              (Int, Tiling.Tile, TileWindow.TileInput) => Either[
+                String,
+                Array[Byte]
+              ]
+            val call: Either[String, TileCall] = request match {
+              case TileRequests.Images(make) =>
+                NativeJobs.imageCapabilities(port).map { (defaults, features) =>
+                  jobs.appendLog(
+                    job,
+                    "img_gen features: " +
+                      features.filter(_._2).keys.toList.sorted.mkString(", ")
+                  )
+                  (index, tile, input) =>
+                    make(defaults, features, input).flatMap { parameters =>
+                      jobs.appendLog(
+                        job,
+                        s"${tileLine(index, tile)}: ${parameters.prompt}"
+                      )
+                      try
+                        NativeJobs.image(
+                          port,
+                          parameters,
+                          exitCode,
+                          nativeJobId => jobs.waitingFor(job, port, nativeJobId)
+                        )
+                      finally jobs.doneWaiting(job)
+                    }
+                }
+              case TileRequests.Upscales(make) =>
+                Right { (index, tile, input) =>
+                  jobs.appendLog(job, tileLine(index, tile))
+                  try
+                    NativeJobs
+                      .upscale(
+                        port,
+                        make(input),
+                        exitCode,
+                        nativeJobId => jobs.waitingFor(job, port, nativeJobId)
+                      )
+                      .flatMap(
+                        _.left.toOption
+                          .toRight("the runner answered a tile with a video")
+                      )
+                  finally jobs.doneWaiting(job)
+                }
+            }
+            call
+          }
+          .map { call =>
             (
                 index: Int,
                 tile: Tiling.Tile,
@@ -220,9 +260,9 @@ final private[postprocess] class TileRun(
             ) => {
               if (keepTiles)
                 ImageIO.write(crop, "png", tileFile(index, "input").toFile)
-              request(
-                defaults,
-                features,
+              call(
+                index,
+                tile,
                 TileWindow.TileInput(
                   tile,
                   window,
@@ -232,22 +272,6 @@ final private[postprocess] class TileRun(
                   )
                 )
               )
-                .flatMap { parameters =>
-                  jobs.appendLog(
-                    job,
-                    s"${tileLine(index, tile)}: ${parameters.prompt}"
-                  )
-                  // The job's id as soon as the server has it: a cancel of
-                  // this drift job cancels the tile it is waiting on.
-                  try
-                    NativeJobs.image(
-                      port,
-                      parameters,
-                      exitCode,
-                      nativeJobId => jobs.waitingFor(job, port, nativeJobId)
-                    )
-                  finally jobs.doneWaiting(job)
-                }
                 .flatMap { bytes =>
                   if (window == tile) {
                     Files.write(tileFile(index, "output"), bytes)

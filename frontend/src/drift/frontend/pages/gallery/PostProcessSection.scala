@@ -6,12 +6,12 @@ import drift.shared.*
 
 import com.raquo.laminar.api.L.*
 
-/** Post-processing of the selected output, when it is an image
-  * (`specs/15-post-hoc-resize.md`, `specs/26-tiled-pid.md`,
-  * `specs/27-redraw.md`, `specs/39-seamless-edit.md`): four tasks — redraw,
-  * edit, PiD upscale, upscaler — one on screen at a time behind a picker, and
-  * beneath them what they all share, the live sessions holding memory and the
-  * jobs on this output.
+/** Post-processing of the selected output (`specs/15-post-hoc-resize.md`,
+  * `specs/26-tiled-pid.md`, `specs/27-redraw.md`, `specs/39-seamless-edit.md`,
+  * `specs/51-seedvr2-upscaling.md`): three tasks — redraw, edit, upscale — one
+  * on screen at a time behind a picker (a video has the upscale alone, the
+  * only one that takes it), and beneath them what they all share, the live
+  * sessions holding memory and the jobs on this output.
   *
   * One at a time rather than three rows stacked (François, 2026-09-20): only
   * one is ever run, redraw has the fields of a small form and wants the height,
@@ -27,6 +27,7 @@ class PostProcessSection(
     selectedOutput: Signal[Option[GenerationOutput]],
     upscalers: Signal[List[Upscaler]],
     pidConfigurations: Signal[List[ConfigurationOption]],
+    seedVr2Configurations: Signal[List[ConfigurationOption]],
     redrawConfigurations: Signal[List[ConfigurationOption]],
     restorationTemplates: Signal[List[PromptTemplate]],
     editConfigurations: Signal[List[ConfigurationOption]],
@@ -41,7 +42,7 @@ class PostProcessSection(
     viewed: Var[Option[ViewedImage]],
     /** Where the redraw panel publishes what a selection would cost. */
     geometry: Var[RedrawGeometry],
-    /** Where the PiD panel publishes the tiles its decode would run, in the
+    /** Where the upscale task publishes the tiles its job would run, in the
       * picture's own pixels — its grid is not a redraw's.
       */
     pidTiles: Var[List[ImageRegion]],
@@ -62,6 +63,7 @@ class PostProcessSection(
     onOpen: String => Unit,
     onUpscale: (GenerationOutput, UpscaleRequest) => Unit,
     onPid: (GenerationOutput, PidUpscaleRequest) => Unit,
+    onSeedVr2: (GenerationOutput, SeedVr2UpscaleRequest) => Unit,
     onRedraw: (GenerationOutput, RedrawRequest) => Unit,
     onEdit: (GenerationOutput, EditRequest) => Unit,
     onCancelJob: String => Unit,
@@ -74,6 +76,16 @@ class PostProcessSection(
   /** The output the panels act on — none for a video. */
   private val image: Signal[Option[GenerationOutput]] =
     selectedOutput.map(_.filterNot(GenerationMediaViewer.isVideo))
+
+  private val isVideo: Signal[Boolean] =
+    selectedOutput.map(_.exists(GenerationMediaViewer.isVideo)).distinct
+
+  /** The task on screen: the open one, or the only one a video has. */
+  private val shownTask: Signal[String] =
+    openTask.signal
+      .combineWith(isVideo)
+      .map((task, video) => if (video) PostProcessSection.UpscaleTask else task)
+      .distinct
 
   /** Redraw first: it is the one that reads the picture, and the one most often
     * wanted on an image that is already the right size; edit beside it, since
@@ -113,23 +125,22 @@ class PostProcessSection(
       ).element
     ),
     (
-      PostProcessSection.PidTask,
-      "PiD upscale",
-      PidUpscalePanel(
-        image,
+      PostProcessSection.UpscaleTask,
+      "Upscale",
+      UpscaleTaskPanel(
+        selectedOutput,
+        seedVr2Configurations,
         pidConfigurations,
+        upscalers,
         viewed.signal,
         pidTiles,
         showTileGrid,
         sourcePrompt,
         prerequisites,
-        onPid
+        onSeedVr2,
+        onPid,
+        onUpscale
       ).element
-    ),
-    (
-      PostProcessSection.UpscaleTask,
-      "Upscaler",
-      UpscalePanel(image, upscalers, onUpscale).element
     )
   )
 
@@ -139,8 +150,11 @@ class PostProcessSection(
       tasks.map { case (id, name, _) =>
         button(
           cls := "button is-small",
-          cls("is-link") <-- openTask.signal.map(_ == id),
-          cls("is-selected") <-- openTask.signal.map(_ == id),
+          cls("is-link") <-- shownTask.map(_ == id),
+          cls("is-selected") <-- shownTask.map(_ == id),
+          cls("is-hidden") <-- isVideo.map(
+            _ && id != PostProcessSection.UpscaleTask
+          ),
           name,
           onClick --> (_ => openTask.set(id))
         )
@@ -149,7 +163,7 @@ class PostProcessSection(
 
   lazy val element: HtmlElement = div(
     cls := "gallery-scale mt-2",
-    cls("is-hidden") <-- image.map(_.isEmpty),
+    cls("is-hidden") <-- selectedOutput.map(_.isEmpty),
     onMountCallback(_ =>
       if (!tasks.map(_._1).contains(openTask.now()))
         openTask.set(PostProcessSection.RedrawTask)
@@ -158,13 +172,13 @@ class PostProcessSection(
     tasks.map { case (id, _, body) =>
       div(
         cls := "post-panel",
-        cls("is-hidden") <-- openTask.signal.map(_ != id),
+        cls("is-hidden") <-- shownTask.map(_ != id),
         body
       )
     },
     LiveSessionNotice(liveSessions, onStopSession).element,
     PostProcessJobList(
-      image,
+      selectedOutput,
       jobs,
       onOpen,
       onCancelJob,
@@ -185,7 +199,6 @@ object PostProcessSection {
     * shown while one of them is open.
     */
   val TiledTasks: Set[String] = Set(RedrawTask, EditTask)
-  val PidTask = "pid"
   val UpscaleTask = "upscale"
 
   /** A panel's opening line: what this task does to the image, and what it

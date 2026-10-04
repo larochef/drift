@@ -3,6 +3,7 @@ package drift.runner
 import utest.*
 
 import drift.runner.diffusion.{VideoLora, WanPipeline}
+import drift.runner.models.VaeTiles
 import drift.runner.ops.CpuOps
 
 import java.nio.file.Paths
@@ -277,6 +278,102 @@ object TinyModelTests extends TestSuite {
         val error = TinyWanVaeCase.imageError(ops)
         println(f"  worst image error: ${error * 100}%.4f%% of the largest")
         assert(error < 2e-2) // BF16 weights (2⁻⁸), then float sums
+      } finally ops.close()
+    }
+    test("VaeTiles cuts frames in tiles and stitches them back") {
+      val (frames, height, width, channels) = (2, 48, 80, 3)
+      val values =
+        Array.tabulate(frames * height * width * channels)(i =>
+          (i % 251) / 251f
+        )
+      // every tile as it is: the overlaps blend equal values
+      val (same, count) = VaeTiles.mapped(
+        values,
+        frames,
+        height,
+        width,
+        channels,
+        32,
+        8,
+        8,
+        1,
+        1,
+        channels
+      )((tile, _, _) => (tile, frames))
+      assert(count == frames)
+      assert(same.indices.forall(i => math.abs(same(i) - values(i)) < 1e-6))
+      // an "encoder" at 1/8: each tile's mean per 8 × 8 block, one frame out
+      val (small, made) = VaeTiles.mapped(
+        values,
+        frames,
+        height,
+        width,
+        channels,
+        32,
+        8,
+        8,
+        1,
+        8,
+        1
+      ) { (tile, tileHeight, tileWidth) =>
+        (
+          Array.tabulate(tileHeight / 8 * (tileWidth / 8))(i =>
+            tile(
+              (i / (tileWidth / 8) * 8 * tileWidth + i % (tileWidth / 8) * 8) * channels
+            )
+          ),
+          1
+        )
+      }
+      assert(made == 1 && small.length == height / 8 * (width / 8))
+      assert(small.indices.forall { i =>
+        val (y, x) = (i / (width / 8) * 8, i % (width / 8) * 8)
+        math.abs(small(i) - values((y * width + x) * channels)) < 1e-6
+      })
+    }
+    test("SeedVR2's windows as the reference cuts them") {
+      val mismatches = TinySeedVr2Case.windowMismatches
+      assert(mismatches.isEmpty)
+    }
+    test("SeedVR2's transformer over windows of video and text") {
+      val ops = new CpuOps
+      try {
+        val (last, middle) = TinySeedVr2Case.velocityErrors(ops)
+        println(
+          f"  worst velocity error: ${last * 100}%.4f%% at 1000, ${middle * 100}%.4f%% at 637.5"
+        )
+        assert(last < 2e-2 && middle < 2e-2) // BF16 weights
+      } finally ops.close()
+    }
+    test("SeedVR2's 7B transformer with its plain MLPs and angles") {
+      val ops = new CpuOps
+      try {
+        val (last, middle) =
+          TinySeedVr2Case.velocityErrors(ops, "tiny/seedvr2_7b")
+        println(
+          f"  worst velocity error: ${last * 100}%.4f%% at 1000, ${middle * 100}%.4f%% at 637.5"
+        )
+        assert(last < 2e-2 && middle < 2e-2) // BF16 weights
+      } finally ops.close()
+    }
+    test("SeedVR2's VAE both ways on one frame") {
+      val ops = new CpuOps
+      try {
+        val (latent, image) = TinySeedVr2VaeCase.errors(ops, "picture")
+        println(
+          f"  worst latent error: ${latent * 100}%.4f%%, image: ${image * 100}%.4f%% of the largest"
+        )
+        assert(latent < 2e-2 && image < 2e-2) // BF16 weights
+      } finally ops.close()
+    }
+    test("SeedVR2's VAE both ways on 5 frames") {
+      val ops = new CpuOps
+      try {
+        val (latent, image) = TinySeedVr2VaeCase.errors(ops, "clip")
+        println(
+          f"  worst latent error: ${latent * 100}%.4f%%, image: ${image * 100}%.4f%% of the largest"
+        )
+        assert(latent < 2e-2 && image < 2e-2) // BF16 weights
       } finally ops.close()
     }
     test(

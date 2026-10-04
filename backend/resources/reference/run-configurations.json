@@ -97,5 +97,35 @@
     "lastUsedAt": 0,
     "loras": [],
     "runner": "LlamaCpp"
+  },
+  {
+    "id": "starter-seedvr2-7b",
+    "label": "SeedVR2 7B upscale",
+    "architectureId": "seedvr2",
+    "assignments": {
+      "diffusion": "seedvr2-7b-fp8",
+      "vae": "seedvr2-vae"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "DriftRunner"
+  },
+  {
+    "id": "starter-seedvr2-3b",
+    "label": "SeedVR2 3B upscale",
+    "architectureId": "seedvr2",
+    "assignments": {
+      "diffusion": "seedvr2-3b-fp8",
+      "vae": "seedvr2-vae"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "DriftRunner"
   }
 ]

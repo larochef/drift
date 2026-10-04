@@ -99,4 +99,11 @@ final class TorchRandom(seed: Long) {
     } else data.indices.foreach(i => data(i) = normalDouble().toFloat)
     data
   }
+
+  /** `normal_()` on a tensor that is not contiguous (`torch.randn_like` of a
+    * permuted view): every value by the double Box–Muller whatever the count,
+    * in the memory's order.
+    */
+  def normalOneByOne(count: Int): Array[Float] =
+    Array.fill(count)(normalDouble().toFloat)
 }

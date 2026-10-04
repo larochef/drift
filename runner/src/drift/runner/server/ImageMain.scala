@@ -1,6 +1,6 @@
 package drift.runner.server
 
-import drift.runner.diffusion.{ImagePipeline, VideoPipeline}
+import drift.runner.diffusion.*
 import drift.runner.native.HipRuntime
 import drift.runner.ops.{HipOps, MatVecInputs}
 
@@ -29,7 +29,8 @@ object ImageMain {
       "hidream-o1",
       "minimax-h3",
       "wan-2.2-14b",
-      "ltx-2.5"
+      "ltx-2.5",
+      "seedvr2"
     )
 
   def main(arguments: Array[String]): Unit = {
@@ -38,7 +39,7 @@ object ImageMain {
       RunnerIdentity.modelKinds(ModelKinds)
     if (arguments.contains("--help") || arguments.contains("-h")) {
       println(
-        s"$Version: sd-server's native API on drift's own engine (Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, PiD, HiDream O1; MiniMax H3, Wan 2.2 A14B and LTX 2.5 video)\n" +
+        s"$Version: sd-server's native API on drift's own engine (Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, PiD, HiDream O1; MiniMax H3, Wan 2.2 A14B and LTX 2.5 video; SeedVR2 upscaling)\n" +
           "  --diffusion-model FILE  --vae FILE  --llm FILE  (or --model FILE, one file)  --tokenizer FILE  --listen-ip HOST  --listen-port PORT\n" +
           "  -W WIDTH  -H HEIGHT  --steps N  --cfg-scale S  --guidance G  --flow-shift MU  -s SEED  --video-frames N  --audio-vae FILE\n" +
           "  --high-noise-diffusion-model FILE  --t5xxl FILE  --high-noise-steps N  --high-noise-cfg-scale S  --moe-boundary B  --fps N"
@@ -56,8 +57,16 @@ object ImageMain {
         println(s"device: ${hip.deviceName} (${hip.rocmRoot})")
         val ops = new HipOps(hip, MatVecInputs.Float)
         val started = System.nanoTime()
-        val pipeline: ImagePipeline | VideoPipeline =
-          if (VideoPipeline.holds(ops, options.diffusionModel))
+        val pipeline: ImagePipeline | VideoPipeline | SeedVr2Pipeline =
+          if (SeedVr2Pipeline.holds(ops, options.diffusionModel))
+            new SeedVr2Pipeline(
+              ops,
+              options.diffusionModel,
+              options.vae.getOrElse(
+                throw new IllegalArgumentException("SeedVR2 needs its --vae")
+              )
+            )
+          else if (VideoPipeline.holds(ops, options.diffusionModel))
             VideoPipeline.open(
               ops,
               options.diffusionModel,
@@ -84,8 +93,9 @@ object ImageMain {
               options.llmVision
             )
         val family = pipeline match {
-          case image: ImagePipeline => image.family
-          case video: VideoPipeline => video.family
+          case image: ImagePipeline      => image.family
+          case video: VideoPipeline      => video.family
+          case upscaler: SeedVr2Pipeline => upscaler.family
         }
         println(
           f"$family loaded in ${(System.nanoTime() - started) / 1e9}%.1f s"
@@ -116,6 +126,7 @@ object ImageMain {
                   s"--audio-vae $file accepted and ignored: $family makes no soundtrack"
                 )
               )
+          case _: SeedVr2Pipeline => ()
         }
         new ImageServer(options, pipeline).start()
         println(s"listening on http://${options.host}:${options.port}")

@@ -206,7 +206,8 @@ class RunConfigurationForm(
                     r.engine == RuntimeEngine.DriftRunner && r.valid
                 )
               ) RuntimeEngine.DriftRunner
-              else a.runners.headOption.getOrElse(RuntimeEngine.upstream(a.tool))
+              else
+                a.runners.headOption.getOrElse(RuntimeEngine.upstream(a.tool))
             )
           )
       },

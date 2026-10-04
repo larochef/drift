@@ -406,8 +406,9 @@ case class Derivation(
     parentDate: String,
     parentFileName: String,
     /** "upscale" (ESRGAN), "pid" (pixel diffusion decoder), "redraw" (tiled
-      * img2img), "edit" (an instruction, `specs/39-seamless-edit.md`), or
-      * "resize" in entries made before resize was removed.
+      * img2img), "edit" (an instruction, `specs/39-seamless-edit.md`),
+      * "seedvr2" (a SeedVR2 upscale of a picture or a video, `repeats` its
+      * scale), or "resize" in entries made before resize was removed.
       */
     operation: String,
     upscalerId: Option[String] = None,

@@ -63,6 +63,9 @@ in [`../docs/`](../docs/README.md).
 | [49](49-lora-sampling-settings.md) | Sampling settings on LoRAs: a turbo LoRA carries its steps, CFG, flow shift and sigmas, and selecting it sets them | done in code, not yet run live |
 | [50](50-inputs-from-the-gallery.md) | Inputs from the gallery: every input slot and the assistant pick from the gallery with its filters; an input goes to the assistant in one click | partial |
 
+| [51](51-seedvr2-upscaling.md) | SeedVR2 on the drift runner: one-step video and image upscaling, the missing video upscaler and a second one beside PiD | done in code, run once end to end on a configuration copy; not yet used live |
+| [52](52-auto-redraw.md) | Auto redraw: one call to the assistant on the downscaled picture chooses the restoration template, the settings and the regions, shown in the form before the redraw starts | planned — tests first |
+
 ## What is left
 
 - `25` step 3: importance-matrix collection and per-architecture rules presets.

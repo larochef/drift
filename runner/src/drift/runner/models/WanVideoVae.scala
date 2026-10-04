@@ -380,7 +380,9 @@ final class WanVideoVae private (ops: Ops, source: WeightSource)
           case Stage.Up(_, _) => ()
         }
         val Seq(x) = frames
-        val normed = normSilu(middle(x, e.middle), e.headNorm)
+        val last = middle(x, e.middle)
+        val normed = normSilu(last, e.headNorm)
+        ops.release(last)
         val head = causal(normed, e.head)
         val latent = linear(head, e.quant)
         ops.release(head)

@@ -7,9 +7,9 @@ import drift.shared.*
 
 import com.raquo.laminar.api.L.*
 
-/** Diffusion upscale through a PiD run configuration (`specs/26-tiled-pid.md`)
-  * — offered once one exists, with a pointer to the built-in architectures
-  * otherwise. Empty size fields ask the backend for ×4 of the source with its
+/** What the upscale task shows for a PiD model (`specs/26-tiled-pid.md`): a
+  * diffusion upscale through a PiD run configuration, the model itself chosen
+  * in the task's select (`UpscaleTaskPanel`). Empty size fields ask the backend for ×4 of the source with its
   * ratio kept (`PidUpscaleRequest.target`), and the line before the button says
   * what that comes to in pixels — or why the job would not be an upscale at
   * all, which the backend refuses.
@@ -21,6 +21,8 @@ import com.raquo.laminar.api.L.*
 class PidUpscalePanel(
     image: Signal[Option[GenerationOutput]],
     pidConfigurations: Signal[List[ConfigurationOption]],
+    /** The chosen configuration: the task's model select writes it. */
+    configurationVar: Var[String],
     /** The picture on screen, for the size it really has. */
     viewed: Signal[Option[ViewedImage]],
     /** Where this panel puts the tiles its job would decode, in the picture's
@@ -40,7 +42,6 @@ class PidUpscalePanel(
     onPid: (GenerationOutput, PidUpscaleRequest) => Unit
 ) extends Component {
 
-  private val configurationVar = Var("")
   private val widthVar = Var("")
   private val heightVar = Var("")
   private val stepsVar = Var("4")
@@ -144,23 +145,6 @@ class PidUpscalePanel(
   private val refused: Signal[Boolean] =
     planned.map(_._2.exists(_.isLeft)).distinct
 
-  private def configurationSelect: HtmlElement =
-    div(
-      cls := "select is-small",
-      select(
-        onChange.mapToValue --> configurationVar,
-        children <-- pidConfigurations.map(
-          _.map(c =>
-            option(
-              value := c.id,
-              selected <-- configurationVar.signal.map(_ == c.id),
-              c.label
-            )
-          )
-        )
-      )
-    )
-
   private def form: HtmlElement = div(
     cls("is-hidden") <-- hasConfigurations.map(!_),
     intro(
@@ -168,7 +152,6 @@ class PidUpscalePanel(
         "Minutes and a loaded model, and it adds detail the upscaler cannot " +
         "— the original stays in the gallery."
     ),
-    group("model", plainField(configurationSelect)),
     advanced(
       advancedVar,
       group(

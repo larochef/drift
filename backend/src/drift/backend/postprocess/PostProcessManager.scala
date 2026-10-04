@@ -44,6 +44,7 @@ final class PostProcessManager(
   private val pid = PidUpscale(tiles)
   private val redraws = Redraw(jobs, tiles, storage)
   private val edits = Edit(tiles, storage)
+  private val seedVr2 = SeedVr2Upscale(jobs, tiles, sessionManager)
 
   def listJobs: List[PostProcessJob] = jobs.list
 
@@ -58,6 +59,12 @@ final class PostProcessManager(
       fileName: String,
       request: PidUpscaleRequest
   ): PostProcessJob = pid.start(date, fileName, request)
+
+  def seedVr2Upscale(
+      date: String,
+      fileName: String,
+      request: SeedVr2UpscaleRequest
+  ): PostProcessJob = seedVr2.start(date, fileName, request)
 
   def redraw(
       date: String,
@@ -107,6 +114,13 @@ final class PostProcessManager(
             )
           case PausedWork.Redraw(request) =>
             redraws.start(
+              paused.sourceDate,
+              paused.sourceFileName,
+              request,
+              Some(id)
+            )
+          case PausedWork.SeedVr2(request) =>
+            seedVr2.start(
               paused.sourceDate,
               paused.sourceFileName,
               request,

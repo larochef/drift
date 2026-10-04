@@ -194,6 +194,82 @@ object PidUpscaleRequest {
     )
 }
 
+/** A SeedVR2 upscale (`specs/51-seedvr2-upscaling.md`): the source — a picture
+  * or a video — restored at `scale` times its size by a SeedVR2 run
+  * configuration on the drift runner, in one diffusion step. No prompt. A
+  * negative seed means drift draws one.
+  */
+case class SeedVr2UpscaleRequest(
+    runConfigurationId: String,
+    scale: Int = SeedVr2UpscaleRequest.DefaultScale,
+    seed: Long = -1,
+    runtimeId: Option[String] = None
+)
+object SeedVr2UpscaleRequest {
+  given JsonValueCodec[SeedVr2UpscaleRequest] = JsonCodecMaker.make
+  given Schema[SeedVr2UpscaleRequest] = Schema.derived
+
+  /** The job's kind and the derived entry's operation. */
+  val Kind = "seedvr2"
+
+  /** The model kind of the architectures that run it. */
+  val ModelKind = "seedvr2"
+
+  val Scales: List[Int] = List(2, 4)
+  val DefaultScale = 4
+
+  /** The built-in configuration a panel opens on: the 7B. */
+  val DefaultConfiguration = "starter-seedvr2-7b"
+
+  def runs(architecture: Architecture): Boolean =
+    architecture.modelKind.contains(ModelKind)
+
+  /** The largest tile a job restores in one pass, in target px: what a PiD
+    * decodes on the runner. A picture larger than that is cut in tiles, each
+    * its own pass (`tilesFor`).
+    */
+  val MaxTile: Int = PidUpscaleRequest.RunnerMaxTile
+
+  /** The size a `source` picture comes out at — refused past
+    * `PidUpscaleRequest.MaxSide` on its longest side.
+    */
+  def target(source: (Int, Int), scale: Int): Either[String, (Int, Int)] = {
+    val (width, height) = (source._1 * scale, source._2 * scale)
+    Either.cond(
+      math.max(width, height) <= PidUpscaleRequest.MaxSide,
+      (width, height),
+      s"×$scale of ${source._1}×${source._2} is $width×$height: an upscale " +
+        s"stops at ${PidUpscaleRequest.MaxSide} px on the longest side"
+    )
+  }
+
+  /** The picture the tiles are cut from: the source padded to multiples of 16,
+    * so every tile's crop is a size the model takes as it is.
+    */
+  def referenceSizeOf(source: (Int, Int)): (Int, Int) =
+    (Tiling.roundUp(source._1, 16), Tiling.roundUp(source._2, 16))
+
+  /** The tiles a picture's job restores, in target px: the padded source
+    * times `scale`, cut into tiles of `MaxTile` at most overlapping by
+    * `Tiling.Overlap`, every side a multiple of `16 × scale` and every start
+    * on a multiple of `scale`, so each tile is an exact crop of the source.
+    * One tile for a target within `MaxTile`.
+    */
+  def tilesFor(source: (Int, Int), scale: Int): List[List[Tiling.Tile]] = {
+    val (width, height) = referenceSizeOf(source)
+    Tiling.layout(
+      width * scale,
+      height * scale,
+      MaxTile,
+      Tiling.Overlap,
+      multiple = 16 * scale,
+      align = scale,
+      offsetX = 0,
+      offsetY = 0
+    )
+  }
+}
+
 /** A redraw (`specs/27-redraw.md`): an img2img pass over the source at
   * `strength`, tile by tile (`tileSize`) on one sd-server, through a run
   * configuration of an `image` architecture, with a reference image as context
@@ -324,6 +400,7 @@ enum PausedWork derives CanEqual {
   case Pid(request: PidUpscaleRequest)
   case Redraw(request: RedrawRequest)
   case Edit(request: EditRequest)
+  case SeedVr2(request: SeedVr2UpscaleRequest)
 }
 object PausedWork {
   given JsonValueCodec[PausedWork] = JsonCodecMaker.make
@@ -450,6 +527,21 @@ val pidUpscaleOutput: PublicEndpoint[
   postProcessBase.post
     .in("outputs" / path[String]("date") / path[String]("file") / "pid")
     .in(jsonBody[PidUpscaleRequest])
+    .out(jsonBody[PostProcessJob])
+
+/** Upscales one persisted output — a picture or a video — through a SeedVR2 run
+  * configuration. Answers with the running job, or a `Failed` one naming why it
+  * was refused.
+  */
+val seedVr2UpscaleOutput: PublicEndpoint[
+  (String, String, SeedVr2UpscaleRequest),
+  Unit,
+  PostProcessJob,
+  Any
+] =
+  postProcessBase.post
+    .in("outputs" / path[String]("date") / path[String]("file") / "seedvr2")
+    .in(jsonBody[SeedVr2UpscaleRequest])
     .out(jsonBody[PostProcessJob])
 
 /** Redraws one persisted output through an image run configuration. Answers

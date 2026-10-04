@@ -112,7 +112,7 @@ final private[postprocess] class Edit(
             // given, and it is the one to change. No init image either — at
             // any strength img2img either ignores the instruction or relights
             // what it should keep (`specs/39`).
-            request = (defaults, _, input) =>
+            request = TileRequests.Images((defaults, _, input) =>
               Right(
                 ImageGenerationParameters(
                   prompt = prompt,
@@ -132,7 +132,7 @@ final private[postprocess] class Edit(
                   },
                   vaeTilingParams = defaults.vaeTilingParams
                 )
-              ),
+              )),
             target = (area.width, area.height),
             rows = rows,
             notes = List(

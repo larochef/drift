@@ -39,6 +39,13 @@ final private[postprocess] class JobCancellation {
     AtomicReference[Option[Process]](None)
   val nativeJob: AtomicReference[Option[(Int, String)]] =
     AtomicReference[Option[(Int, String)]](None)
+
+  /** How to stop the server a job started for one long run of its own (a
+    * SeedVR2 upscale): the runner cannot drop a job it is generating, so a
+    * cancel stops the server under it.
+    */
+  val server: AtomicReference[Option[() => Unit]] =
+    AtomicReference[Option[() => Unit]](None)
 }
 
 /** An image output of a recorded generation, as a job takes it. */
@@ -145,11 +152,13 @@ final private[postprocess] class PostProcessJobs(
       .orElse(files.storedPicture(id, side))
 
   /** The persisted output and the gallery entry it belongs to — refused for
-    * anything that is not an image output of a recorded generation.
+    * anything that is not an image output of a recorded generation, or a video
+    * one for a job that takes `videos`.
     */
   def source(
       date: String,
-      fileName: String
+      fileName: String,
+      videos: Boolean = false
   ): Either[String, PostProcessSource] =
     if (!GenerationHistory.isDate(date)) Left(s"'$date' is not a date")
     else {
@@ -162,8 +171,13 @@ final private[postprocess] class PostProcessJobs(
           .flatMap(g => g.outputs.find(_.fileName == fileName).map(g -> _))
           .headOption match {
           case None => Left(s"'$fileName' belongs to no recorded generation")
-          case Some((_, output)) if !output.mimeType.startsWith("image/") =>
-            Left("only images can be upscaled")
+          case Some((_, output))
+              if !output.mimeType.startsWith("image/") &&
+                !(videos && output.mimeType.startsWith("video/")) =>
+            Left(
+              if (videos) "only images and videos can be upscaled"
+              else "only images can be upscaled"
+            )
           case Some((parent, output)) =>
             Right(PostProcessSource(date, fileName, file, parent, output))
         }
@@ -403,6 +417,10 @@ final private[postprocess] class PostProcessJobs(
     Option(cancellations.get(job.id))
       .foreach(_.nativeJob.set(Some((port, nativeJobId))))
 
+  /** The server `job` runs its one job on, for a cancel to stop. */
+  def runsOn(job: PostProcessJob, stop: () => Unit): Unit =
+    Option(cancellations.get(job.id)).foreach(_.server.set(Some(stop)))
+
   def doneWaiting(job: PostProcessJob): Unit =
     Option(cancellations.get(job.id)).foreach(_.nativeJob.set(None))
 
@@ -433,6 +451,7 @@ final private[postprocess] class PostProcessJobs(
         cancellation.nativeJob
           .get()
           .foreach((port, nativeJobId) => NativeJobs.cancel(port, nativeJobId))
+        cancellation.server.get().foreach(stop => stop())
       }
       // A pause asked for and not yet reached, or a resumed job, has its
       // record on disk already: left there, it comes back paused at startup.
@@ -590,7 +609,8 @@ final private[postprocess] class PostProcessJobs(
       job: PostProcessJob,
       src: PostProcessSource,
       outputFile: Path,
-      derivation: Derivation
+      derivation: Derivation,
+      media: OutputMedia = OutputMedia.Png
   ): Unit = {
     val now = System.currentTimeMillis()
     val generation = Generation(
@@ -607,8 +627,10 @@ final private[postprocess] class PostProcessJobs(
           date = src.date,
           fileName = outputFile.getFileName.toString,
           url = s"/api/outputs/${src.date}/${outputFile.getFileName}",
-          mimeType = "image/png",
-          format = "png"
+          mimeType = media.mimeType,
+          format = media.format,
+          fps = media.fps,
+          frameCount = media.frameCount
         )
       ),
       derivation = Some(derivation),
@@ -642,6 +664,17 @@ final private[postprocess] class PostProcessJobs(
       ).linesIterator.toList
         .takeRight(30)
     catch { case NonFatal(_) => List.empty }
+}
+
+/** What a job's result is: a PNG, but for a video's upscale. */
+private[postprocess] case class OutputMedia(
+    mimeType: String,
+    format: String,
+    fps: Option[Int] = None,
+    frameCount: Option[Int] = None
+)
+private[postprocess] object OutputMedia {
+  val Png: OutputMedia = OutputMedia("image/png", "png")
 }
 
 private[postprocess] object PostProcessJobs {

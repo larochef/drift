@@ -95,11 +95,12 @@ class GenerationCard(
             span(
               cls := "tag is-primary gallery-kind-badge",
               d.operation match {
-                case "upscale" => "⬆ upscaled"
-                case "pid"     => "⬆ PiD"
-                case "redraw"  => "✨ redrawn"
-                case "edit"    => "✎ edited"
-                case _         => "⇲ resized"
+                case "upscale"                  => "⬆ upscaled"
+                case "pid"                      => "⬆ PiD"
+                case SeedVr2UpscaleRequest.Kind => "⬆ SeedVR2"
+                case "redraw"                   => "✨ redrawn"
+                case "edit"                     => "✎ edited"
+                case _                          => "⇲ resized"
               }
             )
           )

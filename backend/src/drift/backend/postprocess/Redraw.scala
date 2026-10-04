@@ -189,7 +189,7 @@ final private[postprocess] class Redraw(
             runConfigurationId = configuration.id,
             // What the model paints is the window: the tile, or the tile with
             // its context around it and a mask keeping the context as it is.
-            request = (defaults, _, input) =>
+            request = TileRequests.Images((defaults, _, input) =>
               Right(
                 ImageGenerationParameters(
                   prompt = {
@@ -239,7 +239,7 @@ final private[postprocess] class Redraw(
                   },
                   vaeTilingParams = defaults.vaeTilingParams
                 )
-              ),
+              )),
             target = target,
             rows = rows,
             notes = List(

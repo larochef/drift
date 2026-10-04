@@ -415,9 +415,9 @@ final class MiniMaxH3Vae private (
   ): Array[Float] = {
     val (pixelHeight, pixelWidth) = (height * Patch, widthLatents * Patch)
     val (rowStarts, tileHeight, rowOverlaps) =
-      MiniMaxH3Vae.split(pixelHeight, tilePixels, tileOverlap)
+      VaeTiles.split(pixelHeight, tilePixels, tileOverlap, Patch)
     val (columnStarts, tileWidth, columnOverlaps) =
-      MiniMaxH3Vae.split(pixelWidth, tilePixels, tileOverlap)
+      VaeTiles.split(pixelWidth, tilePixels, tileOverlap, Patch)
     val (th, tw) = (tileHeight / Patch, tileWidth / Patch)
     val tiles = rowStarts.map { top =>
       columnStarts.map { left =>
@@ -436,7 +436,7 @@ final class MiniMaxH3Vae private (
         decodeTile(tile, frames, th, tw)
       }
     }
-    MiniMaxH3Vae.stitch(
+    VaeTiles.stitch(
       tiles,
       frames * Frames,
       tileHeight,
@@ -577,105 +577,6 @@ object MiniMaxH3Vae {
   /** ImageNet's normalization, which the decoder's pixels carry. */
   val PixelMean: Array[Float] = Array(0.485f, 0.456f, 0.406f)
   val PixelStd: Array[Float] = Array(0.229f, 0.224f, 0.225f)
-
-  /** Tiles over `length` pixels (diffusers' `_split_tiles`): starts, the tile
-    * length, and the overlaps, every boundary on the 16-pixel latent grid.
-    */
-  def split(
-      length: Int,
-      tilePixels: Int,
-      tileOverlap: Int
-  ): (Seq[Int], Int, Seq[Int]) =
-    if (tilePixels >= length) (Seq(0), length, Nil)
-    else {
-      val step = 16
-      var count = (length + tilePixels - 1) / tilePixels
-      while (tilePixels * count - tileOverlap * (count - 1) - length < 0)
-        count += 1
-      val overlaps = Array.fill(count - 1)(tileOverlap)
-      val remaining = tilePixels * count - overlaps.sum - length
-      (0 until remaining / step).foreach(i => overlaps(i % (count - 1)) += step)
-      val starts =
-        overlaps.scanLeft(0)((start, overlap) => start + tilePixels - overlap)
-      (starts.toSeq, tilePixels, overlaps.toSeq)
-    }
-
-  /** Tiles (each `[frames, tileHeight, tileWidth, channels]`) into one
-    * `[frames, height, width, channels]` (diffusers' `_stitch_tiles`): each
-    * blended with the one above and the one to its left (both as made), over
-    * the overlap between them, then cut by its own overlaps below and to the
-    * right.
-    */
-  def stitch(
-      tiles: Seq[Seq[Array[Float]]],
-      frames: Int,
-      tileHeight: Int,
-      tileWidth: Int,
-      rowOverlaps: Seq[Int],
-      columnOverlaps: Seq[Int],
-      height: Int,
-      width: Int,
-      channels: Int
-  ): Array[Float] = {
-    val result = new Array[Float](frames * height * width * channels)
-    var top = 0
-    tiles.indices.foreach { i =>
-      var left = 0
-      val keptHeight =
-        if (i < tiles.size - 1) tileHeight - rowOverlaps(i) else tileHeight
-      tiles(i).indices.foreach { j =>
-        val keptWidth =
-          if (j < tiles(i).size - 1) tileWidth - columnOverlaps(j)
-          else tileWidth
-        val tile = tiles(i)(j).clone()
-        def at(frame: Int, y: Int, x: Int) =
-          ((frame * tileHeight + y) * tileWidth + x) * channels
-        if (i > 0) {
-          val above = tiles(i - 1)(j)
-          val extent = math.min(rowOverlaps(i - 1), tileHeight)
-          for {
-            f <- 0 until frames
-            y <- 0 until extent
-            x <- 0 until tileWidth
-            c <- 0 until channels
-          } {
-            val weight = y.toFloat / extent
-            tile(at(f, y, x) + c) =
-              above(at(f, tileHeight - extent + y, x) + c) *
-                (1 - weight) + tile(at(f, y, x) + c) * weight
-          }
-        }
-        if (j > 0) {
-          val leftTile = tiles(i)(j - 1)
-          val extent = math.min(columnOverlaps(j - 1), tileWidth)
-          for {
-            f <- 0 until frames
-            y <- 0 until tileHeight
-            x <- 0 until extent
-            c <- 0 until channels
-          } {
-            val weight = x.toFloat / extent
-            tile(at(f, y, x) + c) =
-              leftTile(at(f, y, tileWidth - extent + x) + c) *
-                (1 - weight) + tile(at(f, y, x) + c) * weight
-          }
-        }
-        for {
-          f <- 0 until frames
-          y <- 0 until keptHeight
-        } System.arraycopy(
-          tile,
-          at(f, y, 0),
-          result,
-          ((f * height + top + y) * width + left) * channels,
-          keptWidth * channels
-        )
-        left += keptWidth
-      }
-      top += keptHeight
-    }
-    result
-  }
 
   def holds(source: WeightSource): Boolean =
     source.has("decoder.x_embedder.weight") && source.has(

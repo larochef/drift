@@ -351,6 +351,51 @@ object TinyModelGpuTests extends TestSuite {
         assert(error < 4e-2) // BF16 weights and BF16 convolution inputs
       } finally ops.close()
     }
+    test("SeedVR2's transformer over windows of video and text") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val (last, middle) = TinySeedVr2Case.velocityErrors(ops)
+        println(
+          f"  worst velocity error: ${last * 100}%.4f%% at 1000, ${middle * 100}%.4f%% at 637.5"
+        )
+        assert(last < 4e-2 && middle < 4e-2) // BF16 weights and F16 keys
+      } finally ops.close()
+    }
+    test("SeedVR2's 7B transformer with its plain MLPs and angles") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val (last, middle) =
+          TinySeedVr2Case.velocityErrors(ops, "tiny/seedvr2_7b")
+        println(
+          f"  worst velocity error: ${last * 100}%.4f%% at 1000, ${middle * 100}%.4f%% at 637.5"
+        )
+        assert(last < 4e-2 && middle < 4e-2) // BF16 weights and F16 keys
+      } finally ops.close()
+    }
+    test("SeedVR2's VAE both ways on one frame") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val (latent, image) = TinySeedVr2VaeCase.errors(ops, "picture")
+        println(
+          f"  worst latent error: ${latent * 100}%.4f%%, image: ${image * 100}%.4f%% of the largest"
+        )
+        assert(
+          latent < 4e-2 && image < 4e-2
+        ) // BF16 weights and convolution inputs
+      } finally ops.close()
+    }
+    test("SeedVR2's VAE both ways on 5 frames") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val (latent, image) = TinySeedVr2VaeCase.errors(ops, "clip")
+        println(
+          f"  worst latent error: ${latent * 100}%.4f%%, image: ${image * 100}%.4f%% of the largest"
+        )
+        assert(
+          latent < 4e-2 && image < 4e-2
+        ) // BF16 weights and convolution inputs
+      } finally ops.close()
+    }
     test(
       "Krea 2 with a LoRA (both namings, an alpha, two tables), then without"
     ) {

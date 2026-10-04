@@ -117,6 +117,27 @@ final class VaeWeights(ops: Ops, source: WeightSource) {
     }
   }
 
+  /** A causal 3×3×3 convolution's three temporal slices summed into one 3×3:
+    * what it does to a frame whose two predecessors are the frame itself (a
+    * still picture, or a stream's first frame when the first stands for the
+    * ones before it).
+    */
+  def conv3x3x3Summed(prefix: String): Convolution = {
+    val dimensions = source(s"$prefix.weight").shape.dimensions.map(_.toInt)
+    val (out, in, depth) = (dimensions(0), dimensions(1), dimensions(2))
+    val all = values(s"$prefix.weight")
+    Convolution(
+      bf16(
+        Shape.of(out, in * 9L),
+        Array.tabulate(out * in * 9) { i =>
+          val (oi, k) = (i / 9, i % 9)
+          (0 until depth).map(t => all(oi * depth * 9 + t * 9 + k)).sum
+        }
+      ),
+      floats(s"$prefix.bias")
+    )
+  }
+
   /** A causal temporal convolution (`[out, in, 3, 1, 1]`) as its three 1×1
     * slices, the oldest frame's first; the bias rides on the newest.
     */

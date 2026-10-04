@@ -11,6 +11,11 @@ object PostProcessService {
     case LoadJobs
     case Upscale(date: String, fileName: String, request: UpscaleRequest)
     case Pid(date: String, fileName: String, request: PidUpscaleRequest)
+    case SeedVr2(
+        date: String,
+        fileName: String,
+        request: SeedVr2UpscaleRequest
+    )
     case Redraw(date: String, fileName: String, request: RedrawRequest)
     case Edit(date: String, fileName: String, request: EditRequest)
     case Cancel(jobId: String)
@@ -31,6 +36,7 @@ class PostProcessService(statusSocket: StatusSocketService)
   private val jobsFn = ApiClient.stream(listPostProcessJobs)
   private val upscaleFn = ApiClient.stream(upscaleOutput)
   private val pidFn = ApiClient.stream(pidUpscaleOutput)
+  private val seedVr2Fn = ApiClient.stream(seedVr2UpscaleOutput)
   private val redrawFn = ApiClient.stream(redrawOutput)
   private val editFn = ApiClient.stream(editOutput)
   private val cancelFn = ApiClient.stream(cancelPostProcessJob)
@@ -115,6 +121,13 @@ class PostProcessService(statusSocket: StatusSocketService)
       }
       .flatMapMerge(input => pidFn(input).recoverToTry) --> submitted(
       "PiD upscaling the image"
+    ),
+    cmdBus.events
+      .collect { case Command.SeedVr2(date, fileName, request) =>
+        (date, fileName, request)
+      }
+      .flatMapMerge(input => seedVr2Fn(input).recoverToTry) --> submitted(
+      "SeedVR2 upscaling"
     ),
     cmdBus.events
       .collect { case Command.Redraw(date, fileName, request) =>

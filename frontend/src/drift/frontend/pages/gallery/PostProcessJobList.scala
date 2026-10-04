@@ -28,10 +28,11 @@ class PostProcessJobList(
   private val progressTag = htmlTag("progress")
 
   private def jobLabel(job: PostProcessJob): String = job.kind match {
-    case "pid"    => "PiD upscale"
-    case "redraw" => "Redraw"
-    case "edit"   => "Edit"
-    case _        => "Upscale"
+    case "pid"                      => "PiD upscale"
+    case SeedVr2UpscaleRequest.Kind => "SeedVR2 upscale"
+    case "redraw"                   => "Redraw"
+    case "edit"                     => "Edit"
+    case _                          => "Upscale"
   }
 
   /** Closes a finished job's card. Only the notice goes: the job stays in the
@@ -65,7 +66,8 @@ class PostProcessJobList(
                 maxAttr := progress.total.toString
               )
             )
-          case None =>
+          // ESRGAN alone runs blind: sd-cli prints no bar for it
+          case None if job.kind == "upscale" =>
             List(
               span(
                 s"${jobLabel(job)} running… (sd-cli reports no progress; a " +
@@ -73,6 +75,9 @@ class PostProcessJobList(
               ),
               progressTag(cls := "progress is-small is-info mt-1")
             )
+          // a job that is one run on a server (SeedVR2): its own bar, read
+          // from the log below, is the progress
+          case None => List(span(s"${jobLabel(job)} running"))
         },
         // What the run inside the current tile is doing, the way the inference
         // panel shows it: the bar sd-cpp is drawing, or its last line.
@@ -89,8 +94,8 @@ class PostProcessJobList(
           button(
             cls := "button is-small",
             "Stop",
-            title := "kills the sd-cli run, or asks the server to drop the " +
-              "tile it is generating; what was written is removed",
+            title := "kills the sd-cli run, or stops the server the job " +
+              "runs on; what was written is removed",
             onClick --> (_ => onCancel(job.id))
           ),
           // Only a tiled job has tiles to keep; the others end in one run.

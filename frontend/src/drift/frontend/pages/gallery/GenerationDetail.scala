@@ -74,6 +74,8 @@ class GenerationDetail(
       * diffusion upscalers.
       */
     pidConfigurations: Signal[List[ConfigurationOption]],
+    /** Run configurations of SeedVR2 architectures (`specs/51`). */
+    seedVr2Configurations: Signal[List[ConfigurationOption]],
     /** Run configurations of `image` architectures — what can redraw. */
     redrawConfigurations: Signal[List[ConfigurationOption]],
     restorationTemplates: Signal[List[PromptTemplate]],
@@ -105,6 +107,7 @@ class GenerationDetail(
     onAskAssistant: (GenerationOutput, String) => Unit,
     onUpscale: (GenerationOutput, UpscaleRequest) => Unit,
     onPid: (GenerationOutput, PidUpscaleRequest) => Unit,
+    onSeedVr2: (GenerationOutput, SeedVr2UpscaleRequest) => Unit,
     onRedraw: (GenerationOutput, RedrawRequest) => Unit,
     onEdit: (GenerationOutput, EditRequest) => Unit,
     onCancelJob: String => Unit,
@@ -209,6 +212,7 @@ class GenerationDetail(
       picture.selectedIndex.signal.map(generation.outputs.lift),
       upscalers,
       pidConfigurations,
+      seedVr2Configurations,
       redrawConfigurations,
       restorationTemplates,
       editConfigurations,
@@ -226,6 +230,7 @@ class GenerationDetail(
       onOpen,
       onUpscale,
       onPid,
+      onSeedVr2,
       onRedraw,
       onEdit,
       onCancelJob,

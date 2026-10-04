@@ -6,43 +6,21 @@ import drift.shared.*
 
 import com.raquo.laminar.api.L.*
 
-/** Upscale with a model of the upscaler store (ESRGAN,
-  * `specs/15-post-hoc-resize.md`): the model, how many times it runs, and the
-  * button. The cheapest of the three tasks and the only one that invents
+/** What the upscale task shows for a model of the upscaler store (ESRGAN,
+  * `specs/15-post-hoc-resize.md`), chosen in the task's select
+  * (`UpscaleTaskPanel`): how many times it runs, and the button. The cheapest of the three tasks and the only one that invents
   * nothing — no session, no prompt, no seed.
   */
 class UpscalePanel(
     image: Signal[Option[GenerationOutput]],
     upscalers: Signal[List[Upscaler]],
+    /** The chosen model: the task's model select writes it. */
+    upscalerVar: Var[String],
     onUpscale: (GenerationOutput, UpscaleRequest) => Unit
 ) extends Component {
 
-  private val upscalerVar = Var("")
   private val repeatsVar = Var("1")
   private val advancedVar = Var(false)
-
-  private def modelSelect: HtmlElement =
-    div(
-      cls := "select is-small",
-      select(
-        onChange.mapToValue --> upscalerVar,
-        children <-- upscalers.map { list =>
-          if (list.isEmpty)
-            List(option(value := "", "no upscaler installed"))
-          else
-            list.map(u =>
-              option(
-                value := u.id,
-                selected <-- upscalerVar.signal.map(v =>
-                  v == u.id || (v.isEmpty && list.headOption
-                    .exists(_.id == u.id))
-                ),
-                u.label
-              )
-            )
-        }
-      )
-    )
 
   lazy val element: HtmlElement = div(
     // The select shows the first installed model; the request must name it
@@ -56,7 +34,6 @@ class UpscalePanel(
         "model. Seconds, no model loaded, no new detail — it sharpens what " +
         "is already there, and the original stays in the gallery."
     ),
-    group("model", plainField(modelSelect)),
     advanced(
       advancedVar,
       group(

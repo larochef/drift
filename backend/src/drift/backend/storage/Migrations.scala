@@ -343,7 +343,8 @@ private[storage] object Migrations {
         .flatMap(_.obj.get("ids"))
         .map(_.arr.map(_.str).toSet)
         .getOrElse(Set.empty)
-      val runnerOf = Map("SdCpp" -> "drift-runner-images", "LlamaCpp" -> "drift-runner")
+      val runnerOf =
+        Map("SdCpp" -> "drift-runner-images", "LlamaCpp" -> "drift-runner")
       val architecture = record.obj
         .get("architectureId")
         .flatMap(id => stored("architectures", id.str))

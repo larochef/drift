@@ -26,7 +26,7 @@ import com.sun.net.httpserver.{HttpExchange, HttpServer}
   */
 final class ImageServer(
     options: ImageOptions,
-    pipeline: ImagePipeline | VideoPipeline
+    pipeline: ImagePipeline | VideoPipeline | SeedVr2Pipeline
 ) {
 
   /** One job of `kind`: `run` makes its result document. */
@@ -44,21 +44,24 @@ final class ImageServer(
   }
 
   private val mode = pipeline match {
-    case _: ImagePipeline => "img_gen"
-    case _: VideoPipeline => "vid_gen"
+    case _: ImagePipeline   => "img_gen"
+    case _: VideoPipeline   => "vid_gen"
+    case _: SeedVr2Pipeline => "upscale"
   }
 
   /** The steps a request takes when neither it nor the flags say: 4 for the
     * turbo image models the runner draws, sd-cpp's 20 for a video.
     */
   private val steps = options.steps.getOrElse(pipeline match {
-    case _: ImagePipeline => 4
-    case _: VideoPipeline => 20
+    case _: ImagePipeline   => 4
+    case _: VideoPipeline   => 20
+    case _: SeedVr2Pipeline => 1
   })
 
   private val family = pipeline match {
-    case image: ImagePipeline => image.family
-    case video: VideoPipeline => video.family
+    case image: ImagePipeline      => image.family
+    case video: VideoPipeline      => video.family
+    case upscaler: SeedVr2Pipeline => upscaler.family
   }
 
   private val jobs = new ConcurrentHashMap[String, Job]()
@@ -82,6 +85,12 @@ final class ImageServer(
       pipeline match {
         case video: VideoPipeline => submitVideo(exchange, video)
         case _                    => wrongMode(exchange)
+      }
+    )
+    route("/sdcpp/v1/upscale")(exchange =>
+      pipeline match {
+        case upscaler: SeedVr2Pipeline => submitUpscale(exchange, upscaler)
+        case _                         => wrongMode(exchange)
       }
     )
     route("/sdcpp/v1/jobs/")(job)
@@ -228,6 +237,17 @@ final class ImageServer(
             "cancel_generating" -> false
           ),
           ujson.Arr("webm")
+        )
+      case _: SeedVr2Pipeline =>
+        (
+          ujson.Obj(
+            "scale" -> SeedVr2Pipeline.DefaultScale,
+            "seed" -> ujson.Num(options.seed.toDouble),
+            "batch" -> SeedVr2Options.Default.batch,
+            "overlap" -> SeedVr2Options.Default.overlap
+          ),
+          ujson.Obj("cancel_queued" -> true, "cancel_generating" -> false),
+          ujson.Arr("png", "webm")
         )
     }
     ujson.Obj(
@@ -605,6 +625,115 @@ final class ImageServer(
         ujson.Obj("error" -> s"no such LoRA: ${missing.mkString(", ")}")
       )
     enqueue(exchange, "vid_gen", () => video(pipeline, request))
+  }
+
+  /** `POST /sdcpp/v1/upscale`, the runner's own job: `source` (a picture or a
+    * video, base64 or a data URL) restored at `width × height`, or at `scale`
+    * times its size (4 unless said); `seed`, `batch` and `overlap` as
+    * `SeedVr2Options` has them. A picture comes back as `img_gen`'s result
+    * does, a video as `vid_gen`'s, its frame rate and soundtrack kept.
+    */
+  private def submitUpscale(
+      exchange: HttpExchange,
+      pipeline: SeedVr2Pipeline
+  ): Unit = {
+    if (exchange.getRequestMethod != "POST")
+      return json(exchange, 405, ujson.Obj("error" -> "POST only"))
+    val body = ujson.read(exchange.getRequestBody.readAllBytes())
+    def field(name: String) = body.obj.get(name).filterNot(_.isNull)
+    def whole(name: String) = field(name).map(_.num.toInt)
+    val encoded = field("source").map(_.str).getOrElse("")
+    if (encoded.isEmpty)
+      return json(exchange, 400, ujson.Obj("error" -> "no source"))
+    val bytes = Base64.getMimeDecoder.decode(
+      if (encoded.startsWith("data:")) encoded.drop(encoded.indexOf(',') + 1)
+      else encoded
+    )
+    // a picture as it is: `VideoFiles` would bring a large one down
+    val source = Option(ImageIO.read(new ByteArrayInputStream(bytes)))
+      .fold(VideoFiles.decode(bytes))(Media.Still(_))
+    val (frames, fps, soundtrack) = source match {
+      case Media.Still(image)                  => (Seq(image), None, None)
+      case Media.Clip(frames, fps, soundtrack) =>
+        (frames, Some(fps), soundtrack)
+      case Media.Sound(_) =>
+        return json(
+          exchange,
+          400,
+          ujson.Obj("error" -> "a sound has no frames")
+        )
+    }
+    val scale = whole("scale").getOrElse(SeedVr2Pipeline.DefaultScale)
+    def even(side: Int) = side / 2 * 2
+    val width = even(whole("width").getOrElse(frames.head.getWidth * scale))
+    val height = even(whole("height").getOrElse(frames.head.getHeight * scale))
+    val seed = field("seed")
+      .map(_.num.toLong)
+      .filter(_ >= 0)
+      .getOrElse(
+        if (options.seed >= 0) options.seed
+        else Random.nextInt(Int.MaxValue).toLong
+      )
+    val upscaleOptions =
+      try
+        SeedVr2Options.Default.copy(
+          batch = whole("batch").getOrElse(SeedVr2Options.Default.batch),
+          overlap = whole("overlap").getOrElse(SeedVr2Options.Default.overlap)
+        )
+      catch {
+        case error: IllegalArgumentException =>
+          return json(exchange, 400, ujson.Obj("error" -> error.getMessage))
+      }
+    enqueue(
+      exchange,
+      "upscale",
+      () => {
+        println("sampling using Euler method")
+        println(
+          s"upscaling ${frames.size} frame${
+              if (frames.size == 1) "" else "s"
+            } of ${frames.head.getWidth} × ${frames.head.getHeight} to $width × $height (seed $seed)"
+        )
+        val startedAt = System.nanoTime()
+        val restored = pipeline.upscale(
+          frames,
+          width,
+          height,
+          seed,
+          upscaleOptions,
+          stepPrinter()
+        )
+        println(
+          f"generate_image completed in ${(System.nanoTime() - startedAt) / 1e9}%.2fs"
+        )
+        fps match {
+          case None =>
+            val png = new ByteArrayOutputStream()
+            ImageIO.write(restored.head, "png", png)
+            ujson.Obj(
+              "output_format" -> "png",
+              "images" -> ujson.Arr(
+                ujson.Obj(
+                  "index" -> 0,
+                  "b64_json" -> Base64.getEncoder.encodeToString(
+                    png.toByteArray
+                  )
+                )
+              )
+            )
+          case Some(rate) =>
+            val video = Video(restored, math.round(rate).toInt, soundtrack)
+            ujson.Obj(
+              "output_format" -> "webm",
+              "mime_type" -> "video/webm",
+              "fps" -> video.fps,
+              "frame_count" -> video.frames.size,
+              "b64_json" -> Base64.getEncoder
+                .encodeToString(VideoFiles.webm(video))
+            )
+        }
+      }
+    )
   }
 
   private def enqueue(

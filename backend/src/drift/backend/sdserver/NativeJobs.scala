@@ -45,10 +45,31 @@ private[backend] case class NativeJob(
     result: Option[NativeJobResult] = None,
     error: Option[NativeJobError] = None
 )
+
+/** A video the runner's `upscale` job made. */
+private[backend] case class UpscaledVideo(
+    bytes: Array[Byte],
+    format: String,
+    mimeType: String,
+    fps: Option[Int],
+    frameCount: Option[Int]
+)
 private[backend] object NativeJob {
   given JsonValueCodec[NativeJob] = JsonCodecMaker.make(
     CodecMakerConfig.withFieldNameMapper(JsonCodecMaker.enforce_snake_case)
   )
+}
+
+/** The runner's `upscale` job (`specs/51`): `source` is a picture or a video,
+  * base64; a negative seed is the server's to draw.
+  */
+private[backend] case class NativeUpscale(
+    source: String,
+    scale: Int,
+    seed: Long
+)
+private[backend] object NativeUpscale {
+  given JsonValueCodec[NativeUpscale] = JsonCodecMaker.make
 }
 
 /** Images straight from an sd-server, for jobs that drive a server themselves
@@ -143,7 +164,67 @@ object NativeJobs {
       else {
         val jobId = readFromString[NativeJob](submitted.body).id
         onSubmitted(jobId)
-        await(port, jobId, serverExit)
+        await(port, jobId, serverExit).flatMap(firstImage)
+      }
+    } catch {
+      case NonFatal(err) =>
+        Left(
+          serverExit().fold(s"submitting the job failed: ${err.getMessage}")(
+            exited
+          )
+        )
+    }
+
+  private def firstImage(result: NativeJobResult): Either[String, Array[Byte]] =
+    result.images.headOption
+      .filter(_.b64Json.nonEmpty)
+      .map(image => Base64.getMimeDecoder.decode(image.b64Json))
+      .toRight("sd-server completed the job without an image")
+
+  /** Submits the runner's `upscale` job and waits for its result: a picture
+    * (`Left`, a PNG) or a video (`Right`: its bytes, format, frame rate and
+    * frame count). `serverExit` and `onSubmitted` as `image` has them.
+    */
+  def upscale(
+      port: Int,
+      request: NativeUpscale,
+      serverExit: () => Option[Int],
+      onSubmitted: String => Unit
+  ): Either[String, Either[Array[Byte], UpscaledVideo]] =
+    try {
+      val submitted = client.send(
+        HttpRequest
+          .newBuilder(uri(port, "/sdcpp/v1/upscale"))
+          .timeout(java.time.Duration.ofSeconds(120))
+          .header("Content-Type", "application/json")
+          .POST(HttpRequest.BodyPublishers.ofString(writeToString(request)))
+          .build(),
+        HttpResponse.BodyHandlers.ofString()
+      )
+      if (submitted.statusCode != 202)
+        Left(
+          s"the runner refused the job (${submitted.statusCode}): ${submitted.body.trim.take(300)}"
+        )
+      else {
+        val jobId = readFromString[NativeJob](submitted.body).id
+        onSubmitted(jobId)
+        await(port, jobId, serverExit).flatMap(result =>
+          result.b64Json.filter(_.nonEmpty) match {
+            case Some(video) =>
+              Right(
+                Right(
+                  UpscaledVideo(
+                    Base64.getMimeDecoder.decode(video),
+                    result.outputFormat,
+                    result.mimeType.getOrElse(s"video/${result.outputFormat}"),
+                    result.fps,
+                    result.frameCount
+                  )
+                )
+              )
+            case None => firstImage(result).map(Left(_))
+          }
+        )
       }
     } catch {
       case NonFatal(err) =>
@@ -196,10 +277,10 @@ object NativeJobs {
       port: Int,
       jobId: String,
       serverExit: () => Option[Int]
-  ): Either[String, Array[Byte]] = {
+  ): Either[String, NativeJobResult] = {
     var lastAnswerAt = System.currentTimeMillis()
     var failures = 0
-    var outcome: Option[Either[String, Array[Byte]]] = None
+    var outcome: Option[Either[String, NativeJobResult]] = None
     while (outcome.isEmpty) {
       sleep(1.second)
       serverExit().foreach(code => outcome = Some(Left(exited(code))))
@@ -213,11 +294,9 @@ object NativeJobs {
             job.status match {
               case "completed" =>
                 outcome = Some(
-                  job.result
-                    .flatMap(_.images.headOption)
-                    .filter(_.b64Json.nonEmpty)
-                    .map(image => Base64.getMimeDecoder.decode(image.b64Json))
-                    .toRight("sd-server completed the job without an image")
+                  job.result.toRight(
+                    "sd-server completed the job without a result"
+                  )
                 )
               case "failed" | "cancelled" =>
                 outcome = Some(

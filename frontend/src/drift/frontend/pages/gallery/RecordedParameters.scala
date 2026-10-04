@@ -40,14 +40,15 @@ object RecordedParameters {
   }
 
   def kindLabel(generation: Generation): String = generation.kind match {
-    case "vid_gen" => "Video"
-    case "upscale" => "Upscale"
-    case "pid"     => "PiD upscale"
-    case "redraw"  => "Redraw"
-    case "edit"    => "Edit"
-    case "resize"  => "Resize"
-    case "import"  => "Imported image"
-    case _         => "Image"
+    case "vid_gen"                  => "Video"
+    case "upscale"                  => "Upscale"
+    case "pid"                      => "PiD upscale"
+    case SeedVr2UpscaleRequest.Kind => "SeedVR2 upscale"
+    case "redraw"                   => "Redraw"
+    case "edit"                     => "Edit"
+    case "resize"                   => "Resize"
+    case "import"                   => "Imported image"
+    case _                          => "Image"
   }
 
   /** What was done to the parent, in words. */
@@ -63,6 +64,9 @@ object RecordedParameters {
         s"Upscaled$size with ${derivation.upscalerId.getOrElse("?")}$times"
       case "pid" =>
         s"PiD-upscaled$size with ${derivation.configurationId.getOrElse("?")}"
+      case SeedVr2UpscaleRequest.Kind =>
+        val times = derivation.repeats.map(r => s" ×$r").getOrElse("")
+        s"SeedVR2-upscaled$times$size with ${derivation.configurationId.getOrElse("?")}"
       case "redraw" =>
         s"Redrawn with ${derivation.configurationId.getOrElse("?")}" +
           derivation.strength.map(s => s" at strength $s").getOrElse("")

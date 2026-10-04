@@ -61,9 +61,10 @@ Click a tile to open it:
 
 ## Post-processing
 
-The **Redraw & upscale** tab holds four tasks — **Redraw**, **Edit**, **PiD
-upscale**, **Upscaler** — one on screen at a time, picked with the buttons at
-the top of the tab. Each makes a better or bigger copy **beside** the original: results
+The **Redraw & upscale** tab holds three tasks — **Redraw**, **Edit**,
+**Upscale** — one on screen at a time, picked with the buttons at the top of
+the tab. A video has one of them, **Upscale**, with the models that take a
+video. Each makes a better or bigger copy **beside** the original: results
 are new gallery entries linked to their source; nothing runs inside your
 session, though a live one is offered a **■ Stop it** button to free memory
 first.
@@ -77,10 +78,27 @@ open it, keeping what you typed while you move between tasks and images. A
 redraw puts the two switches for the grid drawn over the picture beside that
 last line rather than in the form: they change nothing about the job.
 
-- **⬆ Upscale** with an ESRGAN model from your upscaler store (see
-  [model-cache.md](model-cache.md)): pick the model; *Advanced* holds how many
-  passes it runs. RealESRGAN x4plus works; x2plus does not load in sd-cpp.
-- **✨ PiD upscale**: a diffusion decoder re-renders the image at ×4, sharper
+- **⬆ Upscale** is one task whatever enlarges the picture: its **model**
+  select lists every upscaler you have — the SeedVR2 and PiD run
+  configurations and the ESRGAN models of your upscaler store — and what
+  follows the select is what the chosen model takes.
+- An **ESRGAN** model (see [model-cache.md](model-cache.md)): seconds, no new
+  detail; *Advanced* holds how many passes it runs. RealESRGAN x4plus works;
+  x2plus does not load in sd-cpp.
+- A **SeedVR2** model, for a picture **or a video**: it restores and enlarges
+  in one diffusion step, ×4 by default or ×2, on the drift runner (it does not
+  run on sd-cpp). The built-in **SeedVR2 7B upscale** is the default,
+  **SeedVR2 3B upscale** is lighter and a little faster; *Advanced* holds the
+  seed. There is no prompt. A picture larger than one pass (about 1088 px a
+  side at ×4) is cut in tiles like a PiD's — the line before the button says
+  how many, **show the grid** draws them, and the job can be paused and
+  resumed; the target stops at 16384 px on the longest side. A video keeps its
+  frame rate and its soundtrack and comes back as a new video entry.
+  **SeedVR2 redraws fine detail rather than only sharpening it** — faces, skin
+  and textures can change, more than with PiD — so compare the result with the
+  original (**Original** / **Result**) before keeping it. A picture's colours
+  are matched to its source; a video's are not yet.
+- A **PiD** model: a diffusion decoder re-renders the image at ×4, sharper
   than ESRGAN on generated images. Pick a run configuration on a *PiD*
   architecture (Flux.2, Flux.1 or Qwen-Image VAE variants; use the
   `pid_1.5_…_4step_bf16` decoder files, and the Gemma 2 `tokenizer.json` in

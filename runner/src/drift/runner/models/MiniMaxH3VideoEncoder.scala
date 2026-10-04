@@ -274,9 +274,9 @@ final class MiniMaxH3VideoEncoder private (
       width: Int
   ): Array[Float] = {
     val (rowStarts, tileHeight, rowOverlaps) =
-      MiniMaxH3Vae.split(height, tilePixels, tileOverlap)
+      VaeTiles.split(height, tilePixels, tileOverlap, 16)
     val (columnStarts, tileWidth, columnOverlaps) =
-      MiniMaxH3Vae.split(width, tilePixels, tileOverlap)
+      VaeTiles.split(width, tilePixels, tileOverlap, 16)
     val tiles = rowStarts.map { top =>
       columnStarts.map { left =>
         encodeTile(frames.map { pixels =>
@@ -310,7 +310,7 @@ final class MiniMaxH3VideoEncoder private (
         .iterate(frames.size)(n => (n - 1) / 2 + 1)
         .drop(levels.count(_.temporal))
         .next()
-    MiniMaxH3Vae.stitch(
+    VaeTiles.stitch(
       tiles,
       latentFrames,
       tileHeight / Scale,

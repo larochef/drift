@@ -239,7 +239,8 @@ final private[postprocess] class Redraw(
                   },
                   vaeTilingParams = defaults.vaeTilingParams
                 )
-              )),
+              )
+            ),
             target = target,
             rows = rows,
             notes = List(

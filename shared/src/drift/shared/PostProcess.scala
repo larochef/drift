@@ -249,11 +249,11 @@ object SeedVr2UpscaleRequest {
   def referenceSizeOf(source: (Int, Int)): (Int, Int) =
     (Tiling.roundUp(source._1, 16), Tiling.roundUp(source._2, 16))
 
-  /** The tiles a picture's job restores, in target px: the padded source
-    * times `scale`, cut into tiles of `MaxTile` at most overlapping by
-    * `Tiling.Overlap`, every side a multiple of `16 × scale` and every start
-    * on a multiple of `scale`, so each tile is an exact crop of the source.
-    * One tile for a target within `MaxTile`.
+  /** The tiles a picture's job restores, in target px: the padded source times
+    * `scale`, cut into tiles of `MaxTile` at most overlapping by
+    * `Tiling.Overlap`, every side a multiple of `16 × scale` and every start on
+    * a multiple of `scale`, so each tile is an exact crop of the source. One
+    * tile for a target within `MaxTile`.
     */
   def tilesFor(source: (Int, Int), scale: Int): List[List[Tiling.Tile]] = {
     val (width, height) = referenceSizeOf(source)

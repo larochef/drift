@@ -8,8 +8,9 @@ import com.raquo.laminar.api.L.*
 
 /** What the upscale task shows for a model of the upscaler store (ESRGAN,
   * `specs/15-post-hoc-resize.md`), chosen in the task's select
-  * (`UpscaleTaskPanel`): how many times it runs, and the button. The cheapest of the three tasks and the only one that invents
-  * nothing — no session, no prompt, no seed.
+  * (`UpscaleTaskPanel`): how many times it runs, and the button. The cheapest
+  * of the three tasks and the only one that invents nothing — no session, no
+  * prompt, no seed.
   */
 class UpscalePanel(
     image: Signal[Option[GenerationOutput]],

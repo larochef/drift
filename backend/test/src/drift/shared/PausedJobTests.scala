@@ -26,6 +26,35 @@ object PausedJobTests extends TestSuite {
 
   val tests = Tests {
 
+    test("a SeedVR2 job keeps its scale and the seed it drew") {
+      val work = PausedWork.SeedVr2(
+        SeedVr2UpscaleRequest(
+          runConfigurationId = "starter-seedvr2-7b",
+          scale = 4,
+          seed = 424242
+        )
+      )
+      roundTrip(work).work match {
+        case PausedWork.SeedVr2(request) =>
+          assert(request.seed == 424242, request.scale == 4)
+        case other => assert(false)
+      }
+    }
+
+    test("a 4096² picture at ×4 is 16 SeedVR2 tiles and a 1024² one a single") {
+      def tiles(side: Int) =
+        SeedVr2UpscaleRequest.tilesFor((side, side), 4).flatten
+      assert(tiles(4096).size == 16, tiles(1024).size == 1)
+      // every tile an exact crop of the source, a size the model takes
+      assert(
+        tiles(4096).forall(tile =>
+          tile.x % 4 == 0 && tile.y % 4 == 0 &&
+            tile.width % 64 == 0 && tile.height % 64 == 0 &&
+            tile.width <= SeedVr2UpscaleRequest.MaxTile
+        )
+      )
+    }
+
     test("a PiD job keeps the seed it drew") {
       val work = PausedWork.Pid(
         PidUpscaleRequest(

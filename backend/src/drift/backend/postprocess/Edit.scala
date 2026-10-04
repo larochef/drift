@@ -132,7 +132,8 @@ final private[postprocess] class Edit(
                   },
                   vaeTilingParams = defaults.vaeTilingParams
                 )
-              )),
+              )
+            ),
             target = (area.width, area.height),
             rows = rows,
             notes = List(

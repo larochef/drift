@@ -362,8 +362,8 @@ final class SeedVr2Pipeline(ops: Ops, diffusionModel: Path, vae: Path)
   /** `frames` (a picture, or a video's frames) upscaled to `width × height`
     * (even sides): each resized to that size (bicubic) on a black canvas of the
     * next multiples of `multiple`, as the reference pads, restored, and cut
-    * back. `progress(done, of)` counts, for every batch, its tiles
-    * encoded, the transformer's step and its tiles decoded.
+    * back. `progress(done, of)` counts, for every batch, its tiles encoded, the
+    * transformer's step and its tiles decoded.
     */
   def upscale(
       frames: Seq[BufferedImage],

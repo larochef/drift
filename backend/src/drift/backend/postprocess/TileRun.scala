@@ -251,66 +251,67 @@ final private[postprocess] class TileRun(
             }
             call
           }
-          .map { call =>
-            (
+          .map {
+            call => (
                 index: Int,
                 tile: Tiling.Tile,
                 window: Tiling.Tile,
                 crop: BufferedImage
-            ) => {
-              if (keepTiles)
-                ImageIO.write(crop, "png", tileFile(index, "input").toFile)
-              call(
-                index,
-                tile,
-                TileWindow.TileInput(
+            ) =>
+              {
+                if (keepTiles)
+                  ImageIO.write(crop, "png", tileFile(index, "input").toFile)
+                call(
+                  index,
                   tile,
-                  window,
-                  PostProcessImages.dataUrl(crop),
-                  Option.when(window != tile)(
-                    PostProcessImages.dataUrl(TileWindow.maskOf(tile, window))
+                  TileWindow.TileInput(
+                    tile,
+                    window,
+                    PostProcessImages.dataUrl(crop),
+                    Option.when(window != tile)(
+                      PostProcessImages.dataUrl(TileWindow.maskOf(tile, window))
+                    )
                   )
                 )
-              )
-                .flatMap { bytes =>
-                  if (window == tile) {
-                    Files.write(tileFile(index, "output"), bytes)
-                    Right(())
-                  } else
-                    // The model painted the whole window; the tile is cut
-                    // back out of it, and the rest was only there to be seen.
-                    Option(ImageIO.read(java.io.ByteArrayInputStream(bytes)))
-                      .toRight("the window returned cannot be decoded")
-                      .flatMap { painted =>
-                        if (
-                          painted.getWidth != window.width ||
-                          painted.getHeight != window.height
-                        )
-                          Left(
-                            s"the window came back ${painted.getWidth}×${painted.getHeight}, not ${window.width}×${window.height}"
+                  .flatMap { bytes =>
+                    if (window == tile) {
+                      Files.write(tileFile(index, "output"), bytes)
+                      Right(())
+                    } else
+                      // The model painted the whole window; the tile is cut
+                      // back out of it, and the rest was only there to be seen.
+                      Option(ImageIO.read(java.io.ByteArrayInputStream(bytes)))
+                        .toRight("the window returned cannot be decoded")
+                        .flatMap { painted =>
+                          if (
+                            painted.getWidth != window.width ||
+                            painted.getHeight != window.height
                           )
-                        else {
-                          if (keepTiles)
-                            ImageIO.write(
-                              painted,
-                              "png",
-                              tileFile(index, "window").toFile
+                            Left(
+                              s"the window came back ${painted.getWidth}×${painted.getHeight}, not ${window.width}×${window.height}"
                             )
-                          ImageIO.write(
-                            painted.getSubimage(
-                              tile.x - window.x,
-                              tile.y - window.y,
-                              tile.width,
-                              tile.height
-                            ),
-                            "png",
-                            tileFile(index, "output").toFile
-                          )
-                          Right(())
+                          else {
+                            if (keepTiles)
+                              ImageIO.write(
+                                painted,
+                                "png",
+                                tileFile(index, "window").toFile
+                              )
+                            ImageIO.write(
+                              painted.getSubimage(
+                                tile.x - window.x,
+                                tile.y - window.y,
+                                tile.width,
+                                tile.height
+                              ),
+                              "png",
+                              tileFile(index, "output").toFile
+                            )
+                            Right(())
+                          }
                         }
-                      }
-                }
-            }
+                  }
+              }
           }
       makeTile
         .flatMap { make =>

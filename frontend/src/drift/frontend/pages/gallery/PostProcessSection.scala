@@ -9,9 +9,9 @@ import com.raquo.laminar.api.L.*
 /** Post-processing of the selected output (`specs/15-post-hoc-resize.md`,
   * `specs/26-tiled-pid.md`, `specs/27-redraw.md`, `specs/39-seamless-edit.md`,
   * `specs/51-seedvr2-upscaling.md`): three tasks — redraw, edit, upscale — one
-  * on screen at a time behind a picker (a video has the upscale alone, the
-  * only one that takes it), and beneath them what they all share, the live
-  * sessions holding memory and the jobs on this output.
+  * on screen at a time behind a picker (a video has the upscale alone, the only
+  * one that takes it), and beneath them what they all share, the live sessions
+  * holding memory and the jobs on this output.
   *
   * One at a time rather than three rows stacked (François, 2026-09-20): only
   * one is ever run, redraw has the fields of a small form and wants the height,

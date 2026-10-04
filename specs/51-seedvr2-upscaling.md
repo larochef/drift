@@ -130,7 +130,7 @@ In drift:
   (`Derivation.operation` `seedvr2`, `repeats` its scale).
   - **A picture** is a tiled job, as PiD's is (`TiledJobs`): the source
     padded to multiples of 16, cut in tiles of at most 4352 target px
-    overlapping by 256 — one tile for most pictures, 25 for 4096² to 16384²
+    overlapping by 256 — one tile for most pictures, 16 for 4096² to 16384²
     — each the runner's `upscale` job on its crop, colour-matched to that
     crop (`colourMatched`) and feather-blended. It pauses and resumes, shows
     its tiles on the picture, and stops at 16384 px on the longest side.

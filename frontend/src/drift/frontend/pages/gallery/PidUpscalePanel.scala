@@ -9,10 +9,10 @@ import com.raquo.laminar.api.L.*
 
 /** What the upscale task shows for a PiD model (`specs/26-tiled-pid.md`): a
   * diffusion upscale through a PiD run configuration, the model itself chosen
-  * in the task's select (`UpscaleTaskPanel`). Empty size fields ask the backend for ×4 of the source with its
-  * ratio kept (`PidUpscaleRequest.target`), and the line before the button says
-  * what that comes to in pixels — or why the job would not be an upscale at
-  * all, which the backend refuses.
+  * in the task's select (`UpscaleTaskPanel`). Empty size fields ask the backend
+  * for ×4 of the source with its ratio kept (`PidUpscaleRequest.target`), and
+  * the line before the button says what that comes to in pixels — or why the
+  * job would not be an upscale at all, which the backend refuses.
   *
   * The prompt it sends is a field of this panel, where it belongs: it used to
   * be handed to the section and rendered under the redraw row, a long way from

@@ -94,7 +94,8 @@ final private[postprocess] class PidUpscale(tiles: TiledJobs) {
                   ),
                   vaeTilingParams = defaults.vaeTilingParams
                 )
-              )),
+              )
+            ),
             target = target,
             rows = rows,
             notes = notes ++ TiledJobs.loraNote(loras.selections),

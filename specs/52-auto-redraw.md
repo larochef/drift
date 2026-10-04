@@ -32,6 +32,10 @@ kind a vision model is good at.
   - **settings**: the strength, and whether to soften first;
   - **regions**: the parts worth redrawing when the rest is fine, as boxes
     on the picture, each with its reason — or the whole picture.
+    This is the repair of what an earlier step got wrong: a nipple with a
+    strange shape after an upscale and a repaint, an eye an ESRGAN pass
+    deformed. Redrawing that tile alone, or the few that hold it, should put
+    it right without touching the rest.
 - Nothing runs unseen: the form shows what was chosen and why, every field
   stays editable, and the redraw starts on the user's click. Asking again is
   one click; the answer is kept with the form, not recomputed on every
@@ -60,10 +64,26 @@ kind a vision model is good at.
 
 ## Tests to run before building
 
+Every test that redraws judges two things, not one: the redrawn part on its
+own, and **how it sits in the whole picture**. A tile in the middle of the
+picture, redrawn with what the assistant chose, must still join its
+neighbours — no seam, no step in colour, sharpness or grain against the
+tiles around it, redrawn or not. A choice that makes one tile better and the
+picture worse is a failure. So each run is looked at twice: the tile at
+full size, and the whole picture with the tile pasted back.
+
+And a redraw of the **whole** picture has a result to reach, not only one
+to avoid: more detail and more sharpness everywhere than the source had. A
+choice that keeps the picture coherent and leaves it as soft as it was has
+not done the job either. Both are judged on every whole-picture run:
+coherent across tiles, and visibly sharper and more detailed than the source.
+
 Each on the study's subjects (`~/dev/redraw-experiments`, 45) plus new
 purpose-made ones, since the point is that pictures differ: a soft portrait,
 a noisy night scene, an over-sharpened landscape, an illustration, a picture
-with one broken region (hand, text on a sign), a picture that needs nothing.
+with one broken region (hand, text on a sign), pictures an upscale then a
+repaint left with a malformed nipple or a strange eye (the defects seen most
+often), a picture that needs nothing.
 
 1. **Does the choice matter at all?** The same picture redrawn with each
    restoration template, and with the default template at several strengths
@@ -107,9 +127,5 @@ with one broken region (hand, text on a sign), a picture that needs nothing.
   configured assistant cannot read images.
 - **Regions as boxes or as a mask**, and whether several regions are one
   job or several.
-- **Edit** (39) has the same shape — an instruction and a region — and
-  could take the same Auto; not in this spec until the redraw's is shown to
-  help.
-- **Upscale**: whether the same diagnosis should pick the upscaler (SeedVR2
-  redraws, PiD keeps, ESRGAN only sharpens) is the natural next question,
-  and out of this spec.
+- **Edit** (39) and **Upscale** are out of scope. Edit comes next, once
+  redraw's Auto is right; nothing here is built with either in mind.

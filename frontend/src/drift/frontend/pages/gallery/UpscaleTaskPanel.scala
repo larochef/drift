@@ -11,10 +11,10 @@ import com.raquo.laminar.api.L.*
 /** The upscale task (`specs/15-post-hoc-resize.md`, `specs/26-tiled-pid.md`,
   * `specs/51-seedvr2-upscaling.md`): one task whatever enlarges the picture
   * (François, 2026-10-04) — the model is its first parameter, and the select
-  * lists them all: the SeedVR2 and PiD run configurations and the ESRGAN
-  * models of the upscaler store. What follows the select is what the chosen
-  * model takes, each kind's own panel built once and hidden while another is
-  * chosen. A video has the SeedVR2 models alone, the only ones that take it.
+  * lists them all: the SeedVR2 and PiD run configurations and the ESRGAN models
+  * of the upscaler store. What follows the select is what the chosen model
+  * takes, each kind's own panel built once and hidden while another is chosen.
+  * A video has the SeedVR2 models alone, the only ones that take it.
   */
 class UpscaleTaskPanel(
     /** The selected output, a picture or a video. */
@@ -156,7 +156,10 @@ class UpscaleTaskPanel(
         onPid
       ).element
     ),
-    body(EsrganKind, UpscalePanel(image, upscalers, esrganVar, onUpscale).element)
+    body(
+      EsrganKind,
+      UpscalePanel(image, upscalers, esrganVar, onUpscale).element
+    )
   )
 }
 

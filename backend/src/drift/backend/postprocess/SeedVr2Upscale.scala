@@ -14,10 +14,9 @@ import scala.util.control.NonFatal
 /** Upscale by SeedVR2 (`specs/51-seedvr2-upscaling.md`) on a drift runner.
   *   - **A picture** is a tiled job like PiD's (`TiledJobs`): the source,
   *     padded to multiples of 16, is cut in tiles of at most
-  *     `SeedVr2UpscaleRequest.MaxTile` target px — one tile for most pictures
-  *     — each the runner's `upscale` job on its crop, colour-matched to that
-  *     crop (`colourMatched`) and blended; it pauses and resumes as the others
-  *     do.
+  *     `SeedVr2UpscaleRequest.MaxTile` target px — one tile for most pictures —
+  *     each the runner's `upscale` job on its crop, colour-matched to that crop
+  *     (`colourMatched`) and blended; it pauses and resumes as the others do.
   *   - **A video** goes whole, as one `upscale` job on a runner the job starts
   *     and stops: the runner cuts it itself (frames in batches, the VAE in
   *     tiles). It comes back as the runner encoded it, its frame rate and
@@ -120,8 +119,8 @@ final private[postprocess] class SeedVr2Upscale(
         }
     }
 
-  /** The source padded to multiples of 16 by repeating its last row and
-    * column: what the tiles are cut from.
+  /** The source padded to multiples of 16 by repeating its last row and column:
+    * what the tiles are cut from.
     */
   private def referenceFor(
       src: PostProcessSource,
@@ -177,7 +176,7 @@ final private[postprocess] class SeedVr2Upscale(
         }
       jobs.doneWaiting(job)
       outcome match {
-        case Left(reason)     => jobs.fail(job, reason)
+        case Left(reason)   => jobs.fail(job, reason)
         case Right(Left(_)) =>
           jobs.fail(job, "the runner answered a video with a picture")
         case Right(Right(made)) =>

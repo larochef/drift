@@ -48,6 +48,11 @@ final private[postprocess] class TileRun(
     keepTiles: Boolean,
     finishTile: Option[TileWindow.FinishTile],
     context: Option[TileWindow.TileContext],
+    /** The tiles no job is run for: each comes back as the source has it
+      * (`specs/52-auto-redraw.md`, a tile the assistant found nothing to add to
+      * — an even sky).
+      */
+    untouched: Tiling.Tile => Boolean,
     /** Whether this run carries a paused job on, which changes what the log
       * says and nothing else: the tiles it has are found on disk
       * (`specs/40-pause-and-resume.md`).
@@ -367,108 +372,119 @@ final private[postprocess] class TileRun(
                       )
                     )
                   )
-                  make(index, tile, window, prepareTile(crop))
-                    .flatMap { _ =>
-                      (PostProcessImages.imageSize(output) match {
-                        case None => Some("no readable image was written")
-                        case Some((width, height))
-                            if width != tile.width || height != tile.height =>
-                          Some(
-                            s"the image is ${width}×$height, not ${tile.width}×${tile.height}"
+                  (if (untouched(tile)) {
+                     ImageIO.write(
+                       if (window == tile) crop
+                       else
+                         crop.getSubimage(
+                           tile.x - window.x,
+                           tile.y - window.y,
+                           tile.width,
+                           tile.height
+                         ),
+                       "png",
+                       output.toFile
+                     )
+                     Right(())
+                   } else make(index, tile, window, prepareTile(crop)))
+                  .flatMap { _ =>
+                    (PostProcessImages.imageSize(output) match {
+                      case None => Some("no readable image was written")
+                      case Some((width, height))
+                          if width != tile.width || height != tile.height =>
+                        Some(
+                          s"the image is ${width}×$height, not ${tile.width}×${tile.height}"
+                        )
+                      case Some(_) =>
+                        Option.when(PostProcessImages.isBlack(output))(
+                          "the image is entirely black — the model's result was NaN"
+                        )
+                    }).toLeft(())
+                  }
+                  .flatMap { _ =>
+                    correctTile.fold[Either[String, Unit]](Right(()))(correct =>
+                      Option(ImageIO.read(output.toFile))
+                        .toRight("the image cannot be decoded")
+                        .map { returned =>
+                          if (keepTiles)
+                            ImageIO.write(
+                              returned,
+                              "png",
+                              tileFile(index, "output-raw").toFile
+                            )
+                          // The crop is the window; the tile sits in it.
+                          val sourceTile =
+                            if (window == tile) crop
+                            else
+                              crop.getSubimage(
+                                tile.x - window.x,
+                                tile.y - window.y,
+                                tile.width,
+                                tile.height
+                              )
+                          ImageIO.write(
+                            correct(returned, sourceTile),
+                            "png",
+                            output.toFile
                           )
-                        case Some(_) =>
-                          Option.when(PostProcessImages.isBlack(output))(
-                            "the image is entirely black — the model's result was NaN"
-                          )
-                      }).toLeft(())
-                    }
-                    .flatMap { _ =>
-                      correctTile.fold[Either[String, Unit]](Right(()))(
-                        correct =>
+                        }
+                    )
+                  }
+                  .flatMap { _ =>
+                    finishing
+                      .zip(picture)
+                      .fold[Either[String, Unit]](Right(()))(
+                        (finished, painted) =>
                           Option(ImageIO.read(output.toFile))
                             .toRight("the image cannot be decoded")
                             .map { returned =>
-                              if (keepTiles)
-                                ImageIO.write(
-                                  returned,
-                                  "png",
-                                  tileFile(index, "output-raw").toFile
+                              val done = finished(crop, returned)
+                              done.note.foreach(note =>
+                                jobs.appendLog(
+                                  job,
+                                  s"${tileLine(index, tile)}: $note"
                                 )
-                              // The crop is the window; the tile sits in it.
-                              val sourceTile =
-                                if (window == tile) crop
-                                else
-                                  crop.getSubimage(
-                                    tile.x - window.x,
-                                    tile.y - window.y,
-                                    tile.width,
-                                    tile.height
+                              )
+                              if (keepTiles)
+                                done.kept.foreach((part, kept) =>
+                                  ImageIO.write(
+                                    kept,
+                                    "png",
+                                    tileFile(index, part).toFile
                                   )
+                                )
+                              // The finished tile is what the job paints,
+                              // so it is what the file holds: a resume
+                              // repaints these, and the gallery shows them
+                              // while the job runs.
                               ImageIO.write(
-                                correct(returned, sourceTile),
+                                done.image,
                                 "png",
                                 output.toFile
                               )
+                              val (left, top) = overlaps(tile)
+                              TileBlending
+                                .paint(painted, tile, done.image, left, top)
                             }
                       )
-                    }
-                    .flatMap { _ =>
-                      finishing
-                        .zip(picture)
-                        .fold[Either[String, Unit]](Right(()))(
-                          (finished, painted) =>
-                            Option(ImageIO.read(output.toFile))
-                              .toRight("the image cannot be decoded")
-                              .map { returned =>
-                                val done = finished(crop, returned)
-                                done.note.foreach(note =>
-                                  jobs.appendLog(
-                                    job,
-                                    s"${tileLine(index, tile)}: $note"
-                                  )
-                                )
-                                if (keepTiles)
-                                  done.kept.foreach((part, kept) =>
-                                    ImageIO.write(
-                                      kept,
-                                      "png",
-                                      tileFile(index, part).toFile
-                                    )
-                                  )
-                                // The finished tile is what the job paints,
-                                // so it is what the file holds: a resume
-                                // repaints these, and the gallery shows them
-                                // while the job runs.
-                                ImageIO.write(
-                                  done.image,
-                                  "png",
-                                  output.toFile
-                                )
-                                val (left, top) = overlaps(tile)
-                                TileBlending
-                                  .paint(painted, tile, done.image, left, top)
-                              }
-                        )
-                    }
-                    .left
-                    .map(reason =>
-                      s"tile ${index + 1} of ${tiles.size}: $reason"
-                    )
-                    .map { _ =>
-                      doneThisRun += 1
-                      val seconds =
-                        (System.currentTimeMillis() - runStarted) / 1000.0 /
-                          doneThisRun
-                      jobs.update(job.id)(
-                        _.copy(
-                          progress =
-                            Some(PostProcessProgress(index + 1, tiles.size)),
-                          secondsPerTile = Some(seconds)
-                        )
+                  }
+                  .left
+                  .map(reason => s"tile ${index + 1} of ${tiles.size}: $reason")
+                  .map { _ =>
+                    doneThisRun += 1
+                    val seconds =
+                      (System.currentTimeMillis() - runStarted) / 1000.0 /
+                        doneThisRun
+                    jobs.update(job.id)(
+                      _.copy(
+                        progress =
+                          Some(PostProcessProgress(index + 1, tiles.size)),
+                        secondsPerTile = Some(seconds)
                       )
-                      live.paint(tile, output)
-                      files + (tile -> output)
-                    }
+                    )
+                    live.paint(tile, output)
+                    files + (tile -> output)
+                  }
                 }
               }
             }

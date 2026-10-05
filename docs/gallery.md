@@ -86,8 +86,10 @@ last line rather than in the form: they change nothing about the job.
   detail; *Advanced* holds how many passes it runs. RealESRGAN x4plus works;
   x2plus does not load in sd-cpp.
 - A **SeedVR2** model, for a picture **or a video**: it restores and enlarges
-  in one diffusion step, ×4 by default or ×2, on the drift runner (it does not
-  run on sd-cpp). The built-in **SeedVR2 7B upscale** is the default,
+  in one diffusion step a pass, ×4 by default or ×2, on the drift runner (it
+  does not run on sd-cpp). A ×4 is made as two passes of ×2, in about the time
+  one pass of ×4 took: asked for ×4 at once, the model hatched skin and
+  foliage and drew dark strands across small faces. The built-in **SeedVR2 7B upscale** is the default,
   **SeedVR2 3B upscale** is lighter and a little faster; *Advanced* holds the
   seed. There is no prompt. A picture larger than one pass (about 1088 px a
   side at ×4) is cut in tiles like a PiD's — the line before the button says
@@ -106,7 +108,9 @@ last line rather than in the form: they change nothing about the job.
   prompt — the source's by default; leave the size empty for ×4 of the source
   with its ratio kept, capped at 16384 px on the longest side. The line before
   the button says what that comes to — `→ ×4 of the source · 4096 × 4096` — so
-  the size is never a surprise. **A target no larger than the source is
+  the size is never a surprise. The result takes the source's colours back,
+  tile by tile: PiD on its own drifts — an illustration came out paler, its
+  white paper greyed. **A target no larger than the source is
   refused** and the button greys out: PiD decodes a *quarter* of the target, so
   such a job would shrink the picture to that quarter and hand the same size
   back. That also means a source above a quarter of the cap is downscaled
@@ -130,6 +134,32 @@ last line rather than in the form: they change nothing about the job.
   knows what it is looking at, and comes back with the picture's own colour,
   so it blends in — a box redrawn on its own included.
 
+  **🤖 Read the picture** (Auto redraw) hands the choices to the assistant.
+  With an assistant running whose model reads images, drift sends it the
+  whole picture once, scaled down, with the job's tiles drawn and named on
+  it — never tile by tile, whatever the picture's size. The answer sets,
+  for every tile, a prompt naming the materials it shows ("skin with pores
+  and fine hairs", "coarse sand with small pebbles") and its own strength:
+  0 for a tile to leave as it is (an even sky), 0.2–0.3 for a face, 0.4–0.5
+  where detail should be added. It takes two to three minutes for 24 tiles.
+  The line beside the button sums it up, **Tiles** lists every tile with
+  its strength and prompt, all editable, and nothing starts until you press
+  **✨ Redraw**; untick **use it for this redraw** to go back to one prompt
+  and one strength. The reading belongs to the tiles as they were cut: after
+  changing the tile size or moving the grid, **Ask again** — the job refuses
+  settings made for other tiles. It is of the whole picture, so it is not
+  used while a box is selected.
+
+  The assistant also lists what looks **broken** — eyes that glow, a
+  misshapen hand, garbled lettering — each with what it should look like
+  instead. These are proposals only, because repairing one changes what the
+  picture shows and it may be what you wanted. **Set up this repair** selects
+  that part and sets the form for it: strength 0.9, the fix as instructions,
+  **repaint the selection alone** (the model paints it under a mask and
+  keeps everything around it), and **keep the source's colours** off (they
+  would paint a glow back around the repaired eyes). Then **✨ Redraw
+  selection**; clearing the selection puts the form back.
+
   The model is all the form shows; everything else is under *Advanced*,
   grouped by what it decides:
   *prompt* (a restoration template from Settings → Prompts, with your
@@ -137,7 +167,8 @@ last line rather than in the form: they change nothing about the job.
   restoration prompt is prose, and a one-line field showed a sliver of it;
   *pass* (strength, steps, seed, soften); *reference* (whether the block of
   tiles goes along, and at what size, and the *context* around each tile); *area* (tile size 1280, window and margin —
-  below); *options* (keeping the tiles on disk for inspection).
+  below); *options* (keeping the source's colours, repainting a selection alone
+  under a mask, keeping the tiles on disk for inspection).
 - **Which restoration prompt.** Some models add whatever detail the prompt
   names, and more: Krea 2 given "pores, fine hair" sprinkled freckles, moles
   and stray hairs over smooth skin; Flux.2 Klein and ERNIE barely react. The

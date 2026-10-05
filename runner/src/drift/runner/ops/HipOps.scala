@@ -2811,7 +2811,8 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
         JAVA_INT.withName("window"),
         JAVA_FLOAT.withName("softcap"),
         JAVA_INT.withName("splits"),
-        JAVA_INT.withName("token_tiles")
+        JAVA_INT.withName("token_tiles"),
+        JAVA_INT.withName("first_group")
       ))*
   )
 
@@ -2861,6 +2862,14 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
     */
   private val TiledMinimumRows = 256
   private val TiledWaves = 8
+
+  /** The most one launch of the tiled kernel is given, in query rows × keys ×
+    * key heads: about 50 ms on the Radeon 8060S. PiD's attention over a 4096²
+    * tile was one launch of 2.1 s, 56 times a tile, and the desktop's frames
+    * waited behind each (bug 38); cut in launches this size the GPU is free for
+    * them in between, and the tile takes the same time.
+    */
+  private val TiledLaunchWork = 1.5e9
 
   def attention(
       q: Tensor,
@@ -2955,14 +2964,28 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
       int("splits", splits)
       int("token_tiles", if (tokenTiles) 1 else 0)
       val (name, waves) = tiled.getOrElse((s"attention_d$dimension", 1))
-      hip.launch(
-        kernel(attentionKernels, name),
-        Dim3(((tiles + waves - 1) / waves).toInt, cache.kvHeads, splits),
-        Dim3(32 * waves),
-        0,
-        MemorySegment.NULL,
-        KernelArgument.Struct(arguments)
-      )
+      val groups = ((tiles + waves - 1) / waves).toInt
+      // the tiled kernel's rows in launches short enough for the desktop
+      val launches =
+        if (tiled.isEmpty) 1
+        else
+          math
+            .ceil(rows.toDouble * keyCount * cache.kvHeads / TiledLaunchWork)
+            .toInt
+            .max(1)
+            .min(groups)
+      val each = (groups + launches - 1) / launches
+      (0 until groups by each).foreach { first =>
+        int("first_group", first)
+        hip.launch(
+          kernel(attentionKernels, name),
+          Dim3(math.min(each, groups - first), cache.kvHeads, splits),
+          Dim3(32 * waves),
+          0,
+          MemorySegment.NULL,
+          KernelArgument.Struct(arguments)
+        )
+      }
       if (splits > 1)
         hip.launch(
           kernel(attentionKernels, "attention_combine"),

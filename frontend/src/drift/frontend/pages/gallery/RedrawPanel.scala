@@ -63,6 +63,13 @@ class RedrawPanel(
   private val softenVar = Var("0")
   private val contextVar = Var("0")
   private val advancedVar = Var(false)
+  private val matchColourVar = Var(true)
+  private val maskSelectionVar = Var(false)
+
+  /** Whether the form is set up for a repair the assistant proposed: what it
+    * changed goes back when the selection is cleared.
+    */
+  private val repairingVar = Var(false)
 
   /** Whether the 3×3 block of tiles goes along as a reference: empty sends it,
     * which is what a job wants unless it weighs the trade itself.
@@ -103,6 +110,46 @@ class RedrawPanel(
     active
   )
 
+  private val auto = AutoRedrawCard(
+    image,
+    () =>
+      RedrawPlanRequest(
+        runConfigurationId = configurationVar.now(),
+        tileSize = area.tileSize,
+        gridOffsetX = area.gridOffsetX,
+        gridOffsetY = area.gridOffsetY
+      ),
+    area.hasSelection,
+    repair
+  )
+
+  /** Sets the form to repaint one proposed repair (`specs/52`): its box as the
+    * selection, a strength that repaints shapes, what it should look like as
+    * the instructions, the selection alone under a mask, and its colours left
+    * as painted — the source's would bring the defect's back.
+    */
+  private def repair(proposed: PlannedRepair): Unit =
+    viewed.now().foreach { shown =>
+      // a box the backend takes: at least `RedrawPanel.LeastRepairSide` a side
+      def grown(start: Int, length: Int, total: Int): (Int, Int) = {
+        val side = length.max(RedrawPanel.LeastRepairSide).min(total)
+        ((start + length / 2 - side / 2).max(0).min(total - side), side)
+      }
+      val (x, width) =
+        grown(proposed.region.x, proposed.region.width, shown.width)
+      val (y, height) =
+        grown(proposed.region.y, proposed.region.height, shown.height)
+      viewed.set(
+        Some(shown.copy(selection = Some(ImageRegion(x, y, width, height))))
+      )
+      strengthVar.set("0.9")
+      instructionsVar.set(proposed.fix)
+      matchColourVar.set(false)
+      maskSelectionVar.set(true)
+      advancedVar.set(true)
+      repairingVar.set(true)
+    }
+
   private def request: RedrawRequest =
     RedrawRequest(
       runConfigurationId = configurationVar.now(),
@@ -122,7 +169,11 @@ class RedrawPanel(
       minimumWindowSide = area.minimumWindowSide,
       selectionMargin = area.selectionMargin,
       gridOffsetX = area.gridOffsetX,
-      gridOffsetY = area.gridOffsetY
+      gridOffsetY = area.gridOffsetY,
+      // a reading is of the whole picture: a selection goes without it
+      tiles = if (area.region.isEmpty) auto.settings else Nil,
+      matchColour = matchColourVar.now(),
+      maskSelection = maskSelectionVar.now()
     )
 
   private def configurationSelect: HtmlElement =
@@ -271,6 +322,21 @@ class RedrawPanel(
   private def optionsGroup: HtmlElement = group(
     "options",
     checkField(
+      matchColourVar,
+      "keep the source's colours",
+      "each tile takes the source's colour and shading back, so it joins " +
+        "its neighbours. Off for a repair whose point is the colour — eyes " +
+        "that glow: the source's would paint the glow back around them"
+    ),
+    checkField(
+      maskSelectionVar,
+      "repaint the selection alone",
+      "with a selection: the model repaints it under a mask and keeps the " +
+        "rest of its window as it is. For a repair at a high strength, " +
+        "which otherwise moves and relights everything around it. Ignored " +
+        "by a server that takes no mask"
+    ),
+    checkField(
       keepTilesVar,
       "keep the tiles",
       "keep every tile's input and output, the output also before its " +
@@ -294,6 +360,7 @@ class RedrawPanel(
         "part alone; the original stays in the gallery."
     ),
     group("model", plainField(configurationSelect)),
+    auto.element,
     advanced(
       advancedVar,
       promptGroups,
@@ -327,6 +394,16 @@ class RedrawPanel(
 
   lazy val element: HtmlElement = div(
     area.publishGeometry,
+    // a repair's settings leave with its selection
+    area.hasSelection.changes.filter(!_) --> (_ =>
+      if (repairingVar.now()) {
+        strengthVar.set("0.4")
+        instructionsVar.set("")
+        matchColourVar.set(true)
+        maskSelectionVar.set(false)
+        repairingVar.set(false)
+      }
+    ),
     redrawConfigurations --> Observer[List[ConfigurationOption]](list =>
       if (configurationVar.now().isEmpty)
         list.headOption.foreach(option => configurationVar.set(option.id))
@@ -342,6 +419,11 @@ class RedrawPanel(
 }
 
 object RedrawPanel {
+
+  /** The least side of the box a proposed repair is selected with, in px: room
+    * for the paste's feather around a small defect.
+    */
+  val LeastRepairSide = 256
 
   /** The line before the button: what is repainted, and what it costs. Every
     * step asked for runs, whatever the strength (`specs/45`).

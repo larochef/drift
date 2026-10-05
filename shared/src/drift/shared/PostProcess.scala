@@ -347,7 +347,27 @@ case class RedrawRequest(
       */
     contextMargin: Int = 0,
     /** Keeps every tile's input and output beside the job log. */
-    keepTiles: Boolean = false
+    keepTiles: Boolean = false,
+    /** Each tile's own prompt and strength, as the assistant read them off the
+      * picture (`specs/52-auto-redraw.md`) and the form may have changed them:
+      * the prompt follows the restoration template, the strength replaces
+      * `strength`, and a tile at zero is left as it is. Empty paints every tile
+      * alike. The tiles are named by their place, so settings made for another
+      * tile size or grid offset are refused rather than misapplied.
+      */
+    tiles: List[TileSettings] = Nil,
+    /** Whether each tile takes the source's colour back (`specs/45`). Off for a
+      * repair whose point is the colour — eyes that glow: the source's low
+      * frequencies would paint the glow back around them (`specs/52`).
+      */
+    matchColour: Boolean = true,
+    /** With a selection, whether the model repaints the selection alone, the
+      * rest of its window kept as it is under a mask — a repair at a high
+      * strength otherwise moves and relights everything the window shows, and
+      * the selection no longer joins what is around it (`specs/52`). Needs a
+      * server that takes a mask; ignored on one that does not.
+      */
+    maskSelection: Boolean = false
 )
 object RedrawRequest {
   given JsonValueCodec[RedrawRequest] = JsonCodecMaker.make

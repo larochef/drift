@@ -300,7 +300,7 @@ final class ImageServer(
   private def imageFeatures(pipeline: ImagePipeline): ujson.Obj =
     ujson.Obj(
       "init_image" -> pipeline.takesInitImage,
-      "mask_image" -> false,
+      "mask_image" -> pipeline.takesMask,
       "ref_images" -> pipeline.takesReferences,
       "lora" -> (pipeline.takesLoras && options.loraDirectory.isDefined),
       "hires" -> false,
@@ -321,6 +321,7 @@ final class ImageServer(
       field("sample_params").map(_.obj).getOrElse(Map.empty)
     val guidance = sample.get("guidance").filterNot(_.isNull).map(_.obj)
     val initImage = field("init_image").map(_.str).filter(_.nonEmpty)
+    val maskImage = field("mask_image").map(_.str).filter(_.nonEmpty)
     val referenceImages =
       field("ref_images").toSeq.flatMap(_.arr).map(_.str).filter(_.nonEmpty)
     val loras = field("lora").toSeq.flatMap(_.arr)
@@ -328,7 +329,10 @@ final class ImageServer(
       Option.when(initImage.nonEmpty && !pipeline.takesInitImage)(
         "init images"
       ),
-      Option.when(field("mask_image").exists(_.str.nonEmpty))("masks"),
+      Option.when(maskImage.nonEmpty && !pipeline.takesMask)("masks"),
+      Option.when(maskImage.nonEmpty && initImage.isEmpty)(
+        "a mask without an init image"
+      ),
       Option.when(referenceImages.nonEmpty && !pipeline.takesReferences)(
         "reference images"
       ),
@@ -357,9 +361,16 @@ final class ImageServer(
     val width = field("width").map(_.num.toInt).getOrElse(options.width)
     val height = field("height").map(_.num.toInt).getOrElse(options.height)
     val decoded =
-      try Right((initImage.map(decode), referenceImages.map(decode)))
+      try
+        Right(
+          (
+            initImage.map(decode),
+            maskImage.map(decode),
+            referenceImages.map(decode)
+          )
+        )
       catch { case error: IllegalArgumentException => Left(error.getMessage) }
-    val (init, references) = decoded match {
+    val (init, mask, references) = decoded match {
       case Right(images) => images
       case Left(problem) =>
         return json(exchange, 400, ujson.Obj("error" -> problem))
@@ -410,6 +421,7 @@ final class ImageServer(
       },
       initImage = init.map(Images.resized(_, width, height)),
       strength = field("strength").fold(0.75f)(_.num.toFloat),
+      mask = mask.map(Images.resized(_, width, height)),
       references =
         if (stretch) references.map(Images.resized(_, width, height))
         else references,
@@ -695,14 +707,25 @@ final class ImageServer(
             } of ${frames.head.getWidth} × ${frames.head.getHeight} to $width × $height (seed $seed)"
         )
         val startedAt = System.nanoTime()
-        val restored = pipeline.upscale(
-          frames,
-          width,
-          height,
-          seed,
-          upscaleOptions,
-          stepPrinter()
+        val sizes = SeedVr2Pipeline.passes(
+          (frames.head.getWidth, frames.head.getHeight),
+          (width, height)
         )
+        val restored = sizes.zipWithIndex.foldLeft(frames) {
+          case (current, ((passWidth, passHeight), index)) =>
+            if (sizes.size > 1)
+              println(
+                s"pass ${index + 1} of ${sizes.size}: to $passWidth × $passHeight"
+              )
+            pipeline.upscale(
+              current,
+              passWidth,
+              passHeight,
+              seed,
+              upscaleOptions,
+              stepPrinter()
+            )
+        }
         println(
           f"generate_image completed in ${(System.nanoTime() - startedAt) / 1e9}%.2fs"
         )

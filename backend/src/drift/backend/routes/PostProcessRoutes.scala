@@ -21,6 +21,9 @@ def postProcessEndpoints(
   redrawOutput.serverLogicSuccess[Identity]((date, file, request) =>
     manager.redraw(date, file, request)
   ),
+  planRedraw.serverLogic[Identity]((date, file, request) =>
+    manager.planRedraw(date, file, request)
+  ),
   editOutput.serverLogicSuccess[Identity]((date, file, request) =>
     manager.edit(date, file, request)
   ),

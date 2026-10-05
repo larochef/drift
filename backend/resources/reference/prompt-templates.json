@@ -110,5 +110,21 @@
     },
     "proposalFormat": "Fenced",
     "builtIn": true
+  },
+  {
+    "id": "redraw-diagnosis",
+    "kind": "RedrawDiagnosis",
+    "label": "drift redraw diagnosis",
+    "text": "You prepare a redraw. An image model repaints an upscaled picture tile by tile, each tile with its own prompt and its own strength, to give it more real detail. The picture is shown with the tile grid drawn on it: thin white lines, and each cell's name (A1, B1, … letters for columns from the left, numbers for rows from the top) in its top left corner. The grid and the names are not part of the picture.\n\nFor every cell, say what it holds and how it should be redrawn; then list what is broken in the picture, if anything. Answer with one JSON object and nothing else:\n{\n  \"kind\": \"photograph\" or \"illustration\",\n  \"cells\": {\n    \"A1\": {\"holds\": [one to three of \"face\", \"eyes\", \"hair\", \"skin\", \"hand\", \"nipple\", \"fabric\", \"lettering\", \"foliage\", \"sky\", \"water\", \"ground\", \"building\", \"object\", \"blurred background\"],\n           \"prompt\": \"one short sentence: the materials this tile shows and the fine detail they should have\",\n           \"strength\": a number from 0.0 to 0.5}\n  },\n  \"repairs\": [{\"defect\": \"what is broken, in a few words\", \"fix\": \"what that part should look like instead\", \"box\": [left, top, right, bottom]}]\n}\n- List every cell of the grid, in order.\n- \"prompt\" names materials and their detail (pores and fine hairs on skin, separate strands of wet hair, grains of sand, woven thread), not the scene or the people, and describes the tile as it is: it never corrects anything.\n- \"strength\": 0.0 leaves the tile untouched (an even sky, a blurred background); 0.2 to 0.3 keeps every shape and refreshes the surface (a face); 0.4 to 0.5 adds detail (skin, hair, fabric, foliage, ground).\n- \"repairs\" are proposals the user accepts or not: only what a viewer notices as wrong — eyes that glow or have no iris or pupil, misshapen eyes or hands, a wrong number of fingers, a malformed nipple, garbled lettering, objects melting into each other. An empty list when nothing is. \"box\" is in fractions of the picture's width and height (0 to 1, origin top left), tight around the broken part. \"fix\" keeps colours and identity unless they are the defect, and names no colour the picture does not show: eyes that glow become \"natural eyes\", not eyes of a colour of your choosing.\n- When the prompt the picture was generated from is given, what it asks for is not a defect.",
+    "appends": {
+      "brief": true,
+      "promptingNotes": true,
+      "workingPrompt": true,
+      "rules": true,
+      "cfgNote": true,
+      "aspectRatio": false
+    },
+    "proposalFormat": "Fenced",
+    "builtIn": true
   }
 ]

@@ -211,6 +211,10 @@ variants you can pick where it is used.
 - **Redraw restoration prompts** — chosen under Advanced on a redraw. drift
   restoration (the default), skin de-artifacting and women's portrait are
   built in; [gallery.md](gallery.md) says when each fits.
+- **Redraw diagnosis prompts** — what the assistant is asked when a redraw
+  has it read the picture ([gallery.md](gallery.md), Auto redraw). *drift
+  redraw diagnosis* is built in; a variant must keep the answer's JSON shape
+  (the cells, the repairs).
 - **Edit prompts** — chosen under Advanced on an edit; your instruction
   follows it. *drift seamless edit* is built in.
 - **Compaction prompts** — used when a project's conversation is compacted.

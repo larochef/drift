@@ -160,6 +160,7 @@ import sttp.tapir.server.netty.sync.*
     loraManager = loraManager,
     runtimeManager = runtimeManager,
     sessionManager = sessionManager,
+    assistant = assistantProxy,
     background = background
   )
 

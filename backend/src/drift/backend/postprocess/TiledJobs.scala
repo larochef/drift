@@ -199,6 +199,8 @@ final private[postprocess] class TiledJobs(
       keepTiles: Boolean = false,
       finishTile: Option[TileWindow.FinishTile] = None,
       context: Option[TileWindow.TileContext] = None,
+      /** The tiles no job is run for, kept as the source has them. */
+      untouched: Tiling.Tile => Boolean = _ => false,
       /** Whether this run carries a paused job on, which changes what the log
         * says and nothing else: the tiles it has are found on disk
         * (`specs/40-pause-and-resume.md`).
@@ -225,6 +227,7 @@ final private[postprocess] class TiledJobs(
       keepTiles,
       finishTile,
       context,
+      untouched,
       resumed
     ).run()
 }

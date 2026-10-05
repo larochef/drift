@@ -60,6 +60,7 @@ struct AttentionArguments {
   float softcap;           // 0: none
   int splits;
   int token_tiles;         // 1: one token per tile, SPLIT_BLOCKS blocks per split
+  int first_group;         // tiled: the workgroup this launch starts at, when the rows go in several launches
 };
 
 constexpr int TOKEN_SPLITS = 32, MIN_SPLIT_BLOCKS = 2;
@@ -249,7 +250,7 @@ __device__ void attention_tiled(const AttentionArguments& a) {
   const int kv_head = blockIdx.y;
   const int group = a.q_heads / a.kv_heads;
   const int rows = a.tokens * group;
-  const int group_first_row = blockIdx.x * WAVES * 16;
+  const int group_first_row = (blockIdx.x + a.first_group) * WAVES * 16;
   const int first_row = group_first_row + wave * 16;
 
   // this lane's row and its queries, as F16

@@ -1,131 +1,135 @@
 # 52 — Auto redraw: the assistant reads the picture and sets the redraw
 
-**Status:** planned — big picture only; the tests come first, groom before building
+**Status:** done in code 2026-10-05 (compiled, backend and runner tests green); measured in the experiment's harness and run once end to end through an isolated copy of drift — the reading, a redraw with it, the refusal, a masked repair (Measured, below); not yet used by François
 **Depends on:** 20 (assistant), 27 (redraw), 32 (prompt library), 45 (redraw steps and reference), 11 of 42 (vision on the runner)
 
-A redraw asks its user for a restoration prompt, a strength, a softening, and
-which part of the picture to repaint. Every picture is different and has its
-own trouble — soft, noisy, over-sharpened, a broken hand in an otherwise fine
-frame — and choosing among those is more than a user should have to think
-about. **Auto** hands the choice to the assistant: one call, on the whole
-picture, downscaled, before the redraw starts. It answers with what the
-redraw should be, the form shows it, and the user starts it or corrects it.
-
-It is not a caption. 45 measured that describing the content changes nothing
-once the model has its reference, and that automatic captions of close crops
-are wrong often enough to hurt. What the assistant is asked is what kind of
-repair the picture needs, which is a judgement on the whole picture — the
-kind a vision model is good at.
+A redraw asks its user for a prompt, a strength and which part of the picture
+to repaint. Every picture is different, and every part of a picture: sky,
+skin, sand, a face. **Auto** hands the choice to the assistant: one call, on
+the whole picture scaled down with the redraw's own tiles drawn on it. It
+answers, tile by tile, with what the tile shows and how hard to repaint it,
+and lists what looks broken. The form shows it, every value stays editable,
+and the redraw starts on the user's click.
 
 ## What it does
 
-- The redraw panel's prompt has an **Auto** mode beside the templates, the
-  default when an assistant that reads images is available. Without one the
-  panel is as today, on the default template.
-- Auto makes **one call** to the assistant with the picture to redraw,
-  downscaled, and the list of what it may choose from. The answer fills the
-  form:
-  - the **restoration template** among those of the library (32), with a
-    line saying why;
-  - **instructions** of its own for this picture, appended as the field is
-    today, when the picture has something no template names;
-  - **settings**: the strength, and whether to soften first;
-  - **regions**: the parts worth redrawing when the rest is fine, as boxes
-    on the picture, each with its reason — or the whole picture.
-    This is the repair of what an earlier step got wrong: a nipple with a
-    strange shape after an upscale and a repaint, an eye an ESRGAN pass
-    deformed. Redrawing that tile alone, or the few that hold it, should put
-    it right without touching the rest.
-- Nothing runs unseen: the form shows what was chosen and why, every field
-  stays editable, and the redraw starts on the user's click. Asking again is
-  one click; the answer is kept with the form, not recomputed on every
-  change.
-- The choice is recorded on the result (`Derivation`), with the fact that it
-  was the assistant's.
-- Never per tile: the call is once per redraw, whatever the picture's size.
+- **🤖 Read the picture**, in the redraw panel, asks the first running
+  assistant whose model reads images. One call, whatever the picture's size,
+  never one per tile.
+- The answer gives **each tile its own prompt and strength**:
+  - the prompt names the materials the tile shows and the fine detail they
+    should have ("skin with pores and fine hairs", "coarse sand with small
+    pebbles"). It follows the restoration template and comes before the
+    instructions written for the whole job;
+  - the strength is 0 for a tile to leave as it is (an even sky, a blurred
+    background), 0.2–0.3 for a face, 0.4–0.5 where detail should be added. A
+    tile at 0 runs no job: it comes back as the source has it.
+- It also lists **repairs**: parts a viewer notices as wrong (eyes that glow,
+  a misshapen hand, garbled lettering), each with a box and what it should
+  look like instead. **A repair is a proposal, never a default**: it changes
+  what the picture shows, and that may be what the picture is about
+  (François: "I might want to have a picture with glowing eyes"). **Set up
+  this repair** selects the box and sets the form for it — strength 0.9, the
+  fix as instructions, the selection repainted alone under a mask, the
+  source's colours not put back — and the user starts it as a redraw of the
+  selection.
+- The prompt the picture was generated from goes with the question, when
+  drift made the picture: what it asks for is not a defect.
+- Nothing runs unseen: a line sums the reading up, **Tiles** lists every tile
+  with its strength and prompt, editable; **use it for this redraw** turns it
+  off without losing it; **Ask again** replaces it.
+- A reading belongs to the tiles it was made for. A job whose tiles are cut
+  elsewhere — another tile size, a moved grid — is refused, by name, rather
+  than painted with a neighbour's prompt. A selection is redrawn without it.
+- The result records that its tiles were set by the assistant
+  (`Derivation.planned`).
 
 ## Shape
 
-- The assistant is the one drift already has (20), through a model that
-  reads images (the runner's vision, 42 step 11, or llama.cpp with an
-  mmproj). A prompt of its own kind in the library (`RedrawDiagnosis`, say),
-  built-in and editable like the others.
-- The answer is **structured**: a template id out of the list it was given,
-  numbers within the ranges it was given, boxes in fractions of the picture.
-  An answer that does not parse, names a template that does not exist or
-  steps out of a range falls back to the default template and says so.
-- The picture is sent at a size the model reads well and that still shows
-  the trouble (to be measured: softness and grain disappear when a 16k
-  picture is brought down to 1024).
-- **Memory**: the assistant and the redraw model are both large. The call
-  comes before the redraw's server starts; whether the assistant is then
-  unloaded, and what a live chat session does to that, is to be decided on
-  measurements.
+- **The call.** `POST /api/outputs/{date}/{file}/redraw-plan`
+  (`RedrawPlanner`): the picture within 1536 px, a thin line down the middle
+  of each overlap between tiles and each tile's name (A1, B1, …) in its
+  corner; the tiles are `TiledArea.of`'s, the ones the job will cut. Asked
+  whole, not streamed, **without thinking** (`chat_template_kwargs`) at
+  temperature 0.2, through `AssistantProxy.ask`.
+- **The question** is a template of its own kind in the library
+  (`RedrawDiagnosis`, built-in `redraw-diagnosis`), editable like the others.
+- **The answer** is JSON: `kind`, `cells` (name → holds, prompt, strength) and
+  `repairs` (defect, fix, box in fractions of the picture). It is read
+  leniently (`RedrawPlan.parse`): the last JSON object of the reply; a tile
+  left out keeps strength 0.4 and no prompt; a strength out of 0–0.6 is
+  brought back in; a repair without a usable box is dropped. Each of those is
+  a note the form shows. Only an answer with no JSON object is refused.
+- **The job.** `RedrawRequest.tiles` carries each tile's settings by its
+  place; `Redraw` matches them to its layout or refuses. Steps are scheduled
+  per tile, so every asked step runs at any strength (45).
+- **A repair.** `RedrawRequest.maskSelection` sends, with a selection, a mask
+  of it (grown by half the margin, softened): the model repaints the
+  selection and keeps the rest of the window. `matchColour: false` leaves the
+  tile's colours as painted. The runner takes masks on Qwen Image 2.1 and
+  FLUX.2 (`Inpainting`): after every step the kept part of the latent is put
+  back at that step's noise level.
+- **Memory.** The assistant stays loaded beside the redraw's server; the call
+  is made before the job starts.
 
-## Tests to run before building
+## Measured
 
-Every test that redraws judges two things, not one: the redrawn part on its
-own, and **how it sits in the whole picture**. A tile in the middle of the
-picture, redrawn with what the assistant chose, must still join its
-neighbours — no seam, no step in colour, sharpness or grain against the
-tiles around it, redrawn or not. A choice that makes one tile better and the
-picture worse is a failure. So each run is looked at twice: the tile at
-full size, and the whole picture with the tile pasted back.
+`~/dev/redraw-experiments/2026-10-04-auto/` (`FINDINGS.md`), on purpose-made
+subjects upscaled by SeedVR2 7B at ×2 twice; the assistant is Qwen 3.8 27B on
+the runner, the redraw RedQW21 with its turbo LoRA, one seed unless said.
 
-And a redraw of the **whole** picture has a result to reach, not only one
-to avoid: more detail and more sharpness everywhere than the source had. A
-choice that keeps the picture coherent and leaves it as soft as it was has
-not done the job either. Both are judged on every whole-picture run:
-coherent across tiles, and visibly sharper and more detailed than the source.
+- **The restoration template does not matter.** Another template with the
+  same seed changes a tile by 0.5–1.5 levels; another seed with the same
+  template by 5.8–6.5. Auto does not choose one.
+- **Thinking off is what makes the call usable.** With thinking, 13 of 42
+  answers came back empty (the tokens went into the thinking) and a call took
+  26–120 s; without it 42 of 42 parse.
+- **A question that quotes the templates is answered by reciting them**
+  ("waxy, plastic, smeared pores") whatever the picture shows, and its verdict
+  flips with the seed and the size. Asking for broken parts first, then for
+  what each cell holds, gives the same answer on every ask.
+- **Defects seen at the picture's scale are found**: glowing eyes on 5 asks
+  of 5 with a box within two hundredths of the picture each time, garbled
+  lettering on a street; nothing invented on four clean pictures.
+- **What exists only at full size is not seen**: an upscaler's hatch on
+  skin, strands across a small face. A picture scaled to 1536 px shows a
+  tile as 256.
+- **The grid is read correctly**: every cell listed on 20 answers of 21 at
+  1536 (28 cells for 24 at 1024, hence 1536), contents right against the
+  picture, an even sky at 0, about 145 s for 24 cells.
+- **A repair needs a high strength and its instruction, and nothing less
+  works**: glowing eyes are still glowing at 0.4 and 0.7, and at 0.9 without
+  the instruction; at 0.9 with "natural human eyes…" they are natural.
+- **The colour match undoes a colour repair**: it takes the low frequencies
+  from the source, so the glow returned as a halo. And at 0.9 without a mask
+  the whole window moves and darkens, so the pasted box shows its edge —
+  hence the mask and the colours left as painted.
 
-Each on the study's subjects (`~/dev/redraw-experiments`, 45) plus new
-purpose-made ones, since the point is that pictures differ: a soft portrait,
-a noisy night scene, an over-sharpened landscape, an illustration, a picture
-with one broken region (hand, text on a sign), pictures an upscale then a
-repaint left with a malformed nipple or a strange eye (the defects seen most
-often), a picture that needs nothing.
+- **On thirteen subjects, six of them people at different sizes and in
+  different positions**: 15 answers of 15 with every cell, 109–136 s for 24
+  tiles; the glowing eyes proposed, nothing invented on the twelve others.
+  The generation's prompt does its work: with "green eyes" in it the fix is
+  "natural green irises", with "glowing neon green eyes" no repair is
+  proposed. A street's garbled lettering, found by a question about defects
+  alone, is not listed by this one.
+- **End to end in drift** (an isolated copy, a 2048 × 3072 picture, 6 tiles):
+  the reading came back in 26 s, every tile with its contents, a prompt and a
+  strength, and the glowing eyes as a repair with its box; the redraw with it
+  ran its 6 tiles in 341 s (345 s for the default one); the same settings
+  with another tile size were refused by name. The repair, set up as the
+  button does: natural eyes and the face around them untouched in 50 s —
+  against a green halo over the eyes and a doubled mouth when repainted the
+  old way, colour-matched and without a mask.
+- **Each tile's own prompt changes little at 0.4**: the two redraws of that
+  picture differ by 2.3 levels, less than a seed does. What the reading buys
+  is the strength per tile, the tiles left alone, and the repairs.
 
-1. **Does the choice matter at all?** The same picture redrawn with each
-   restoration template, and with the default template at several strengths
-   and with and without softening. If the results do not differ visibly, as
-   captions did not in 45, Auto reduces to the regions and the rest of this
-   spec is dropped. This test decides whether anything else is run.
-2. **Can the assistant diagnose?** For each subject, its answer against a
-   judgement written beforehand (what is wrong, which template, which
-   strength). Several vision models: Qwen 3.6, Qwen 3.8 Flash Next, the 27B.
-   Count agreements, and note the confident wrong answers.
-3. **Is it stable?** The same picture asked five times, and at two seeds:
-   the template and the strength should not change from one call to the
-   next.
-4. **At what size does it still see the trouble?** The same subject sent at
-   512, 768, 1024 and 1536 on the long side, and a 4k and a 16k picture
-   brought down to each: where softness, grain and small broken regions stop
-   being named.
-5. **Regions.** On the subjects with one broken part: are the boxes on it,
-   how tight, and how often does it invent trouble in a clean picture. Boxes
-   compared with ones drawn by hand; the redraw run on both.
-6. **Its own instructions.** Redraws with the assistant's added instructions
-   against the template alone, on the subjects where it wrote some: better,
-   same, or worse — instructions that name content are the captions of 45
-   again and may hurt.
-7. **Auto against a person.** The whole chain on each subject, against the
-   same subject set by hand in a reasonable time, and against the untouched
-   default. Judged by eye, blind to which is which.
-8. **The structured answer.** How often it parses, across the models, with
-   and without a grammar; what the fallback costs.
-9. **Cost.** The call's time on this laptop for each model and size, and the
-   memory beside each redraw model: whether both fit loaded, or the swap's
-   time when they do not.
-10. **A picture that needs nothing.** Whether it says so, rather than
-    prescribing a redraw.
+## Open
 
-## Open questions
-
-- **How much is left to choose** after test 1: template, strength,
-  softening, regions — any of them may turn out not to matter.
-- **Which assistant model** by default, and what Auto does when the
-  configured assistant cannot read images.
-- **Regions as boxes or as a mask**, and whether several regions are one
-  job or several.
-- **Edit** (39) and **Upscale** are out of scope. Edit comes next, once
-  redraw's Auto is right; nothing here is built with either in mind.
+- **Close-ups.** Defects that exist only at full size need a second look at
+  the cells that hold a face, a hand or a nipple, sent at their own scale: a
+  second call, on a few crops chosen by the first. Not built; it departs from
+  "one call" and is François's to decide.
+- **Several repairs in one job**, and a repair followed by the whole-picture
+  pass without the user chaining them.
+- **Edit** (39) and **Upscale** are out of scope.

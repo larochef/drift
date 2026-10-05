@@ -1,6 +1,7 @@
 package drift.backend.postprocess
 
 import drift.backend.Background
+import drift.backend.assistant.AssistantProxy
 import drift.backend.lora.LoraManager
 import drift.backend.runtime.RuntimeManager
 import drift.backend.sdserver.GenerationHistory
@@ -32,6 +33,8 @@ final class PostProcessManager(
     loraManager: LoraManager,
     runtimeManager: RuntimeManager,
     sessionManager: SessionManager,
+    /** The live assistant a redraw is planned with (`specs/52`). */
+    assistant: AssistantProxy,
     /** Where its jobs run. */
     background: Background
 ) {
@@ -43,6 +46,7 @@ final class PostProcessManager(
   private val esrgan = EsrganUpscale(jobs, upscalerManager, runtimeManager)
   private val pid = PidUpscale(tiles)
   private val redraws = Redraw(jobs, tiles, storage)
+  private val planner = RedrawPlanner(jobs, storage, assistant)
   private val edits = Edit(tiles, storage)
   private val seedVr2 = SeedVr2Upscale(jobs, tiles, sessionManager)
 
@@ -71,6 +75,16 @@ final class PostProcessManager(
       fileName: String,
       request: RedrawRequest
   ): PostProcessJob = redraws.start(date, fileName, request)
+
+  /** The assistant's reading of an output for its redraw (`specs/52`): each
+    * tile's prompt and strength, and the repairs it proposes. Blocks for the
+    * one call it makes.
+    */
+  def planRedraw(
+      date: String,
+      fileName: String,
+      request: RedrawPlanRequest
+  ): Either[String, RedrawPlan] = planner.plan(date, fileName, request)
 
   def edit(
       date: String,

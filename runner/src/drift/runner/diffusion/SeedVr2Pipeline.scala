@@ -443,6 +443,23 @@ object SeedVr2Pipeline {
   /** The size asked when none is: four times the source's. */
   val DefaultScale = 4
 
+  /** The most one pass enlarges. Past ×2 the model hatches skin and foliage and
+    * draws strands across small faces (bug 40); two passes of ×2 take the same
+    * time as one of ×4 and leave none of it.
+    */
+  val MaxPassScale = 2
+
+  /** The sizes a source goes through on its way to `target`: doubled while the
+    * target is more than `MaxPassScale` times what the last pass gave, then the
+    * target itself.
+    */
+  def passes(source: (Int, Int), target: (Int, Int)): List[(Int, Int)] = {
+    val doubled = (source._1 * MaxPassScale, source._2 * MaxPassScale)
+    if (target._1 > doubled._1 || target._2 > doubled._2)
+      doubled :: passes(doubled, target)
+    else List(target)
+  }
+
   /** The model's fixed positive text embedding (`pos_emb.pt` of the reference,
     * `[58, 5120]`), written by `fixtures/tiny_seedvr2.py picture`.
     */

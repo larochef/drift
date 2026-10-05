@@ -1,6 +1,6 @@
 package drift.backend.postprocess
 
-import drift.shared.Tiling
+import drift.shared.{ImageRegion, RedrawRequest, TileSettings, Tiling}
 import utest.*
 
 import java.awt.image.BufferedImage
@@ -76,6 +76,70 @@ object RedrawTests extends TestSuite {
       val mean = (90 until 110).map(red).sum / 20.0
       assert(math.abs(mean - 150) <= 1)
       assert(math.abs(red(100) - red(101)) >= 18)
+    }
+
+    test(
+      "a tile's own settings are found by its place, or the job is refused"
+    ) {
+      val tiles =
+        List(Tiling.Tile(0, 0, 1280, 1280), Tiling.Tile(1024, 0, 1280, 1280))
+      def settings(strengths: Double*) = tiles
+        .zip(strengths)
+        .map((tile, strength) =>
+          TileSettings(
+            ImageRegion(tile.x, tile.y, tile.width, tile.height),
+            "sand",
+            strength
+          )
+        )
+      val request = RedrawRequest("configuration")
+      assert(Redraw.settingsFor(request, None, tiles) == Right(Map.empty))
+      val Right(found) =
+        Redraw.settingsFor(
+          request.copy(tiles = settings(0.0, 0.5)),
+          None,
+          tiles
+        ): @unchecked
+      assert(found(tiles(1)).strength == 0.5)
+      // read for another grid: refused, not painted with a neighbour's prompt
+      val moved = tiles.map(tile => tile.copy(x = tile.x + 16))
+      assert(
+        Redraw
+          .settingsFor(request.copy(tiles = settings(0.2, 0.5)), None, moved)
+          .isLeft
+      )
+      assert(
+        Redraw
+          .settingsFor(request.copy(tiles = settings(0.2)), None, tiles)
+          .isLeft
+      )
+      // a reading is of the whole picture
+      assert(
+        Redraw
+          .settingsFor(
+            request.copy(tiles = settings(0.2, 0.5)),
+            Some(ImageRegion(0, 0, 512, 512)),
+            tiles
+          )
+          .isLeft
+      )
+      // nothing to do
+      assert(
+        Redraw
+          .settingsFor(request.copy(tiles = settings(0.0, 0.0)), None, tiles)
+          .isLeft
+      )
+    }
+
+    test("a selection's mask is white over it and black away from it") {
+      val mask =
+        Redraw.selectionMask(ImageRegion(400, 300, 200, 100), 1024, 1024, 64)
+      assert(mask.getWidth == 1024, mask.getHeight == 1024)
+      assert((mask.getRGB(500, 350) & 0xff) == 255)
+      assert((mask.getRGB(100, 100) & 0xff) == 0)
+      assert((mask.getRGB(900, 900) & 0xff) == 0)
+      // grown by half the margin: just outside the selection is still repainted
+      assert((mask.getRGB(390, 350) & 0xff) > 128)
     }
   }
 }

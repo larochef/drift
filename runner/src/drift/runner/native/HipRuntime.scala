@@ -72,6 +72,7 @@ final class HipRuntime(val rocmRoot: Path) {
 
   private val hipInit = bind("hipInit", JAVA_INT)
   private val hipSetDevice = bind("hipSetDevice", JAVA_INT)
+  private val hipSetDeviceFlags = bind("hipSetDeviceFlags", JAVA_INT)
   private val hipDeviceGetName =
     bind("hipDeviceGetName", ADDRESS, JAVA_INT, JAVA_INT)
   private val hipDeviceSynchronize = bind("hipDeviceSynchronize")
@@ -147,6 +148,21 @@ final class HipRuntime(val rocmRoot: Path) {
 
   check("hipInit", (hipInit.invokeExact(0): Int))
   check("hipSetDevice", (hipSetDevice.invokeExact(0): Int))
+
+  // How a call that waits for the GPU waits (bug 38). HIP spins a core by
+  // default; asleep until the GPU is done, a Qwen Image 2.1 tile took the same
+  // 115.3 s and 3.7 s of CPU instead of 115.3 (yielding spun as much). So the
+  // runner blocks, unless `DRIFT_HIP_SCHEDULE` asks for `spin` or `yield`.
+  check(
+    "hipSetDeviceFlags",
+    (hipSetDeviceFlags.invokeExact(
+      sys.env.get("DRIFT_HIP_SCHEDULE").map(_.toLowerCase) match {
+        case Some("spin")  => HipRuntime.ScheduleSpin
+        case Some("yield") => HipRuntime.ScheduleYield
+        case _             => HipRuntime.ScheduleBlockingSync
+      }
+    ): Int)
+  )
 
   def deviceName: String = withArena { arena =>
     val buffer = arena.allocate(256)
@@ -294,6 +310,7 @@ final class HipRuntime(val rocmRoot: Path) {
       stream: MemorySegment,
       arguments: KernelArgument*
   ): Unit = launchBuffer.synchronized {
+    val tracedFrom = if (HipRuntime.Trace.on) System.nanoTime() else 0L
     val parameters = launchBuffer.asSlice(0, 8L * arguments.size)
     var at = 8L * 64 // room for 64 pointers, then the values
     arguments.zipWithIndex.foreach { (argument, index) =>
@@ -333,6 +350,11 @@ final class HipRuntime(val rocmRoot: Path) {
         MemorySegment.NULL
       ): Int)
     )
+    if (HipRuntime.Trace.on) {
+      // the kernel's own time: nothing else is queued once the last one is in
+      synchronize()
+      HipRuntime.Trace.record(function.name, System.nanoTime() - tracedFrom)
+    }
   }
 }
 
@@ -340,6 +362,45 @@ object HipRuntime {
 
   /** `hipMemcpyDefault`: the direction is inferred from the addresses. */
   val MemcpyDefault = 4
+
+  /** `hipSetDeviceFlags`: how a waiting call waits — spinning, yielding the
+    * core between polls, or asleep until the GPU is done.
+    */
+  val ScheduleSpin = 1
+  val ScheduleYield = 2
+  val ScheduleBlockingSync = 4
+
+  /** `DRIFT_HIP_TRACE=1`: every kernel waited for as it is launched and timed
+    * by name, and the table printed when the process ends — which kernels are
+    * long enough to keep the desktop's frames waiting (bug 38), and where a
+    * model's time goes. It slows a run; it is for measuring one.
+    */
+  object Trace {
+    val on: Boolean = sys.env.get("DRIFT_HIP_TRACE").exists(_.nonEmpty)
+    // name → (launches, total ns, longest ns)
+    private val times =
+      scala.collection.mutable.Map.empty[String, (Long, Long, Long)]
+
+    def record(name: String, nanos: Long): Unit = times.synchronized {
+      val (count, total, longest) = times.getOrElse(name, (0L, 0L, 0L))
+      times(name) = (count + 1, total + nanos, longest.max(nanos))
+    }
+
+    if (on)
+      Runtime.getRuntime.addShutdownHook(
+        new Thread(() =>
+          times.synchronized {
+            println("kernel, launches, total s, mean ms, longest ms")
+            times.toSeq.sortBy(-_._2._2).foreach {
+              case (name, (count, total, longest)) =>
+                println(
+                  f"$name, $count, ${total / 1e9}%.2f, ${total / 1e6 / count}%.2f, ${longest / 1e6}%.1f"
+                )
+            }
+          }
+        )
+      )
+  }
 
   /** `hipHostRegisterMapped`: map the pinned memory into the device. */
   val RegisterMapped = 0x2

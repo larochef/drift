@@ -83,6 +83,24 @@ private case class Props(
     model_path: Option[String] = None
 )
 
+/** One question answered whole (`AssistantProxy.ask`): no stream, and the chat
+  * template told not to think first — a model that thinks spent its tokens
+  * before the answer one time in three (`specs/52-auto-redraw.md`).
+  */
+private case class TemplateArguments(enable_thinking: Boolean)
+private case class AskRequest(
+    messages: List[OpenAiMessage],
+    stream: Boolean,
+    max_tokens: Int,
+    temperature: Double,
+    chat_template_kwargs: TemplateArguments
+)
+private case class AnswerMessage(content: Option[String] = None)
+private case class AnswerChoice(message: Option[AnswerMessage] = None)
+private case class AnswerBody(choices: List[AnswerChoice] = Nil)
+
+private given JsonValueCodec[AskRequest] = JsonCodecMaker.make
+private given JsonValueCodec[AnswerBody] = JsonCodecMaker.make
 private given JsonValueCodec[OpenAiRequest] = JsonCodecMaker.make
 private given JsonValueCodec[Chunk] = JsonCodecMaker.make
 private given JsonValueCodec[ErrorBody] = JsonCodecMaker.make
@@ -388,6 +406,85 @@ final class AssistantProxy(
           content = OpenAiPart("text", text = Some(message.text)) :: parts
         )
       )
+
+  /** The first live assistant session that reads images, oldest first — or why
+    * there is none.
+    */
+  def visionSession: Either[String, String] =
+    sessionManager.list
+      .filter(session =>
+        session.tool == RuntimeTool.LlamaCpp &&
+          session.status == SessionStatus.Ready
+      )
+      .sortBy(_.startedAt)
+      .find(session => properties(session.id).exists(_.vision))
+      .map(_.id)
+      .toRight(
+        "no running assistant reads images: start one whose model has a " +
+          "vision projector"
+      )
+
+  /** One question about one picture, answered whole and without thinking:
+    * `system`, then `text` under the picture (a data URL). Blocks until the
+    * answer is in.
+    */
+  def ask(
+      sessionId: String,
+      system: String,
+      text: String,
+      pictureUrl: String,
+      maxTokens: Int,
+      temperature: Double
+  ): Either[String, String] =
+    sessionManager.assistantPort(sessionId).flatMap { port =>
+      val body = writeToString(
+        AskRequest(
+          messages = List(
+            OpenAiMessage(
+              "system",
+              List(OpenAiPart("text", text = Some(system)))
+            ),
+            OpenAiMessage(
+              "user",
+              List(
+                OpenAiPart("image_url", image_url = Some(ImageUrl(pictureUrl))),
+                OpenAiPart("text", text = Some(text))
+              )
+            )
+          ),
+          stream = false,
+          max_tokens = maxTokens,
+          temperature = temperature,
+          chat_template_kwargs = TemplateArguments(enable_thinking = false)
+        )
+      )
+      try {
+        val response = client.send(
+          HttpRequest
+            .newBuilder(
+              URI.create(s"http://127.0.0.1:$port/v1/chat/completions")
+            )
+            .timeout(java.time.Duration.ofMinutes(15))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build(),
+          HttpResponse.BodyHandlers.ofString()
+        )
+        if (response.statusCode != 200)
+          Left(errorMessage(response.statusCode, response.body))
+        else
+          readFromString[AnswerBody](response.body).choices.headOption
+            .flatMap(_.message)
+            .flatMap(_.content)
+            .filter(_.trim.nonEmpty)
+            .toRight("the assistant answered nothing")
+      } catch {
+        case NonFatal(err) =>
+          Left(
+            s"asking the assistant failed: ${Option(err.getMessage).getOrElse(err.toString)}"
+          )
+      }
+    }
 
   private def errorMessage(status: Int, text: String): String =
     (try readFromString[ErrorBody](text).error.flatMap(_.message)

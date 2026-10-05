@@ -40,6 +40,7 @@ final class Flux2Pipeline(
 
   def family: String = reading.family
   def takesInitImage: Boolean = true
+  override def takesMask: Boolean = true
   def takesReferences: Boolean = true
   def takesLoras: Boolean = true
   override def takesSigmas: Boolean = true
@@ -167,12 +168,22 @@ final class Flux2Pipeline(
       val random = new SplittableRandom(request.seed)
       val noise = Array.fill(grid.tokens * features)(Images.gaussian(random))
       val x = hold(ops.fromFloats(Shape.of(grid.tokens, features), noise))
+      val inpainting =
+        request.mask.filter(_ => request.initImage.isDefined).map { mask =>
+          new Inpainting(
+            ops,
+            x.shape,
+            Inpainting.weights(mask, grid.height, grid.width, features),
+            noise
+          )
+        }
       // img2img: x = σ × noise + (1 − σ) × init at the first step run
       val first = request.initImage.fold(0) { init =>
         val start = FlowSchedule.firstStep(request.steps, request.strength)
         val (encoded, _) =
           latents(Images.resized(init, request.width, request.height))
         try {
+          inpainting.foreach(_.remember(encoded))
           ops.scale(x, sigmas(start), x)
           ops.scale(encoded, 1 - sigmas(start), encoded)
           ops.add(x, encoded, x)
@@ -214,8 +225,10 @@ final class Flux2Pipeline(
         }
         ops.scale(velocity, sigmas(i + 1) - sigmas(i), velocity)
         ops.add(x, velocity, x)
+        inpainting.foreach(_.restore(x, sigmas(i + 1)))
         progress(i + 1 - first, steps)
       }
+      inpainting.foreach(_.release())
       val rgb = autoencoder.decode(x, grid.height)
       try Images.toImage(ops.toFloats(rgb), request.width, request.height)
       finally ops.release(rgb)

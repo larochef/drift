@@ -40,6 +40,7 @@ final class QwenImage21Pipeline(
 
   def family: String = "Qwen Image 2.1"
   def takesInitImage: Boolean = true
+  override def takesMask: Boolean = true
   def takesReferences: Boolean = tower.isDefined
   def takesLoras: Boolean = true
   override def takesSigmas: Boolean = true
@@ -247,6 +248,15 @@ final class QwenImage21Pipeline(
       val random = new SplittableRandom(request.seed)
       val noise = Array.fill(tokens * channels)(Images.gaussian(random))
       val x = hold(ops.fromFloats(Shape.of(tokens, channels), noise))
+      val inpainting =
+        request.mask.filter(_ => request.initImage.isDefined).map { mask =>
+          new Inpainting(
+            ops,
+            x.shape,
+            Inpainting.weights(mask, gridHeight, gridWidth, channels),
+            noise
+          )
+        }
       // img2img: x = σ × noise + (1 − σ) × init at the first step run
       val first = request.initImage.fold(0) { init =>
         val start = FlowSchedule.firstStep(request.steps, request.strength)
@@ -262,6 +272,7 @@ final class QwenImage21Pipeline(
           finally ops.release(pixels)
         try {
           val rows = encoded.view(tokens, channels)
+          inpainting.foreach(_.remember(rows))
           ops.scale(x, sigmas(start), x)
           ops.scale(rows, 1 - sigmas(start), rows)
           ops.add(x, rows, x)
@@ -294,8 +305,10 @@ final class QwenImage21Pipeline(
         }
         ops.scale(velocity, sigmas(i + 1) - sigmas(i), velocity)
         ops.add(x, velocity, x)
+        inpainting.foreach(_.restore(x, sigmas(i + 1)))
         progress(i + 1 - first, steps)
       }
+      inpainting.foreach(_.release())
       val rgba =
         autoencoder.decode(x.view(gridHeight, gridWidth, channels))
       try Images.toImage(ops.toFloats(rgba), request.width, request.height)

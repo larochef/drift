@@ -116,9 +116,7 @@ final private[postprocess] class Redraw(
           image.getWidth,
           image.getHeight
         )
-      } yield {
-        val source = (image.getWidth, image.getHeight)
-        val TiledArea.Area(area, reference, rows) = TiledArea.of(
+        laidOut = TiledArea.of(
           image,
           region,
           request.tileSize,
@@ -128,6 +126,10 @@ final private[postprocess] class Redraw(
           request.gridOffsetY,
           architecture.sizeMultiple
         )
+        settings <- Redraw.settingsFor(request, region, laidOut.rows.flatten)
+      } yield {
+        val source = (image.getWidth, image.getHeight)
+        val TiledArea.Area(area, reference, rows) = laidOut
         val target = (area.width, area.height)
         // Only a model that takes a reference as context gets here, so one is
         // sent unless the job weighed the trade itself and asked for none.
@@ -136,10 +138,15 @@ final private[postprocess] class Redraw(
           if (request.seed < 0) TiledJobs.drawSeed() else request.seed
         // The model sees the picture, so it is told the job rather than the
         // subject: the source's prompt is not sent.
-        val instructions = List(
+        // A tile the assistant read is told its own materials after the
+        // template, and before the words written for the whole job.
+        def instructionsFor(tile: Tiling.Tile): String = List(
           restoration,
+          settings.get(tile).fold("")(_.prompt.trim),
           request.instructions.trim
         ).filter(_.nonEmpty).mkString(" ")
+        def strengthOf(tile: Tiling.Tile): Double =
+          settings.get(tile).fold(request.strength)(_.strength)
         // Each tile's reference is the 3×3 block of tiles around it, cut
         // from the source and fitted within the reference size: the whole
         // picture squeezed into it left a 16k tile a few dozen pixels, which
@@ -189,7 +196,7 @@ final private[postprocess] class Redraw(
             runConfigurationId = configuration.id,
             // What the model paints is the window: the tile, or the tile with
             // its context around it and a mask keeping the context as it is.
-            request = TileRequests.Images((defaults, _, input) =>
+            request = TileRequests.Images((defaults, features, input) =>
               Right(
                 ImageGenerationParameters(
                   prompt = {
@@ -209,16 +216,37 @@ final private[postprocess] class Redraw(
                           withReference = true
                         )
                       else Redraw.framing(placed, source, withReference = false)
-                    s"$framing $instructions"
+                    s"$framing ${instructionsFor(input.tile)}"
                   },
                   negativePrompt = request.negativePrompt,
                   clipSkip = defaults.clipSkip,
                   width = input.window.width,
                   height = input.window.height,
-                  strength = request.strength,
+                  strength = strengthOf(input.tile),
                   seed = seed,
                   initImage = Some(input.image),
-                  maskImage = input.mask,
+                  // the tile's own mask, with context around it; else the
+                  // selection's, for a repair that must leave the rest alone
+                  maskImage = input.mask.orElse(
+                    region
+                      .filter(_ =>
+                        request.maskSelection &&
+                          features.getOrElse("mask_image", false)
+                      )
+                      .map(selection =>
+                        dataUrl(
+                          Redraw.selectionMask(
+                            selection.copy(
+                              x = selection.x - area.x - input.window.x,
+                              y = selection.y - area.y - input.window.y
+                            ),
+                            input.window.width,
+                            input.window.height,
+                            request.selectionMargin
+                          )
+                        )
+                      )
+                  ),
                   refImages =
                     if (useReference) List(referenceFor(input.window))
                     else List.empty,
@@ -234,7 +262,7 @@ final private[postprocess] class Redraw(
                     if (sampling.customSigmas.nonEmpty) sampling
                     else
                       sampling.copy(sampleSteps =
-                        Redraw.scheduledSteps(steps, request.strength)
+                        Redraw.scheduledSteps(steps, strengthOf(input.tile))
                       )
                   },
                   vaeTilingParams = defaults.vaeTilingParams
@@ -255,7 +283,16 @@ final private[postprocess] class Redraw(
                  else "no reference image (switched off for this job)") +
                 request.steps.fold("")(steps =>
                   s"; $steps steps run, ${Redraw.scheduledSteps(steps, request.strength)} scheduled"
-                ) + "; each tile given the source's colour back" +
+                ) + (if (request.matchColour)
+                       "; each tile given the source's colour back"
+                     else "; tiles keep the colour they were painted with") +
+                (if (request.maskSelection && region.isDefined)
+                   "; the selection repainted alone under a mask, where the server takes one"
+                 else "") +
+                (if (settings.nonEmpty)
+                   s"; each tile at its own strength and with its own prompt, as the assistant read the picture — ${settings.values
+                       .count(_.strength <= 0)} of ${settings.size} left as they are"
+                 else "") +
                 (if (request.softenRadius > 0)
                    s"; tiles softened by ${request.softenRadius} px first"
                  else "") +
@@ -267,7 +304,8 @@ final private[postprocess] class Redraw(
               if (request.softenRadius > 0)
                 PostProcessImages.softened(_, request.softenRadius)
               else identity,
-            correctTile = Some(PostProcessImages.colourMatched),
+            correctTile =
+              Option.when(request.matchColour)(PostProcessImages.colourMatched),
             derivation = Derivation(
               parentId = src.parent.id,
               parentDate = src.date,
@@ -280,13 +318,15 @@ final private[postprocess] class Redraw(
               steps = request.steps,
               seed = Some(seed),
               strength = Some(request.strength),
-              instructions = Some(request.instructions.trim).filter(_.nonEmpty)
+              instructions = Some(request.instructions.trim).filter(_.nonEmpty),
+              planned = Option.when(settings.nonEmpty)(true)
             ),
             finish = region.fold[PictureFinish](PictureFinish.AsPainted)(
               PictureFinish.PastedInto(image, area, _)
             ),
             keepTiles = request.keepTiles,
             resumed = resuming.isDefined,
+            untouched = tile => settings.get(tile).exists(_.strength <= 0),
             context = Option.when(request.contextMargin > 0)(
               TileWindow.TileContext(
                 request.contextMargin,
@@ -300,6 +340,75 @@ final private[postprocess] class Redraw(
 }
 
 private[postprocess] object Redraw {
+
+  /** The mask of `selection` (in a window's own pixels) inside a `width` ×
+    * `height` window: white over the selection grown by half the `margin` the
+    * paste feathers across, softened by as much, black around it.
+    */
+  def selectionMask(
+      selection: ImageRegion,
+      width: Int,
+      height: Int,
+      margin: Int
+  ): java.awt.image.BufferedImage = {
+    val mask = java.awt.image.BufferedImage(
+      width,
+      height,
+      java.awt.image.BufferedImage.TYPE_INT_RGB
+    )
+    val grown = margin / 2
+    val graphics = mask.createGraphics()
+    try {
+      graphics.setColor(java.awt.Color.WHITE)
+      graphics.fillRect(
+        selection.x - grown,
+        selection.y - grown,
+        selection.width + 2 * grown,
+        selection.height + 2 * grown
+      )
+    } finally graphics.dispose()
+    PostProcessImages.softened(mask, grown / 2.0)
+  }
+
+  /** The request's own settings for each of `tiles` (`specs/52`), by the tile's
+    * place — none when the request carries none. They were read off the whole
+    * picture for one layout: a selection, or tiles cut elsewhere, is refused
+    * rather than painted with another tile's prompt.
+    */
+  def settingsFor(
+      request: RedrawRequest,
+      region: Option[ImageRegion],
+      tiles: List[Tiling.Tile]
+  ): Either[String, Map[Tiling.Tile, TileSettings]] =
+    if (request.tiles.isEmpty) Right(Map.empty)
+    else if (region.isDefined)
+      Left(
+        "the assistant's settings are for the whole picture: a selection is " +
+          "redrawn without them"
+      )
+    else {
+      val byPlace = request.tiles
+        .map(settings =>
+          Tiling.Tile(
+            settings.region.x,
+            settings.region.y,
+            settings.region.width,
+            settings.region.height
+          ) -> settings
+        )
+        .toMap
+      val missing = tiles.filterNot(byPlace.contains)
+      if (missing.nonEmpty || byPlace.size != tiles.size)
+        Left(
+          "the assistant's settings were made for other tiles than this " +
+            "job cuts — the tile size or the grid moved since: ask again"
+        )
+      else if (byPlace.values.exists(s => s.strength < 0 || s.strength > 1))
+        Left("a tile's strength must be from 0 to 1")
+      else if (byPlace.values.forall(_.strength <= 0))
+        Left("every tile is left as it is: nothing to redraw")
+      else Right(byPlace)
+    }
 
   /** The 3×3 block of tiles around `tile`, in the picture's pixels: three tiles
     * a side less the two overlaps between them, centred on the tile, shifted to

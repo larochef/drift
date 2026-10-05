@@ -111,6 +111,15 @@ final private[postprocess] class PidUpscale(tiles: TiledJobs) {
               steps = Some(request.steps),
               seed = Some(seed)
             ),
+            // PiD drifts in colour, 4 to 7 levels on average and up to 34 on
+            // an illustration (bug 39): the tile's own crop of the reference,
+            // at the tile's size, carries the colours to keep
+            correctTile = Some((decoded, crop) =>
+              colourMatched(
+                decoded,
+                scaledCopy(crop, decoded.getWidth, decoded.getHeight)
+              )
+            ),
             resumed = resuming.isDefined
           )
         )

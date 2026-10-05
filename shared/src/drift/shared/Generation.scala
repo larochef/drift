@@ -429,7 +429,11 @@ case class Derivation(
     /** The part of the parent a redraw repainted or an edit changed
       * (`specs/27-redraw.md`, `specs/39`); none means the whole image.
       */
-    region: Option[ImageRegion] = None
+    region: Option[ImageRegion] = None,
+    /** Whether a redraw's tiles had each their own prompt and strength, read
+      * off the picture by the assistant (`specs/52-auto-redraw.md`).
+      */
+    planned: Option[Boolean] = None
 )
 object Derivation {
   given Schema[Derivation] = Schema.derived

@@ -79,6 +79,7 @@ object ImageDemo {
           loras,
           init.map(Images.resized(_, size, size)),
           strength,
+          None,
           references,
           None
         ),

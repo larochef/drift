@@ -64,7 +64,7 @@ in [`../docs/`](../docs/README.md).
 | [50](50-inputs-from-the-gallery.md) | Inputs from the gallery: every input slot and the assistant pick from the gallery with its filters; an input goes to the assistant in one click | partial |
 
 | [51](51-seedvr2-upscaling.md) | SeedVR2 on the drift runner: one-step video and image upscaling, the missing video upscaler and a second one beside PiD | done in code, run once end to end on a configuration copy; not yet used live |
-| [52](52-auto-redraw.md) | Auto redraw: one call to the assistant on the downscaled picture chooses the restoration template, the settings and the regions, shown in the form before the redraw starts | planned — tests first |
+| [52](52-auto-redraw.md) | Auto redraw: one call to the assistant on the downscaled picture, the tiles drawn on it, gives each tile its own prompt and strength and proposes repairs; shown in the form before the redraw starts | done in code, measured, run once end to end on an isolated copy; not yet used live |
 
 ## What is left
 

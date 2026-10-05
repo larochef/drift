@@ -11,10 +11,11 @@ import sttp.tapir.json.jsoniter.*
 
 /** Where a prompt template is used (`specs/32-prompt-library.md`); `Edit` is
   * what an edit's tiles are told before the instruction
-  * (`specs/39-seamless-edit.md`).
+  * (`specs/39-seamless-edit.md`), `RedrawDiagnosis` what the assistant is asked
+  * when it reads a picture for its redraw (`specs/52-auto-redraw.md`).
   */
 enum PromptKind derives CanEqual {
-  case AssistantSystem, RedrawRestoration, Compaction, Edit
+  case AssistantSystem, RedrawRestoration, Compaction, Edit, RedrawDiagnosis
 }
 object PromptKind {
   given Schema[PromptKind] =
@@ -72,6 +73,7 @@ object PromptTemplate {
   val DefaultRedrawId = "redraw-restoration"
   val DefaultCompactionId = "drift-compaction"
   val DefaultEditId = "edit-seamless"
+  val DefaultRedrawDiagnosisId = "redraw-diagnosis"
 
   given JsonValueCodec[PromptTemplate] =
     JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))

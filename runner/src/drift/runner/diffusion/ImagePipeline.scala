@@ -32,6 +32,10 @@ final case class ImageRequest(
     initImage: Option[BufferedImage],
     /** How much of the schedule img2img runs, in (0, 1]. */
     strength: Float,
+    /** With an init image, the part of it to repaint: white repainted, black
+      * kept as it is (`Inpainting`), already `width × height`.
+      */
+    mask: Option[BufferedImage],
     /** Reference images, each its own size. */
     references: Seq[BufferedImage],
     /** The noise levels to step through in place of the model's schedule, 0
@@ -48,6 +52,9 @@ trait ImagePipeline extends AutoCloseable {
 
   /** Whether requests may carry an init image (img2img). */
   def takesInitImage: Boolean
+
+  /** Whether an init image may come with a mask of the part to repaint. */
+  def takesMask: Boolean = false
 
   /** Whether requests may carry reference images. */
   def takesReferences: Boolean

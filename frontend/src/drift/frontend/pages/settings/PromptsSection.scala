@@ -32,6 +32,7 @@ class PromptsSection(service: PromptTemplateService) extends Component {
     case PromptKind.RedrawRestoration => "Redraw restoration prompts"
     case PromptKind.Compaction        => "Compaction prompts"
     case PromptKind.Edit              => "Edit prompts"
+    case PromptKind.RedrawDiagnosis   => "Redraw diagnosis prompts"
   }
 
   private def kindBlurb(kind: PromptKind): String = kind match {
@@ -48,6 +49,10 @@ class PromptsSection(service: PromptTemplateService) extends Component {
     case PromptKind.Edit =>
       "Chosen under Advanced on an edit. The instruction follows it; the " +
         "tile is the image the model changes, and nothing else is sent."
+    case PromptKind.RedrawDiagnosis =>
+      "What the assistant is asked when a redraw has it read the picture: " +
+        "sent once, with the picture scaled down and the tiles drawn on it. " +
+        "The answer must keep its JSON shape — the cells, and the repairs."
   }
 
   private def copyOf(template: PromptTemplate): PromptTemplate =
@@ -322,6 +327,7 @@ class PromptsSection(service: PromptTemplateService) extends Component {
     ErrorBanner(service),
     kindBlock(PromptKind.AssistantSystem),
     kindBlock(PromptKind.RedrawRestoration),
+    kindBlock(PromptKind.RedrawDiagnosis),
     kindBlock(PromptKind.Edit),
     kindBlock(PromptKind.Compaction)
   )

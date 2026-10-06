@@ -114,11 +114,6 @@ class SeedVr2UpscalePanel(
         "step, on the drift runner — a video keeps its frame rate and its " +
         "soundtrack. The original stays in the gallery."
     ),
-    p(
-      cls := "post-intro is-size-7 has-text-warning",
-      "⚠ It redraws fine detail rather than only sharpening it: faces, skin " +
-        "and textures can change. Compare the result with the original."
-    ),
     group("size", plainField(scaleSelect)),
     advanced(advancedVar, group("pass", seedField(seedVar))),
     foot(

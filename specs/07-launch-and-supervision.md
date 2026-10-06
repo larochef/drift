@@ -41,8 +41,14 @@ life: spawn, readiness, crash detection, stop, and cleanup when drift exits.
   post-process job, not a session, see 26), `SessionSettings`.
 - Settings file `~/.config/drift/settings/sessions.json`:
   `maximumConcurrentSessions` 1, `maximumConcurrentAssistantSessions` 1,
-  `portRangeStart` 7860, `portRangeEnd` 7899, `readinessTimeoutMinutes` 15.
-  Read on every launch; no UI.
+  `portRangeStart` 7860, `portRangeEnd` 7899, `readinessTimeoutMinutes` 15,
+  `memoryHeadroomWarningPercent` 10. Read on every launch; no UI.
+- Memory warning: while a session is ready, its monitor has `MemoryHeadroom` read
+  `/proc/meminfo` (free pages plus the file cache nothing maps — mapped
+  weight files are not memory left). Under the threshold, every ready
+  session carries `memoryWarning` naming the loaded configurations; the
+  card and the generating panel show it (`MemoryWarningView`). Kept
+  current every second, so it comes and goes with the memory. A warning only: nothing is refused or stopped.
 - Logs: `~/.cache/drift/logs/<sessionId>.log`.
 - Sessions are runtime state held in memory, never persisted; a drift restart
   forgets them.

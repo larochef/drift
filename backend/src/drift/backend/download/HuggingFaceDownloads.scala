@@ -305,8 +305,16 @@ final class HuggingFaceDownloads(
     downloadTo(source, target, None, isCancelled, onProgress)
   }
 
+  /** The file's URL, its path encoded segment by segment: file names carry
+    * spaces.
+    */
   private def resolveUrl(source: HuggingFace, revision: String): String =
-    s"https://huggingface.co/${source.repo}/resolve/$revision/${source.filename}"
+    URI(
+      "https",
+      "huggingface.co",
+      s"/${source.repo}/resolve/$revision/${source.filename}",
+      null
+    ).toASCIIString
 
   private def fetchDetail(
       repo: String

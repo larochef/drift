@@ -115,6 +115,7 @@ class PostProcessSection(
         image,
         editConfigurations,
         editTemplates,
+        seedVr2Configurations,
         viewed,
         geometry,
         showTileGrid,

@@ -96,9 +96,7 @@ last line rather than in the form: they change nothing about the job.
   how many, **show the grid** draws them, and the job can be paused and
   resumed; the target stops at 16384 px on the longest side. A video keeps its
   frame rate and its soundtrack and comes back as a new video entry.
-  **SeedVR2 redraws fine detail rather than only sharpening it** — faces, skin
-  and textures can change, more than with PiD — so compare the result with the
-  original (**Original** / **Result**) before keeping it. A picture's colours
+  **Original** / **Result** compares the two. A picture's colours
   are matched to its source; a video's are not yet.
 - A **PiD** model: a diffusion decoder re-renders the image at ×4, sharper
   than ESRGAN on generated images. Pick a run configuration on a *PiD*
@@ -322,23 +320,42 @@ last line rather than in the form: they change nothing about the job.
   that edits an image by instruction: Flux.2 Klein works; Krea 2 does not (it
   draws a different picture), so it is not offered.
 
-  Each tile is handed to the model as *the image to edit*, with the *drift
-  seamless edit* prompt (Advanced → *prompt*) and your instruction; there is no
+  **Carried up by** says how the edit reaches the picture's size. With a
+  SeedVR2 upscaler — the default when one is installed — the edit is made
+  *once*: the picture, or the window around your selection, is reduced to what
+  the model takes in one pass (as it is up to 1536 px, else a half or a
+  quarter), the model edits that, and only what changed is brought back to the
+  picture's size by the upscaler and put in. The model sees the whole shirt it
+  is asked to change, so the change is one decision; what is new has the
+  upscaler's texture, like the rest of an upscaled picture. The line before
+  the button says the pass's size and the scale it is carried by.
+
+  With *none — tile by tile*, each tile is handed to the model on its own, in
+  order, each cut from the picture as edited so far. That is fine for a change
+  that sits inside one tile; a garment that spans several comes out different
+  from tile to tile — a red chest and beige sleeves.
+
+  Either way the model is given *the image to edit*, with the *drift seamless
+  edit* prompt (Advanced → *prompt*) and your instruction; there is no
   strength — at any strength a redraw either ignores the instruction or
-  relights what it should keep. The model re-renders the whole tile, the
-  untouched skin and background included, and there drift takes the original
-  back: wherever the edit did not really change anything, the result is the
-  source's own pixels, so its grain, tone and texture cannot drift; where it
-  did, the change is brought to the source's colours and feathered in. Tiles
-  run in order, each cut from the picture as edited so far, so a change that
-  crosses a seam is continued rather than invented twice.
+  relights what it should keep. The model re-renders everything it is given,
+  the untouched skin and background included, and there drift takes the
+  original back: wherever the edit did not really change anything, the result
+  is the source's own pixels, so its grain, tone and texture cannot drift;
+  where it did, the change is brought to the source's colours and feathered in.
 
   A box works as for a redraw — the same window, margin and grid — and the
-  button becomes **✨ Edit selection**. The job log says how much of each tile
-  changed; more than half is flagged, since a model that repaints rather than
-  edits lands there (a large edit can too). *keep the tiles* keeps each tile's
-  input, the model's raw edit, the change mask (white where the edit was taken)
-  and the composite.
+  button becomes **✨ Edit selection**; carried up, nothing changes beyond the
+  box and its margin, whatever the model did in the rest of the window. The job
+  log says how much changed; more than half is flagged, since a model that
+  repaints rather than edits lands there (a large edit can too). *keep the
+  tiles* keeps what the model was given, its raw edit, the change mask (white
+  where the edit was taken) and the composite.
+
+  What Edit is not for: a defect to repair (eyes, a hand) — the model tends to
+  re-grade the whole picture around it; set the repair up from **🤖 Read the
+  picture** in Redraw instead. And a PiD upscale is not offered to carry an
+  edit: it turns the edit model's grain into a crackle beside the original.
 
 **While a job runs you watch the result appear**: each tile the model finishes
 is drawn over the original where it belongs, the tile being worked on pulses,

@@ -182,11 +182,13 @@ class GenerationResult(
                 seedText
             )
           ),
-          // The batch around the image in flight. The session's, so only once
-          // this generation is the one it is running.
-          if (generation.status == GenerationStatus.Generating)
-            BatchProgressView(sessionSignal.map(_.flatMap(_.batch))).element
-          else emptyNode,
+          MemoryWarningView(
+            sessionSignal.map(_.flatMap(_.memoryWarning))
+          ).element,
+          // The batch around the image in flight. The session's, like the bar
+          // under it: with this generation queued behind a batch, both are the
+          // running job's, and both stay.
+          BatchProgressView(sessionSignal.map(_.flatMap(_.batch))).element,
           // The step count comes from the log, which spec 08 anticipated and
           // spec 13 delivered; without a match the bar stays indeterminate.
           LogProgressView(

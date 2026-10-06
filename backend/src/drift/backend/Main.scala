@@ -211,12 +211,17 @@ import sttp.tapir.server.netty.sync.*
     conversionManager = conversionManager
   )
 
+  val askMinutes = AssistantProxy.AskTimeout.toMinutes.toInt
   val nettyConfig =
     NettyConfig.default
-      .requestTimeout(5.minutes)
+      // The assistant's reading of a picture for its redraw is one request
+      // that is answered when the reading is in, up to six seconds a tile:
+      // minutes on a large picture, where five could cut it off.
+      .requestTimeout(askMinutes.minutes + 1.minute)
       // A streamed chat is silent while the model prefills its prompt; the
-      // 60 s default dropped long prefills on large models.
-      .idleTimeout(10.minutes)
+      // 60 s default dropped long prefills on large models. A reading is
+      // silent until it is whole.
+      .idleTimeout(askMinutes.minutes + 1.minute)
       .socketConfig(NettySocketConfig.default.withReuseAddress)
 
   val server = NettySyncServer(nettyConfig)

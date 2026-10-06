@@ -202,6 +202,6 @@ object LogProgress {
     val line = clean(text)
     line.startsWith("[ERROR") || line.contains("error:") ||
     line.contains("Error:") || line.contains("failed to") ||
-    line.contains("out of memory")
+    line.contains("out of memory") || line.contains("HIP error")
   }
 }

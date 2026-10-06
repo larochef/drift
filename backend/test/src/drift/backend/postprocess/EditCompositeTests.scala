@@ -89,6 +89,161 @@ object EditCompositeTests extends TestSuite {
       assert(result.changedShare > 0.05, result.changedShare < 0.3)
     }
 
+    test("a new texture at nearly the same colour is kept whole") {
+      // Cream wool over a beige shirt: the colour barely moves, the texture
+      // does, and a patch in the middle happens to look like the source. A
+      // mask read off the colour alone keeps half of it.
+      val side = 256
+      val source = BufferedImage(side, side, BufferedImage.TYPE_INT_RGB)
+      val knitted = BufferedImage(side, side, BufferedImage.TYPE_INT_RGB)
+      for {
+        y <- 0 until side
+        x <- 0 until side
+      } {
+        val base = rgb(150 + x / 8, 140 + y / 8, 120)
+        source.setRGB(x, y, base)
+        val inside = x >= 70 && x < 190 && y >= 70 && y < 190
+        val plain = x >= 120 && x < 140 && y >= 120 && y < 140
+        knitted.setRGB(
+          x,
+          y,
+          if (inside && !plain) {
+            val stitch = if ((x / 3 + y / 3) % 2 == 0) 60 else -60
+            rgb(160 + x / 8 + stitch, 150 + y / 8 + stitch, 130 + stitch)
+          } else base
+        )
+      }
+      val result = EditComposite(source, knitted)
+      def mask(x: Int, y: Int) = channels(result.mask.getRGB(x, y))._1
+      // the garment, the patch in its middle included
+      assert(mask(90, 90) > 230, mask(130, 130) > 230, mask(180, 100) > 230)
+      // and nothing far from it
+      assert(mask(10, 10) == 0, mask(245, 128) == 0)
+      assert(result.image.getRGB(10, 10) == source.getRGB(10, 10))
+    }
+
+    test("a picture the model moved is put back before it is compared") {
+      val side = 256
+      val random = new scala.util.Random(11)
+      val source = BufferedImage(side, side, BufferedImage.TYPE_INT_RGB)
+      for {
+        y <- 0 until side
+        x <- 0 until side
+      } {
+        val grain = random.nextInt(60)
+        source.setRGB(x, y, rgb(80 + x / 4 + grain, 90 + grain, 70 + y / 4))
+      }
+      // the same picture three pixels to the right and one down, a red square on it
+      val returned = BufferedImage(side, side, BufferedImage.TYPE_INT_RGB)
+      for {
+        y <- 0 until side
+        x <- 0 until side
+      } returned.setRGB(
+        x,
+        y,
+        if (x >= 100 && x < 150 && y >= 100 && y < 150) rgb(220, 30, 30)
+        else source.getRGB((x - 3).max(0), (y - 1).max(0))
+      )
+      val result = EditComposite(source, returned)
+      assert(result.shift == (-3, -1))
+      // Compared where it lies, every grain of the picture would be a change.
+      assert(result.changedShare < 0.15)
+      assert(result.image.getRGB(30, 200) == source.getRGB(30, 200))
+      val (red, green, _) = channels(result.image.getRGB(122, 124))
+      assert(red > 180, green < 80)
+    }
+
+    test("a carried-up edit leaves the band its mask is wide of") {
+      // The mask read where the edit was made is some pixels wide of the
+      // object; enlarged four times it is forty wide, and what the model drew
+      // of the wall there would come along with the garment.
+      val side = 320
+      val source = BufferedImage(side, side, BufferedImage.TYPE_INT_RGB)
+      val upscaled = BufferedImage(side, side, BufferedImage.TYPE_INT_RGB)
+      val changed = BufferedImage(side, side, BufferedImage.TYPE_INT_RGB)
+      val random = new scala.util.Random(3)
+      for {
+        y <- 0 until side
+        x <- 0 until side
+      } {
+        val base = rgb(100 + x / 4, 110 + y / 4, 130)
+        source.setRGB(x, y, base)
+        val (red, green, blue) = channels(base)
+        def grainy(value: Int) =
+          (value + random.nextGaussian() * 6).round.toInt.max(0).min(255)
+        val object_ = x >= 120 && x < 200 && y >= 120 && y < 200
+        upscaled.setRGB(
+          x,
+          y,
+          if (object_) rgb(220, 30, 30)
+          else rgb(grainy(red), grainy(green), grainy(blue))
+        )
+        val marked = x >= 80 && x < 240 && y >= 80 && y < 240
+        changed.setRGB(x, y, if (marked) rgb(255, 255, 255) else rgb(0, 0, 0))
+      }
+      val result = EditComposite.carried(source, upscaled, changed, by = 4)
+      val (red, green, _) = channels(result.image.getRGB(160, 160))
+      assert(red > 180, green < 80)
+      // inside the mask, off the object: the source, not the grainy wall
+      assert(result.image.getRGB(95, 160) == source.getRGB(95, 160))
+      assert(result.image.getRGB(160, 225) == source.getRGB(160, 225))
+      assert(result.image.getRGB(10, 10) == source.getRGB(10, 10))
+    }
+
+    test("a paste kept within reach changes nothing past it") {
+      val base = BufferedImage(100, 4, BufferedImage.TYPE_INT_RGB)
+      val patch = BufferedImage(100, 4, BufferedImage.TYPE_INT_RGB)
+      for {
+        y <- 0 until 4
+        x <- 0 until 100
+      } {
+        base.setRGB(x, y, rgb(0, 0, 0))
+        patch.setRGB(x, y, rgb(200, 200, 200))
+      }
+      val window = drift.shared.ImageRegion(0, 0, 100, 4)
+      val region = drift.shared.ImageRegion(40, 0, 20, 4)
+      val wide = TileBlending.paste(base, patch, window, region)
+      val near = TileBlending.paste(base, patch, window, region, Some(10))
+      // to the window's edge, the ramp reaches a pixel 30 px from the region
+      assert(channels(wide.getRGB(10, 1))._1 > 0)
+      // within reach it does not, and is half way 5 px from it
+      assert(channels(near.getRGB(10, 1))._1 == 0)
+      assert(channels(near.getRGB(29, 1))._1 == 0)
+      assert(channels(near.getRGB(35, 1))._1 == 110)
+      assert(channels(near.getRGB(50, 1))._1 == 200)
+      assert(channels(near.getRGB(64, 1))._1 == 110)
+      assert(channels(near.getRGB(75, 1))._1 == 0)
+    }
+
+    test(
+      "the box of what changed is grown, on multiples of 16, inside the pass"
+    ) {
+      val mask = BufferedImage(320, 240, BufferedImage.TYPE_INT_RGB)
+      assert(EditCarry.changedBox(mask).isEmpty)
+      for {
+        y <- 100 until 150
+        x <- 250 until 300
+      } mask.setRGB(x, y, rgb(255, 255, 255))
+      val box = EditCarry.changedBox(mask).get
+      // 250 - 48 = 202 → 192; 300 + 48 = 348 → the pass's edge, 320
+      assert(box.x == 192, box.width == 128)
+      // 100 - 48 = 52 → 48; 150 + 48 = 198 → 208
+      assert(box.y == 48, box.height == 160)
+    }
+
+    test("the pass an edit is reduced to, and how far it is carried back") {
+      import drift.shared.EditRequest.{Pass, passOf}
+      // what the model takes at once stays as it is
+      assert(passOf(1024, 1536, 16) == Pass(1024, 1536, 1))
+      assert(passOf(1000, 1500, 16) == Pass(1008, 1504, 1))
+      // a 2k picture is halved, a 4k one quartered
+      assert(passOf(2048, 3072, 16) == Pass(1024, 1536, 2))
+      assert(passOf(4096, 6144, 16) == Pass(1024, 1536, 4))
+      assert(passOf(4096, 4096, 16) == Pass(1024, 1024, 4))
+      // an 8k one is brought within the pass and comes back ×4
+      assert(passOf(8192, 8192, 16) == Pass(1536, 1536, 4))
+    }
+
     test("a painted tile ramps in over its overlap and covers the rest") {
       val picture = BufferedImage(8, 4, BufferedImage.TYPE_INT_RGB)
       val black = rgb(0, 0, 0)

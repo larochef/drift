@@ -23,7 +23,11 @@ case class SessionSettings(
       * because a load can spend minutes on 30GB of weights
       * (`specs/13-log-streaming.md`).
       */
-    readinessTimeoutMinutes: Int = 15
+    readinessTimeoutMinutes: Int = 15,
+    /** Under this share of the memory left once a model is loaded, its session
+      * warns that generations may crawl (`MemoryHeadroom`).
+      */
+    memoryHeadroomWarningPercent: Int = 10
 )
 object SessionSettings {
   given JsonValueCodec[SessionSettings] = JsonCodecMaker.make

@@ -464,7 +464,7 @@ final class AssistantProxy(
             .newBuilder(
               URI.create(s"http://127.0.0.1:$port/v1/chat/completions")
             )
-            .timeout(java.time.Duration.ofMinutes(15))
+            .timeout(AssistantProxy.AskTimeout)
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build(),
@@ -491,4 +491,14 @@ final class AssistantProxy(
     catch { case NonFatal(_) => None })
       .map(message => s"llama-server answered $status: $message")
       .getOrElse(s"llama-server answered $status: ${text.take(300)}")
+}
+
+object AssistantProxy {
+
+  /** How long one whole answer may take (`ask`): as long as the reading of a
+    * picture for its redraw (`RedrawPlan.ReadingMinutes`), the longest thing
+    * asked this way. The server keeps the request open as long (`Main`).
+    */
+  val AskTimeout: java.time.Duration =
+    java.time.Duration.ofMinutes(RedrawPlan.ReadingMinutes)
 }

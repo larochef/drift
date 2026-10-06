@@ -1,6 +1,6 @@
 package drift.frontend.pages.inference
 
-import drift.frontend.components.{Component, LaunchOrDownload}
+import drift.frontend.components.*
 import drift.frontend.services.LaunchPrerequisites
 import drift.shared.*
 
@@ -193,6 +193,7 @@ class RunConfigurationCard(
             blockers.map(b => li(b.message))
           )
         ),
+      MemoryWarningView(Val(session.flatMap(_.memoryWarning))).element,
       // Above the command line, because they explain what is missing from it.
       // A live session shows what its own launch resolved instead: the runtime
       // may have changed since.

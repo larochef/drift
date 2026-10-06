@@ -47,7 +47,8 @@ final class PostProcessManager(
   private val pid = PidUpscale(tiles)
   private val redraws = Redraw(jobs, tiles, storage)
   private val planner = RedrawPlanner(jobs, storage, assistant)
-  private val edits = Edit(tiles, storage)
+  private val edits =
+    Edit(jobs, tiles, storage, EditCarry(jobs, sessionManager))
   private val seedVr2 = SeedVr2Upscale(jobs, tiles, sessionManager)
 
   def listJobs: List[PostProcessJob] = jobs.list

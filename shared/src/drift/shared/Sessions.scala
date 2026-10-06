@@ -75,6 +75,11 @@ case class Session(
       * job.
       */
     batch: Option[BatchProgress] = None,
+    /** Said while the loaded models leave almost no memory
+      * (`specs/07-launch-and-supervision.md`), on every ready session: they
+      * share the memory.
+      */
+    memoryWarning: Option[String] = None,
     /** What resolving the parameters had to say — a flag this build cannot take
       * and was dropped, or one it added of its own accord
       * (`specs/16-parameter-resolution.md`). Rendered messages: the card only

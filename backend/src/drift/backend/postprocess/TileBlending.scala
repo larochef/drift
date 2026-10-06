@@ -123,7 +123,11 @@ object TileBlending {
       base: BufferedImage,
       patch: BufferedImage,
       window: ImageRegion,
-      region: ImageRegion
+      region: ImageRegion,
+      /** The widest the ramp may be on a side: none lets it run to the window's
+        * edge.
+        */
+      reach: Option[Int] = None
   ): BufferedImage = {
     val result = PostProcessImages.copyOf(base)
     val whole = ImageRegion(0, 0, window.width, window.height)
@@ -132,7 +136,7 @@ object TileBlending {
       window.y,
       window.width,
       window.height,
-      pastedPixels(base, patch, window, region, whole),
+      pastedPixels(base, patch, window, region, whole, reach),
       0,
       window.width
     )
@@ -148,7 +152,8 @@ object TileBlending {
       patch: BufferedImage,
       window: ImageRegion,
       region: ImageRegion,
-      part: ImageRegion
+      part: ImageRegion,
+      reach: Option[Int] = None
   ): Array[Int] = {
     val pixels = base.getRGB(
       window.x + part.x,
@@ -163,10 +168,12 @@ object TileBlending {
       patch.getRGB(part.x, part.y, part.width, part.height, null, 0, part.width)
     for (v <- 0 until part.height) {
       val y = window.y + part.y + v
-      val weightY = ramp(y, region.y, region.height, window.y, window.height)
+      val weightY =
+        ramp(y, region.y, region.height, window.y, window.height, reach)
       for (u <- 0 until part.width) {
         val x = window.x + part.x + u
-        val weightX = ramp(x, region.x, region.width, window.x, window.width)
+        val weightX =
+          ramp(x, region.x, region.width, window.x, window.width, reach)
         val index = v * part.width + u
         pixels(index) = mix(pixels(index), painted(index), weightX min weightY)
       }
@@ -176,23 +183,28 @@ object TileBlending {
 
   /** How much of the repainted window a pixel at `position` on one axis keeps:
     * all of it within the region, then down to nothing across the margin that
-    * separates the region from the window's edge.
+    * separates the region from the window's edge — or across `reach` px of it,
+    * when the window is wider than what should change around the region.
     */
   private def ramp(
       position: Int,
       regionStart: Int,
       regionLength: Int,
       windowStart: Int,
-      windowLength: Int
+      windowLength: Int,
+      reach: Option[Int]
   ): Double = {
+    def within(room: Int): Int = reach.fold(room)(_.min(room).max(1))
     val weight =
       if (position < regionStart) {
         val room = regionStart - windowStart
-        if (room <= 0) 1.0 else (position - windowStart + 0.5) / room
+        if (room <= 0) 1.0
+        else (position - (regionStart - within(room)) + 0.5) / within(room)
       } else if (position >= regionStart + regionLength) {
         val room = windowStart + windowLength - regionStart - regionLength
+        val end = regionStart + regionLength
         if (room <= 0) 1.0
-        else (windowStart + windowLength - position - 0.5) / room
+        else (end + within(room) - position - 0.5) / within(room)
       } else 1.0
     weight.max(0.0).min(1.0)
   }

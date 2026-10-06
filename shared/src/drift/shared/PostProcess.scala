@@ -405,11 +405,59 @@ case class EditRequest(
     /** Keeps every tile's input, the model's raw edit, the change mask and the
       * composite in the job's tiles directory.
       */
-    keepTiles: Boolean = false
+    keepTiles: Boolean = false,
+    /** The upscaler that carries the edit up (`specs/39-seamless-edit.md`): a
+      * SeedVR2 run configuration. With one, the part to edit is edited in a
+      * single pass, reduced to what the model takes at once
+      * (`EditRequest.passOf`), and only what changed is brought back to the
+      * picture's size by this upscaler. None runs the edit tile by tile.
+      */
+    upscaleConfigurationId: Option[String] = None
 )
 object EditRequest {
   given JsonValueCodec[EditRequest] = JsonCodecMaker.make
   given Schema[EditRequest] = Schema.derived
+
+  /** The longest side an edit model is handed in one pass: Flux.2 Klein and
+    * Qwen Image 2.1 edit a 1024 × 1536 picture whole.
+    */
+  val PassSide: Int = 1536
+
+  /** The least side of the window a carried edit sees around `selection`: four
+    * times its longest side, from `PassSide` to twice that. An edit model acts
+    * on a picture, not on a close-up — handed a wrist and a watch at the
+    * picture's own size it left the watch on; with the arm, the shirt and the
+    * table around them the same instruction is carried out — and the window
+    * costs one pass whatever its size.
+    */
+  def contextSide(selection: ImageRegion): Int =
+    (4 * math.max(selection.width, selection.height))
+      .max(PassSide)
+      .min(2 * PassSide)
+
+  /** The single pass an edit carried up runs: the size the part to edit is
+    * reduced to, and the scale the upscaler brings it back by.
+    */
+  case class Pass(width: Int, height: Int, scale: Int)
+
+  /** The pass for a part of `width` × `height` px. As it is when it fits
+    * `PassSide`; else halved when that is enough, or brought within `PassSide`
+    * and upscaled ×4 — a part more than four times `PassSide` comes back
+    * smaller than it was and is enlarged the rest of the way. Sides are
+    * multiples of `multiple`, as the model and the upscaler take them.
+    */
+  def passOf(width: Int, height: Int, multiple: Int): Pass = {
+    val longest = math.max(width, height)
+    val step = Tiling.roundUp(16, multiple)
+    def side(length: Int, by: Double): Int =
+      Tiling.roundUp(math.ceil(length / by).toInt, step)
+    if (longest <= PassSide) Pass(side(width, 1), side(height, 1), 1)
+    else if (longest <= 2 * PassSide) Pass(side(width, 2), side(height, 2), 2)
+    else {
+      val by = math.max(4.0, longest.toDouble / PassSide)
+      Pass(side(width, by), side(height, by), 4)
+    }
+  }
 }
 
 /** What a paused tiled job needs to be picked up again

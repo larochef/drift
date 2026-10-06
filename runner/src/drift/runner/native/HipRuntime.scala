@@ -221,10 +221,15 @@ final class HipRuntime(val rocmRoot: Path) {
     * it. The segment must stay alive until `unregister`.
     */
   def register(host: MemorySegment, flags: Int): MemorySegment = {
-    check(
-      "hipHostRegister",
-      (hipHostRegister.invokeExact(host, host.byteSize(), flags): Int)
-    )
+    // The driver refuses once the memory it may pin is spoken for, which is
+    // what a second loaded model does: said here, the HIP error says nothing.
+    val code = (hipHostRegister.invokeExact(host, host.byteSize(), flags): Int)
+    if (code != 0)
+      throw new HipException(
+        "hipHostRegister",
+        code,
+        f"${errorString(code)} — ${host.byteSize() / 1e9}%.1f GB could not be pinned: the memory is probably full, stop any other loaded model"
+      )
     pointerOut("hipHostGetDevicePointer")(slot =>
       (hipHostGetDevicePointer.invokeExact(slot, host, 0): Int)
     )

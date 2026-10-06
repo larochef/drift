@@ -1,5 +1,6 @@
 package drift.backend.postprocess
 
+import drift.backend.runtime.LaunchRuntime
 import drift.backend.storage.StorageService
 import drift.shared.*
 
@@ -18,8 +19,10 @@ import javax.imageio.ImageIO
   * feathered back into the source, as a redraw's is.
   */
 final private[postprocess] class Edit(
+    jobs: PostProcessJobs,
     tiles: TiledJobs,
-    storage: StorageService
+    storage: StorageService,
+    carry: EditCarry
 ) {
 
   def start(
@@ -75,6 +78,27 @@ final private[postprocess] class Edit(
           image.getWidth,
           image.getHeight
         )
+        // The upscaler an edit is carried up by: a SeedVR2 configuration, on
+        // the drift runner — the only engine with its `upscale` job.
+        upscaler <- request.upscaleConfigurationId.fold(
+          Right(None): Either[String, Option[(RunConfiguration, LaunchRuntime)]]
+        )(id =>
+          tiles
+            .resolved(
+              id,
+              upscaling =>
+                Option.unless(SeedVr2UpscaleRequest.runs(upscaling))(
+                  s"'${upscaling.label}' is not a SeedVR2 architecture: an edit is carried up by a SeedVR2 upscaler"
+                )
+            )
+            .flatMap((upscaling, runtime) =>
+              Either.cond(
+                runtime.runtime.engine == RuntimeEngine.DriftRunner,
+                Some((upscaling, runtime)),
+                s"SeedVR2 runs on the drift runner only, and '${upscaling.label}' is set to ${runtime.runtime.engine}"
+              )
+            )
+        )
       } yield {
         val source = (image.getWidth, image.getHeight)
         val TiledArea.Area(area, reference, rows) = TiledArea.of(
@@ -91,7 +115,62 @@ final private[postprocess] class Edit(
           if (request.seed < 0) TiledJobs.drawSeed() else request.seed
         val prompt =
           List(template.trim, instruction).filter(_.nonEmpty).mkString(" ")
-        tiles.startTiles(
+        val derivation = Derivation(
+          parentId = src.parent.id,
+          parentDate = src.date,
+          parentFileName = src.fileName,
+          operation = "edit",
+          width = Some(source._1),
+          height = Some(source._2),
+          region = region,
+          configurationId = Some(configuration.id),
+          steps = request.steps,
+          seed = Some(seed),
+          instructions = Some(instruction)
+        )
+        // Made once and carried up: not a tiled job, so it is not paused — it
+        // is one pass of the model and a few of the upscaler.
+        def carried(
+            upscaling: RunConfiguration,
+            runtime: LaunchRuntime
+        ): PostProcessJob = {
+          // What the model sees around a selection is wider than a tiled
+          // edit's window: it is one pass whatever its size, and the model
+          // needs the picture around the thing to know what it is.
+          val seen = region.fold(area)(selection =>
+            Tiling.window(
+              selection,
+              image.getWidth,
+              image.getHeight,
+              EditRequest
+                .contextSide(selection)
+                .max(request.minimumWindowSide),
+              request.selectionMargin,
+              multiple = architecture.sizeMultiple
+            )
+          )
+          jobs.start("edit", src, tiles = List(seen))(job =>
+            carry.run(
+              job,
+              carry.Work(
+                src,
+                image,
+                seen,
+                region,
+                prompt,
+                request.copy(seed = seed),
+                configuration,
+                launch,
+                loras,
+                architecture.sizeMultiple,
+                upscaling,
+                runtime,
+                derivation
+              )
+            )
+          )
+        }
+        def tiled: PostProcessJob = tiles.startTiles(
           "edit",
           src,
           rows,
@@ -144,19 +223,7 @@ final private[postprocess] class Edit(
                 "as edited so far and composited over it",
               s"instruction: $instruction"
             ) ++ TiledJobs.loraNote(loras.selections),
-            derivation = Derivation(
-              parentId = src.parent.id,
-              parentDate = src.date,
-              parentFileName = src.fileName,
-              operation = "edit",
-              width = Some(source._1),
-              height = Some(source._2),
-              region = region,
-              configurationId = Some(configuration.id),
-              steps = request.steps,
-              seed = Some(seed),
-              instructions = Some(instruction)
-            ),
+            derivation = derivation,
             finish = region.fold[PictureFinish](PictureFinish.AsPainted)(
               PictureFinish.PastedInto(image, area, _)
             ),
@@ -165,6 +232,7 @@ final private[postprocess] class Edit(
             finishTile = Some(Edit.finishTile)
           )
         }
+        upscaler.fold(tiled)(carried)
       }
     }
 }
@@ -188,6 +256,10 @@ private[postprocess] object Edit {
       image = result.image,
       note = Some(
         s"changed $share% of the tile" + Option
+          .when(result.shift != (0, 0))(
+            s", moved by the model and put back by ${result.shift._1},${result.shift._2} px"
+          )
+          .getOrElse("") + Option
           .when(result.changedShare > RepaintShare)(
             " — more than half: the model may have repainted rather than edited"
           )

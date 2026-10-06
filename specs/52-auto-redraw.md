@@ -130,6 +130,33 @@ the runner, the redraw RedQW21 with its turbo LoRA, one seed unless said.
   the cells that hold a face, a hand or a nipple, sent at their own scale: a
   second call, on a few crops chosen by the first. Not built; it departs from
   "one call" and is François's to decide.
+- **Large pictures.** The reading is one answer for every tile. François's
+  first 8192² reading (2026-10-06; 64 tiles of 1248 px sharing 256) came back
+  in 98 s with every tile, its contents, and strengths from 0.2 to 0.4 — not
+  checked tile by tile against the picture. That is a second and a half a
+  tile; the harness's 24 tiles took 145 s with another assistant, six seconds
+  a tile. A 16384² picture is 289 tiles: eight minutes to half an hour. The
+  browser, the server and the call to the assistant all wait an hour
+  (`RedrawPlan.ReadingMinutes`): the browser's request gave up after one
+  minute before, as "the operation was aborted", and the server would have
+  after five. At 289 tiles a cell is 90 px wide: whether the grid is still
+  read right there is not measured. Reading the picture in blocks of tiles,
+  one call a block, each block at its own scale, is the way out if it is not
+  — and it departs from "one call".
+- **What a reading costs.** The assistant's own log of the 8192² reading
+  (Qwen 3.8 27B, 2026-10-06) splits its 98 s in two: **13 s to read** — 2931
+  tokens of picture and question, the same whatever the picture's size, since
+  it is always shown within 1536 px — and **84 s to answer** — 2798 tokens,
+  44 a tile, at 33.4 tokens a second. So about 13 s + 1.3 s a tile on that
+  assistant: some six and a half minutes for the 289 tiles of a 16384²
+  picture, if the speed holds on a longer answer. The harness's 24 tiles in
+  109–145 s were the same model answering at 13.4 tokens a second (measured
+  that night on the rebuilt runner); why it was two and a half times slower
+  then is not explained. Each reading should record its tiles, the tokens
+  read and written and both times (llama.cpp reports them), so the panel can
+  say how long a reading will take before it starts.
+- **The reading as a task** (53): asked for and fetched instead of one request
+  held open for minutes — what the hour of waiting above stands in for.
 - **Several repairs in one job**, and a repair followed by the whole-picture
   pass without the user chaining them.
 - **Edit** (39) and **Upscale** are out of scope.

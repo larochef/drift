@@ -55,7 +55,9 @@ final class SessionManager(
   final private class Entry(
       @volatile var session: Session,
       val process: Option[Process],
-      val stopRequested: AtomicBoolean = AtomicBoolean(false)
+      val stopRequested: AtomicBoolean = AtomicBoolean(false),
+      /** The run configuration's, for what is said about the session. */
+      val label: String = ""
   )
   private val entries = ConcurrentHashMap[String, Entry]()
 
@@ -402,7 +404,7 @@ final class SessionManager(
         projectId = projectId,
         parameterNotes = parameterNotes
       )
-      val entry = Entry(session, Some(process))
+      val entry = Entry(session, Some(process), label = configuration.label)
       entries.put(configuration.id, entry)
       // The inference page orders configurations by recency of use, and
       // sessions do not survive a drift restart, so the launch is persisted.
@@ -445,6 +447,31 @@ final class SessionManager(
     )
   }
 
+  private def readyEntries: List[Entry] =
+    entries.asScala.values
+      .filter(_.session.status == SessionStatus.Ready)
+      .toList
+      .sortBy(_.session.startedAt)
+
+  /** What `MemoryHeadroom` says of the ready sessions, now. */
+  private def refreshMemoryWarning(current: SessionSettings): Unit = {
+    val ready = readyEntries
+    val warning = MemoryHeadroom
+      .read()
+      .flatMap(
+        _.warning(ready.map(_.label), current.memoryHeadroomWarningPercent)
+      )
+    if (warning.isDefined && ready.forall(_.session.memoryWarning.isEmpty))
+      warning.foreach(message => logger.warn(message))
+    setMemoryWarning(warning)
+  }
+
+  /** The ready sessions share the memory, so they share what is said of it. */
+  private def setMemoryWarning(warning: Option[String]): Unit =
+    readyEntries.foreach(entry =>
+      entry.session = entry.session.copy(memoryWarning = warning)
+    )
+
   /** The monitor's loop, on its own fork until the process ends or fails to
     * come up.
     */
@@ -460,6 +487,8 @@ final class SessionManager(
       current.readinessTimeoutMinutes.toLong * 60 * 1000
     while (true) {
       if (!process.isAlive) {
+        // Its memory is free again: the warning is about a state that is over.
+        setMemoryWarning(None)
         if (entry.stopRequested.get())
           entry.session = entry.session.copy(status = SessionStatus.Stopped)
         else {
@@ -488,6 +517,7 @@ final class SessionManager(
         if (ServerProcesses.answersProbe(port, tool)) {
           entry.session = entry.session.copy(status = SessionStatus.Ready)
           logger.info(s"Session ${entry.session.id}: ready on :$port")
+          refreshMemoryWarning(current)
         } else if (System.currentTimeMillis() > deadline) {
           val tail = SessionOutput.tail(logFile)
           entry.session = entry.session.copy(
@@ -501,6 +531,10 @@ final class SessionManager(
           return
         }
       }
+      // Kept current while it lives: a runner goes on taking memory after it
+      // is ready (weights decoded at first use, the first job's tensors).
+      if (entry.session.status == SessionStatus.Ready)
+        refreshMemoryWarning(current)
       sleep(1.second)
     }
   }

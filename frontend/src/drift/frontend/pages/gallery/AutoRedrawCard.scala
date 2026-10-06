@@ -5,6 +5,7 @@ import drift.frontend.pages.gallery.PostProcessSection.*
 import drift.frontend.services.ApiClient
 import drift.shared.*
 
+import scala.concurrent.duration.DurationInt
 import scala.util.*
 
 import com.raquo.laminar.api.L.*
@@ -26,7 +27,10 @@ class AutoRedrawCard(
     onRepair: PlannedRepair => Unit
 ) extends Component {
 
-  private val planFn = ApiClient.streamWithFailureReason(planRedraw)
+  private val planFn = ApiClient.streamWithFailureReason(
+    planRedraw,
+    within = (RedrawPlan.ReadingMinutes + 2).minutes
+  )
   private val asks = new EventBus[(String, String, RedrawPlanRequest)]
 
   private val planVar = Var(Option.empty[RedrawPlan])

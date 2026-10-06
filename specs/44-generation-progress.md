@@ -16,7 +16,8 @@ reproduced in its log.
   - the current image: its phase and its steps.
 
   This is the same pair as a tiled job's "tile n of m" and its step bar. A
-  single image shows only the second bar.
+  single image shows only the second bar. Both bars are the running job's
+  and stay when the panel shows a job queued behind it.
 - **The current image's bar covers the whole image.** It moves through
   encoding the text, the steps and decoding, instead of restarting at each
   phase. The phase is named beside it: loading, text, sampling (with its

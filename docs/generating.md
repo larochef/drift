@@ -19,6 +19,11 @@ opens the Sandbox on it.
 - The session is *Ready* once the server answers. A crash shows *Failed* with
   the error line and the tail of the log; the full log is in
   `~/.cache/drift/logs/`.
+- If the loaded models leave almost no memory — typically an
+  assistant model beside a large video model — the card and the generating
+  panel warn that memory is nearly full. Generations then crawl, because the
+  weights are read back from disk over and over; stop one of the loaded
+  models.
 - Only one generation session runs at a time by default. Launching a
   configuration that already runs focuses it. **⏹ Stop** ends it; quitting drift
   stops every session too.

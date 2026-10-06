@@ -22,8 +22,9 @@ in the drift runner, as PiD was.
 - Two models, 3B and 7B, as run configurations of one `seedvr2`
   architecture tagged `upscale`; drift's runner is its only engine. **7B
   and ×4 are the defaults.**
-- Both the picture and the video task are built. The model redraws more
-  than PiD does; if it invents too much, the task says so in a warning.
+- Both the picture and the video task are built. The task carries no
+  warning about redrawn detail: that was ×4 in one pass, and a ×4 now runs
+  as two ×2 passes.
 - No prompt: the model is conditioned on two fixed text embeddings shipped
   with it.
 - The **Original** / **Result** toggle of 15 compares either version at the
@@ -143,8 +144,7 @@ In drift:
 - One **Upscale** task in the Redraw & upscale tab (`UpscaleTaskPanel`):
   its model select lists the SeedVR2 and PiD configurations and the ESRGAN
   models, and what follows is what the chosen model takes — for SeedVR2 the
-  scale (×2, ×4), a seed under Advanced, and the warning that it redraws
-  detail. On a video it is the only task, with the SeedVR2 models alone.
+  scale (×2, ×4) and a seed under Advanced. On a video it is the only task, with the SeedVR2 models alone.
 
 Not there yet:
 

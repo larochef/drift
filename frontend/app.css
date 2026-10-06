@@ -2201,3 +2201,11 @@ select.select:focus {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* A loading button's spinner in the button's own text colour: Bulma draws it
+   dark, which on the theme's brown buttons could hardly be seen. The label is
+   made transparent while loading, so the colour is named rather than
+   inherited. */
+.button.is-loading::after {
+  border-color: transparent transparent hsl(35, 20%, 92%) hsl(35, 20%, 92%) !important;
+}

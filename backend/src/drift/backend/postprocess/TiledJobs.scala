@@ -80,6 +80,28 @@ final private[postprocess] class TiledJobs(
       case Right(job)   => job
     }
 
+  /** A second run configuration a job runs part of itself on — the upscaler an
+    * edit is carried up by (`specs/39-seamless-edit.md`) — resolved as the
+    * job's own is: its runtime, its arguments (weights cached, nothing blocking
+    * it), and no reason `accepts` names against its architecture.
+    */
+  def resolved(
+      runConfigurationId: String,
+      accepts: Architecture => Option[String]
+  ): Either[String, (RunConfiguration, LaunchRuntime)] =
+    sessionManager
+      .runnerOf(runConfigurationId)
+      .flatMap(runner =>
+        runtimeManager.resolveForLaunch(RuntimeTool.SdCpp, runner, None)
+      )
+      .flatMap(launch =>
+        sessionManager
+          .resolveArguments(runConfigurationId, launch)
+          .flatMap((configuration, architecture, _) =>
+            accepts(architecture).toLeft((configuration, launch))
+          )
+      )
+
   /** The configuration's default LoRAs as request entries
     * (`specs/28-configuration-loras.md`) — refused, naming the LoRA, when one
     * is no longer installed or its files are not all downloaded: a checkpoint

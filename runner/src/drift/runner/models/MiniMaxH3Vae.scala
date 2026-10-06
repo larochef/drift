@@ -436,7 +436,7 @@ final class MiniMaxH3Vae private (
         decodeTile(tile, frames, th, tw)
       }
     }
-    VaeTiles.stitch(
+    VaeTiles.stitchAsDiffusers(
       tiles,
       frames * Frames,
       tileHeight,

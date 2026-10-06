@@ -280,6 +280,47 @@ object TinyModelTests extends TestSuite {
         assert(error < 2e-2) // BF16 weights (2⁻⁸), then float sums
       } finally ops.close()
     }
+    test("VaeTiles stitches tiles that disagree without a step (bug 42)") {
+      // 2048 × 3072 in tiles of 1024 overlapping by 128 at least, as a
+      // SeedVR2 ×2 of a 1024 × 1536 picture decodes — at a 16th of the size.
+      // Every tile is one flat value of its own: whatever the tiles hold, the
+      // stitched picture may only change by a ramp's slope between two
+      // neighbouring pixels.
+      val (height, width, tile, overlap, step) = (192, 128, 64, 8, 1)
+      val (rowStarts, tileHeight, rowOverlaps) =
+        VaeTiles.split(height, tile, overlap, step)
+      val (columnStarts, tileWidth, columnOverlaps) =
+        VaeTiles.split(width, tile, overlap, step)
+      val tiles = rowStarts.indices.map(i =>
+        columnStarts.indices.map(j =>
+          Array.fill(tileHeight * tileWidth)(((i * 7 + j * 3) % 5).toFloat)
+        )
+      )
+      val stitched = VaeTiles.stitch(
+        tiles,
+        1,
+        tileHeight,
+        tileWidth,
+        rowOverlaps,
+        columnOverlaps,
+        height,
+        width,
+        1
+      )
+      // the values span 4, the narrowest ramp is the smallest overlap
+      val slope = 4f / (rowOverlaps ++ columnOverlaps).min
+      val steps = for {
+        y <- 0 until height
+        x <- 0 until width
+        (dy, dx) <- Seq((1, 0), (0, 1))
+        if y + dy < height && x + dx < width
+      } yield math.abs(
+        stitched((y + dy) * width + x + dx) - stitched(y * width + x)
+      )
+      assert(steps.max <= slope * 2 + 1e-4f)
+      // and a tile is itself where no other reaches
+      assert(stitched(0) == tiles(0)(0)(0))
+    }
     test("VaeTiles cuts frames in tiles and stitches them back") {
       val (frames, height, width, channels) = (2, 48, 80, 3)
       val values =

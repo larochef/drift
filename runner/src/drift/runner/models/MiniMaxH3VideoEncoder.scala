@@ -310,7 +310,7 @@ final class MiniMaxH3VideoEncoder private (
         .iterate(frames.size)(n => (n - 1) / 2 + 1)
         .drop(levels.count(_.temporal))
         .next()
-    VaeTiles.stitch(
+    VaeTiles.stitchAsDiffusers(
       tiles,
       latentFrames,
       tileHeight / Scale,

@@ -3,8 +3,8 @@ package drift.runner.models
 /** A VAE's work cut in spatial tiles, for any model whose whole frame does not
   * fit: frames on the host, channels-last, cut in overlapping tiles on the
   * model's grid, each tile through the model on its own, the results blended
-  * over the overlaps (diffusers' `_split_tiles` and `_stitch_tiles`). Time is
-  * the model's: a tile is all its frames, and may come back as more or fewer.
+  * over the overlaps (the cut is diffusers' `_split_tiles`). Time is the
+  * model's: a tile is all its frames, and may come back as more or fewer.
   */
 object VaeTiles {
 
@@ -32,12 +32,95 @@ object VaeTiles {
     }
 
   /** Tiles (each `[frames, tileHeight, tileWidth, channels]`) into one
-    * `[frames, height, width, channels]` (diffusers' `_stitch_tiles`): each
-    * blended with the one above and the one to its left (both as made), over
-    * the overlap between them, then cut by its own overlaps below and to the
-    * right.
+    * `[frames, height, width, channels]`: every tile weighs 1 where it is alone
+    * and ramps over the overlap it shares with each neighbour, on both axes at
+    * once, and a pixel is the weighted mean of the tiles that reach it.
+    *
+    * Not diffusers' `_stitch_tiles`, which blends a tile with the one above and
+    * the one to its left *as made*: the left neighbour's top rows were never
+    * blended with what is above them, so across the whole overlap between two
+    * columns the picture steps at the row where a tile starts — a hard
+    * horizontal line, the wider the overlap the longer, and these overlaps grow
+    * to half a tile (`bugs/42`: y = 1360 of a 2048 × 3072 SeedVR2 picture).
     */
   def stitch(
+      tiles: Seq[Seq[Array[Float]]],
+      frames: Int,
+      tileHeight: Int,
+      tileWidth: Int,
+      rowOverlaps: Seq[Int],
+      columnOverlaps: Seq[Int],
+      height: Int,
+      width: Int,
+      channels: Int
+  ): Array[Float] = {
+    // A tile's weights along one axis: up over the overlap before it, down
+    // over the one after — two neighbours' ramps add up to 1.
+    def ramps(index: Int, length: Int, overlaps: Seq[Int]): Array[Float] = {
+      val before = if (index > 0) math.min(overlaps(index - 1), length) else 0
+      val after =
+        if (index < overlaps.size) math.min(overlaps(index), length) else 0
+      Array.tabulate(length) { position =>
+        val up = if (position < before) (position + 0.5f) / before else 1f
+        val down =
+          if (position >= length - after) (length - position - 0.5f) / after
+          else 1f
+        math.min(up, down)
+      }
+    }
+    val tops =
+      rowOverlaps.scanLeft(0)((top, overlap) => top + tileHeight - overlap)
+    val lefts =
+      columnOverlaps.scanLeft(0)((left, overlap) => left + tileWidth - overlap)
+    val result = new Array[Float](frames * height * width * channels)
+    val total = new Array[Float](height * width)
+    tiles.indices.foreach { i =>
+      val down = ramps(i, tileHeight, rowOverlaps)
+      tiles(i).indices.foreach { j =>
+        val across = ramps(j, tileWidth, columnOverlaps)
+        val tile = tiles(i)(j)
+        var y = 0
+        while (y < tileHeight) {
+          var x = 0
+          while (x < tileWidth) {
+            val weight = down(y) * across(x)
+            val place = (tops(i) + y) * width + lefts(j) + x
+            total(place) += weight
+            var f = 0
+            while (f < frames) {
+              val from = ((f * tileHeight + y) * tileWidth + x) * channels
+              val to = (f * height * width + place) * channels
+              var c = 0
+              while (c < channels) {
+                result(to + c) += tile(from + c) * weight
+                c += 1
+              }
+              f += 1
+            }
+            x += 1
+          }
+          y += 1
+        }
+      }
+    }
+    var index = 0
+    while (index < result.length) {
+      val weight = total(index / channels % (height * width))
+      // a lone tile's pixel stays the tile's own, to the bit
+      if (weight != 1f) result(index) /= weight
+      index += 1
+    }
+    result
+  }
+
+  /** The same tiles stitched as diffusers' `_stitch_tiles` does: each blended
+    * with the one above and the one to its left (both as made), over the
+    * overlap between them, then cut by its own overlaps below and to the right.
+    * It steps where `stitch` does not (`bugs/42`); MiniMax H3's VAE keeps it,
+    * being checked against its reference's frames to the pixel
+    * (`TinyMiniMaxH3Case`) and its video not yet looked at with the other.
+    */
+  def stitchAsDiffusers(
       tiles: Seq[Seq[Array[Float]]],
       frames: Int,
       tileHeight: Int,

@@ -62,7 +62,9 @@ skin smoother above it and more textured below; it carries into the 4k (`view/se
 in the experiment's directory). It is in the runner's raw output, so not the script's blend. 1365 is where the third
 of four VAE tiles starts for a height of 3072 (tiles of 1024, overlaps grown to about 341), and 85 tokens down is
 also a multiple of a 17-token attention window: VAE tiling (encode or decode) or the transformer's windows, not
-told apart. `VaeTiles.stitch` read through against diffusers' `_stitch_tiles`: the arithmetic agrees. To do: the same
+told apart. `VaeTiles.stitch` read through against diffusers' `_stitch_tiles`: the arithmetic agrees — and that
+arithmetic is the cause (2026-10-06, `bugs/42`, Found: a tile is blended with its left neighbour's raw top edge;
+the windows are 25 rows high and do not fall there). Fixed in code, not yet seen on a picture. To do: the same
 picture with one VAE tile (`tile` ≥ the picture) to tell the two apart. Also: the last 8 rows and columns of a raw
 output step harder than the rest of the picture (a border effect of the padding to multiples of 16?).
 

@@ -1,11 +1,41 @@
 # Bug 42 — A SeedVR2 upscale done ×2 then ×2 shows its tiling on some tiles
 
-**Status:** open (reported by François 2026-10-05; not investigated, not reproduced in the harness)
+**Status:** fixed in code 2026-10-06 for the line inside one pass (Found, below), measured on the picture that
+showed it: the step at y = 1360 is gone. For François to look at on his own pictures. Whether drift's own tile
+grid also shows on a ×2×2 is still not reproduced (reported by François 2026-10-05)
 **Severity:** medium (seen on some tiles only, sometimes; the upscale is otherwise the one he prefers on
 pictures — "way better than PiD")
 **Files:** `backend/src/drift/backend/postprocess/SeedVr2Upscale.scala`,
 `shared/src/drift/shared/PostProcess.scala` (`SeedVr2UpscaleRequest.tilesFor`, `MaxTile`),
 `shared/src/drift/shared/Tiling.scala` (`Overlap`), `backend/src/drift/backend/postprocess/TileBlending.scala`
+
+## Found (2026-10-06): the runner's VAE stitch steps where a tile starts
+
+The line measured below is inside one `upscale` job, at y ≈ 1360 of a 2048 × 3072 output. That is exactly where
+the third of four VAE tiles starts: `VaeTiles.split(3072, 1024, 128, 16)` gives starts 0, 672, **1360**, 2048
+(overlaps grown to 352, 336, 336), for the encode and for the decode alike. The attention windows are ruled out:
+for that grid they are 25 token rows high (400 px), with boundaries at 400, 800, 1200, 1600 and, shifted, 200,
+600, 1000, 1400 — bug 40's "17 tokens" is the windows' width.
+
+`VaeTiles.stitch` was diffusers' `_stitch_tiles`: a tile is blended with the one above, then with the one to its
+left — both *as made*. The left neighbour's top rows were never blended with what is above them, so over the
+whole overlap between two columns the picture jumps, at the row where the tiles start, from the row of tiles
+above to the left tile's raw top edge (weight 1 at the overlap's left, fading to its right). The width of 2048
+is three columns overlapping by **512 px each** — half the picture's width carries the step, in the middle,
+where the chest is. A VAE tile's edge rows are also its worst (less context), hence "smoother above, more
+textured below".
+
+Fixed: `stitch` is now a weighted mean — every tile ramps over each overlap on both axes at once, so nothing
+steps (`TinyModelTests`, "VaeTiles stitches tiles that disagree without a step", fails on the old code).
+MiniMax H3's VAE keeps the old one as `stitchAsDiffusers`: it is checked against its reference's frames to the
+pixel, and its video has the same flaw to look at later.
+
+Measured (`~/dev/redraw-experiments/2026-10-06-seam`, `run.py`; the same source, model and seed as
+`beach-2k-raw.png`, through an isolated drift): the mean change from one row to the next over the middle half of
+the width is 3.82 levels at y = 1360 in the old picture against about 2.0 on the rows around it, and 2.11 in
+the new one — a row like its neighbours. The two other rows where a tile starts had the same step in the old
+picture and lost it: y = 672, 7.6 against about 5.4, now 5.5; y = 2048, 2.1 against about 1.0, now 1.2. `seam-old-new.jpg` has the two crops, old above new. The "shorter, fainter line a hundred pixels higher" of the 1k re-upscale and
+the last 8 rows and columns stepping harder (bug 40) are not explained by this.
 
 ## Symptom
 

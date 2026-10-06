@@ -98,12 +98,12 @@ object RedrawPlan {
     */
   val PictureSide = 1536
 
-  /** How long a reading may take, in minutes. It is one answer for every
-    * tile, and measured at 98 s for the 64 tiles of an 8192² picture and 145 s
-    * for 24 with another assistant: a second and a half to six seconds a tile,
-    * so from eight minutes to half an hour for the 289 tiles of the largest
-    * picture drift makes, 16384². The browser, the server and the call to the
-    * assistant all wait as long.
+  /** How long a reading may take, in minutes. It is one answer for every tile,
+    * and measured at 98 s for the 64 tiles of an 8192² picture and 145 s for 24
+    * with another assistant: a second and a half to six seconds a tile, so from
+    * eight minutes to half an hour for the 289 tiles of the largest picture
+    * drift makes, 16384². The browser, the server and the call to the assistant
+    * all wait as long.
     */
   val ReadingMinutes = 60
 

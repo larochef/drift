@@ -51,27 +51,32 @@ object ApiClient {
     */
   def streamWithFailureReason[I, O](
       endpoint: PublicEndpoint[I, String, O, Any],
-      /** How long the answer may take. sttp gives a request one minute and
-        * then aborts the fetch — "the operation was aborted" — which is far
-        * less than an assistant takes to read a large picture.
+      /** How long the answer may take. sttp gives a request one minute and then
+        * aborts the fetch — "the operation was aborted" — which is far less
+        * than an assistant takes to read a large picture.
         */
       within: FiniteDuration = DefaultWait
   ): I => EventStream[O] = {
     val request = interpreter.toRequestThrowDecodeFailures(endpoint, baseUri)
     input =>
       EventStream.fromJsPromise(
-        request(input).readTimeout(within).send(backend).map(_.body).flatMap {
-          case Right(output) => Future.successful(output)
-          case Left(reason)  =>
-            Future.failed(
-              RuntimeException(
-                // An empty reason is drift's own server giving up before the
-                // site answered: it sends a 503 with no body.
-                if (reason.trim.nonEmpty) reason
-                else "No answer came in time — the site may be overloaded."
+        request(input)
+          .readTimeout(within)
+          .send(backend)
+          .map(_.body)
+          .flatMap {
+            case Right(output) => Future.successful(output)
+            case Left(reason)  =>
+              Future.failed(
+                RuntimeException(
+                  // An empty reason is drift's own server giving up before the
+                  // site answered: it sends a 503 with no body.
+                  if (reason.trim.nonEmpty) reason
+                  else "No answer came in time — the site may be overloaded."
+                )
               )
-            )
-        }.toJSPromise
+          }
+          .toJSPromise
       )
   }
 }

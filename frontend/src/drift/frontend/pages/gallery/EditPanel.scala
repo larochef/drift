@@ -31,7 +31,7 @@ class EditPanel(
     /** The SeedVR2 configurations an edit can be carried up by. */
     upscaleConfigurations: Signal[List[ConfigurationOption]],
     viewed: Var[Option[ViewedImage]],
-    geometry: Var[RedrawGeometry],
+    geometry: Var[TileGeometry],
     showTileGrid: Var[Boolean],
     gridOffset: Var[TileOffset],
     /** Whether edit is the task on screen — the one whose tiles the picture
@@ -76,8 +76,8 @@ class EditPanel(
     editConfigurations.map(_.nonEmpty).distinct
 
   private val area = TileAreaFields(
-    editConfigurations,
-    configurationVar.signal,
+    TileAreaFields.selectionCut(editConfigurations, configurationVar.signal),
+    takesSelection = true,
     viewed,
     geometry,
     showTileGrid,

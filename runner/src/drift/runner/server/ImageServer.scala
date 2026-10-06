@@ -17,12 +17,13 @@ import com.sun.net.httpserver.{HttpExchange, HttpServer}
 /** `sd-server`'s native API (`/sdcpp/v1`) on the runner's image or video
   * pipeline, as drift drives it (`specs/42`, steps 12 and 14): the capabilities
   * document (the form's defaults, from the launch flags), `img_gen` or
-  * `vid_gen` jobs queued and run one at a time, polled, and cancelled while
-  * queued. A request starts from the launch flags' values and overrides what it
-  * sends. Progress goes to the log as sd-cpp prints it (`| i/n - Xs/it`), which
-  * drift parses. Images come as base64 or data URLs; references are stretched
-  * to the output's size first unless `auto_resize_ref_image` is false, as
-  * sd-server does. A video comes back as one webm (`VideoFiles`).
+  * `vid_gen` jobs queued and run one at a time, polled, and cancelled — while
+  * queued, or between two steps once generating. A request starts from the
+  * launch flags' values and overrides what it sends. Progress goes to the log
+  * as sd-cpp prints it (`| i/n - Xs/it`), which drift parses. Images come as
+  * base64 or data URLs; references are stretched to the output's size first
+  * unless `auto_resize_ref_image` is false, as sd-server does. A video comes
+  * back as one webm (`VideoFiles`).
   */
 final class ImageServer(
     options: ImageOptions,
@@ -41,7 +42,18 @@ final class ImageServer(
     @volatile var completed: Option[Long] = None
     @volatile var result: Option[ujson.Value] = None
     @volatile var error: Option[String] = None
+
+    /** Asked to stop while it generates: read between two steps. */
+    @volatile var cancelRequested: Boolean = false
   }
+
+  /** What a step throws once its job is asked to stop: the generation unwinds
+    * the way a failed one does, and the job ends `cancelled`.
+    */
+  final private class JobCancelled extends RuntimeException("cancelled")
+
+  /** The job the worker is generating, if any. */
+  @volatile private var generating: Option[Job] = None
 
   private val mode = pipeline match {
     case _: ImagePipeline   => "img_gen"
@@ -234,7 +246,7 @@ final class ImageServer(
             "lora" -> (video.takesLoras && options.loraDirectory.isDefined),
             "vae_tiling" -> false,
             "cancel_queued" -> true,
-            "cancel_generating" -> false
+            "cancel_generating" -> true
           ),
           ujson.Arr("webm")
         )
@@ -246,7 +258,7 @@ final class ImageServer(
             "batch" -> SeedVr2Options.Default.batch,
             "overlap" -> SeedVr2Options.Default.overlap
           ),
-          ujson.Obj("cancel_queued" -> true, "cancel_generating" -> false),
+          ujson.Obj("cancel_queued" -> true, "cancel_generating" -> true),
           ujson.Arr("png", "webm")
         )
     }
@@ -306,7 +318,7 @@ final class ImageServer(
       "hires" -> false,
       "vae_tiling" -> false,
       "cancel_queued" -> true,
-      "cancel_generating" -> false
+      "cancel_generating" -> true
     )
 
   /** `POST /sdcpp/v1/img_gen`: a job from the request over the launch flags'
@@ -819,6 +831,11 @@ final class ImageServer(
           job.status = "cancelled"
           job.completed = Some(System.currentTimeMillis() / 1000)
           json(exchange, 200, describe(job))
+        } else if (job.status == "generating") {
+          // Stopped at the next step, not here: the answer says it still
+          // generates, and the next poll finds it cancelled.
+          job.cancelRequested = true
+          json(exchange, 200, describe(job))
         } else
           json(exchange, 409, ujson.Obj("error" -> s"the job is ${job.status}"))
       case Some(job) => json(exchange, 200, describe(job))
@@ -851,6 +868,9 @@ final class ImageServer(
   private def stepPrinter(): (Int, Int) => Unit = {
     var last = System.nanoTime()
     (step, steps) =>
+      // Between two steps is where a generation can be left: every pipeline
+      // reports them here, and none holds a kernel across the call.
+      if (generating.exists(_.cancelRequested)) throw new JobCancelled
       if (steps > 0) {
         val now = System.nanoTime()
         val filled = 50 * step / steps
@@ -919,15 +939,20 @@ final class ImageServer(
       val job = queue.take()
       job.status = "generating"
       job.started = Some(System.currentTimeMillis() / 1000)
+      generating = Some(job)
       try {
         job.result = Some(job.run())
         job.status = "completed"
       } catch {
+        case _: JobCancelled =>
+          println("generation cancelled")
+          job.status = "cancelled"
         case error: Throwable =>
           System.err.println(s"[ERROR] generation failed: $error")
           job.error = Some(String.valueOf(error.getMessage))
           job.status = "failed"
       }
+      generating = None
       job.completed = Some(System.currentTimeMillis() / 1000)
     }
 }

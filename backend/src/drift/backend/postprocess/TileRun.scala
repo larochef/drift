@@ -199,6 +199,11 @@ final private[postprocess] class TileRun(
               )
               .map { server =>
                 stopServer = server.stop
+                // The job's own server, so a cancel stops it at once: the
+                // tile in flight then ends on a dead server, which `fail`
+                // records as the cancel it is (bug 44). A session's server
+                // is not the job's to stop.
+                jobs.runsOn(job, server.stop)
                 server.port -> (() => server.exitCode)
               }
           )

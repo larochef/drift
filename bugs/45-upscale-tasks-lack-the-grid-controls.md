@@ -1,14 +1,36 @@
 # Bug 45 — The upscale tasks' grid is not drawn, and they lack the grid controls of a redraw and an edit
 
-**Status:** open (asked by François 2026-10-05: "we could have a grid for the upscale tasks too, as for the
-edit and redraw since it is a tiled job too"; not built — what exactly is wanted is to confirm with him)
+**Status:** fixed in code 2026-10-06, as the one refactoring asked for (Done, below) — compiled, gate green,
+not seen in a browser (asked by François 2026-10-05: "we could have a grid for the upscale tasks too, as for
+the edit and redraw since it is a tiled job too")
 **Severity:** medium (the checkbox is there and draws nothing; the controls are a missing feature)
 **Files:** `frontend/src/drift/frontend/pages/gallery/TileAreaFields.scala` (redraw's and edit's),
 `PidUpscalePanel.scala`, `SeedVr2UpscalePanel.scala`, `UpscaleTaskPanel.scala`;
 `shared/src/drift/shared/PostProcess.scala` (`PidUpscaleRequest.tilesFor`, `SeedVr2UpscaleRequest.tilesFor`:
 the grid falls where it falls, `offsetX = 0`, `offsetY = 0`, the tile size the runtime's maximum)
 
-## Today
+## Done (2026-10-06)
+
+- **Two gates kept the grid off an upscale, not one.** The picture's size was only recorded for redraw and
+  edit (below), and `GenerationMediaViewer.media` only added the grid's element in its `selectable` branch.
+  The size is now the picture's whatever task is open, reset when the picture on screen changes; the grid is
+  drawn and can be dragged while any tiled task is open (`DetailPicture.tiled`), the box only while one that
+  takes a selection is (`selectable`, `PostProcessSection.SelectionTasks`).
+- **One piece for where the tiles fall**: `TileAreaFields`, held by redraw, edit, SeedVR2 and PiD — the tile
+  field, the grid's switch and reset, the plan, and what it publishes to the picture. The one difference is
+  its `Cut`: `Selection` (the model's multiple; window and margin fields) or `Whole` (an upscale's tiling in
+  target px and its scale to the picture). The picture reads one `TileGeometry` (`RedrawGeometry`,
+  `UpscaleGeometry`, `NoTiles` for ESRGAN): `pidTiles`, `seedVr2Tiles` and the upscale branch of
+  `DetailPicture.drawnTiles` are gone.
+- **The upscale requests carry the tile size and the grid's shift** (`tileSize`, `gridOffsetX`,
+  `gridOffsetY`, in target px), and both sides lay the tiles out from one `UpscaleTiling`
+  (`PidUpscaleRequest.tilingFor`, `SeedVr2UpscaleRequest.tilingFor`). The tile is kept between 1024 px and the
+  largest the runtime takes; the overlap stays `Tiling.Overlap`.
+- Not done: an overlap the user can set (`bugs/42`'s other idea). A shifted grid's end tiles can be as short
+  as two overlaps (512 target px), as a redraw's can — how SeedVR2 and PiD take tiles that small is not
+  measured.
+
+## Before
 
 - **Redraw and Edit** (`TileAreaFields`): the grid drawn over the picture, the tile size as a field, the grid
   moved by hand so that a seam does not cross a face, the plan (how many tiles) before the job starts.

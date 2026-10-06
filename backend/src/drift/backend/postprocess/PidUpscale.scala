@@ -46,7 +46,10 @@ final private[postprocess] class PidUpscale(tiles: TiledJobs) {
         // job (`PidUpscaleRequest.tilesFor`).
         val rows = PidUpscaleRequest.tilesFor(
           target,
-          PidUpscaleRequest.maxTileFor(launch.runtime)
+          PidUpscaleRequest.maxTileFor(launch.runtime),
+          request.tileSize,
+          request.gridOffsetX,
+          request.gridOffsetY
         )
         tiles.startTiles(
           "pid",

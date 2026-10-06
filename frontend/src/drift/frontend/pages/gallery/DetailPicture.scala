@@ -64,18 +64,29 @@ class DetailPicture(
       )
       .distinct
 
-  /** Whether a box may be drawn on the picture: only on the result, and only
-    * while the redraw panel is the one on screen — the upscalers have nothing
-    * to do with a selection. Drawing one that nothing on screen can act on was
-    * the tool appearing where it does not belong (François, 2026-09-19).
+  /** The task on screen, if one is: only on the result, and only while the
+    * post-processing panel is the one showing.
     */
-  val selectable: Signal[Boolean] =
+  private val taskOnScreen: Signal[Option[String]] =
     showOriginal.signal
       .combineWith(openSection.signal, panelHidden.signal, openTask.signal)
       .map((original, section, hidden, task) =>
-        !original && !hidden && section == "post" &&
-          PostProcessSection.TiledTasks.contains(task)
+        Option.when(!original && !hidden && section == "post")(task)
       )
+      .distinct
+
+  /** Whether a tiled task is on screen: its grid is drawn over the picture. */
+  val tiled: Signal[Boolean] =
+    taskOnScreen.map(_.exists(PostProcessSection.TiledTasks.contains)).distinct
+
+  /** Whether a box may be drawn on the picture: only while a task that takes a
+    * selection is the one on screen — the upscalers work the whole picture.
+    * Drawing one that nothing on screen can act on was the tool appearing where
+    * it does not belong (François, 2026-09-19).
+    */
+  val selectable: Signal[Boolean] =
+    taskOnScreen
+      .map(_.exists(PostProcessSection.SelectionTasks.contains))
       .distinct
 
   /** The output on screen: the one the strip points at, or the original. */
@@ -88,29 +99,26 @@ class DetailPicture(
       .distinct
 
   /** The image the viewer shows and the part of it a redraw should repaint
-    * (`specs/27-redraw.md`): the viewer writes it, the redraw panel reads it.
+    * (`specs/27-redraw.md`): the viewer writes it, the tiled tasks read it.
     */
   val viewed = Var(Option.empty[ViewedImage])
 
-  /** What the redraw panel would do with a selection — its tile size, margin
-    * and window. The panel writes it as its fields are typed; the viewer reads
-    * it to count tiles under the box and to stick to their boundaries.
+  /** How the task on screen would cut the picture — its tile size, and for a
+    * task that takes a selection its margin and window. The panel writes it as
+    * its fields are typed; the viewer reads it to draw the grid, to count tiles
+    * under the box and to stick to their boundaries.
     */
-  val redrawGeometry = Var(RedrawGeometry())
+  val tileGeometry = Var[TileGeometry](RedrawGeometry())
 
-  /** Whether the tiles a redraw would run are drawn over the picture. The
-    * redraw panel's checkbox writes it, the viewer reads it; it belongs to the
-    * image on screen rather than to the host, like the rest of the panel's
-    * fields.
+  /** Whether the tiles the open task would run are drawn over the picture. The
+    * task's checkbox writes it, the viewer reads it; it belongs to the image on
+    * screen rather than to the host, like the rest of the panel's fields.
     */
   val showTileGrid = Var(true)
 
-  /** The tiles the PiD panel would decode, in the picture's own pixels. */
-  val pidTiles = Var(List.empty[ImageRegion])
-
   /** Where that grid is cut. Dragging a line of it on the picture moves it, so
     * a face can be put inside one tile instead of across the seam between two;
-    * the redraw panel sends it with the job.
+    * the task sends it with the job.
     */
   val gridOffset = Var(TileOffset(0, 0))
 
@@ -158,13 +166,8 @@ class DetailPicture(
     */
   val drawnTiles: Signal[List[TilePaint]] =
     jobOnPicture
-      .combineWith(
-        openTask.signal,
-        viewed.signal,
-        redrawGeometry.signal,
-        pidTiles.signal
-      )
-      .map { (job, task, shown, geometry, pid) =>
+      .combineWith(viewed.signal, tileGeometry.signal)
+      .map { (job, shown, geometry) =>
         job match {
           case Some(running) =>
             val done = running.progress.fold(0)(_.completed)
@@ -176,14 +179,12 @@ class DetailPicture(
               else TilePaint(tile, TileState.Waiting)
             }
           case None =>
-            val planned =
-              if (task == PostProcessSection.UpscaleTask) pid
-              else
-                shown.toList.flatMap(picture =>
-                  geometry
-                    .layoutFor(picture.selection, picture.width, picture.height)
-                )
-            planned.map(TilePaint(_, TileState.Waiting))
+            shown.toList
+              .flatMap(picture =>
+                geometry
+                  .layoutFor(picture.selection, picture.width, picture.height)
+              )
+              .map(TilePaint(_, TileState.Waiting))
         }
       }
       .distinct

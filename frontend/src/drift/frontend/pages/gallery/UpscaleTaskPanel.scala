@@ -23,10 +23,13 @@ class UpscaleTaskPanel(
     pidConfigurations: Signal[List[ConfigurationOption]],
     upscalers: Signal[List[Upscaler]],
     /** The picture on screen, for the size it really has. */
-    viewed: Signal[Option[ViewedImage]],
-    /** Where the chosen model's tiles go, in the picture's own pixels. */
-    gridTiles: Var[List[ImageRegion]],
+    viewed: Var[Option[ViewedImage]],
+    /** Where the chosen model's tiles go, for the picture to draw them. */
+    geometry: Var[TileGeometry],
     showTileGrid: Var[Boolean],
+    gridOffset: Var[TileOffset],
+    /** Whether the upscale task is the one on screen. */
+    active: Signal[Boolean],
     sourcePrompt: String,
     prerequisites: LaunchPrerequisites,
     onSeedVr2: (GenerationOutput, SeedVr2UpscaleRequest) => Unit,
@@ -45,8 +48,6 @@ class UpscaleTaskPanel(
   private val seedVr2Var = Var("")
   private val pidVar = Var("")
   private val esrganVar = Var("")
-  private val seedVr2Tiles = Var(List.empty[ImageRegion])
-  private val pidTiles = Var(List.empty[ImageRegion])
 
   /** Every model that can upscale the selected output: SeedVR2 first, its
     * built-in default at the head, then PiD, then ESRGAN.
@@ -103,16 +104,12 @@ class UpscaleTaskPanel(
         case _           => esrganVar.set(choice.id)
       }
     }),
-    // the grid on the picture is the chosen model's
-    kind
-      .combineWith(seedVr2Tiles.signal, pidTiles.signal)
-      .map { (of, seedVr2, pid) =>
-        of match {
-          case SeedVr2Kind => seedVr2
-          case PidKind     => pid
-          case _           => List.empty[ImageRegion]
-        }
-      } --> gridTiles,
+    // the grid on the picture is the chosen model's: each tiled kind's panel
+    // publishes its own while it is the one chosen, and a model that cuts
+    // nothing leaves no grid behind
+    active.combineWith(kind) --> Observer[(Boolean, String)] { (shown, of) =>
+      if (shown && of != SeedVr2Kind && of != PidKind) geometry.set(NoTiles)
+    },
     p(
       cls := "post-intro text-secondary",
       cls("is-hidden") <-- choices.map(_.nonEmpty),
@@ -136,8 +133,10 @@ class UpscaleTaskPanel(
         output,
         seedVr2Var,
         viewed,
-        seedVr2Tiles,
+        geometry,
         showTileGrid,
+        gridOffset,
+        active.combineWith(kind).map(_ && _ == SeedVr2Kind).distinct,
         prerequisites,
         onSeedVr2
       ).element
@@ -149,8 +148,10 @@ class UpscaleTaskPanel(
         pidConfigurations,
         pidVar,
         viewed,
-        pidTiles,
+        geometry,
         showTileGrid,
+        gridOffset,
+        active.combineWith(kind).map(_ && _ == PidKind).distinct,
         sourcePrompt,
         prerequisites,
         onPid

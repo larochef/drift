@@ -135,6 +135,10 @@ In drift:
     — each the runner's `upscale` job on its crop, colour-matched to that
     crop (`colourMatched`) and feather-blended. It pauses and resumes, shows
     its tiles on the picture, and stops at 16384 px on the longest side.
+    The tile size (1024 px to that largest) and the grid's shift are the
+    request's (`tileSize`, `gridOffsetX`, `gridOffsetY`, target px), set on
+    the tiled tasks' shared piece (`TileAreaFields`) and laid out by both
+    sides from `SeedVr2UpscaleRequest.tilingFor`.
     What a tiled job asks its server for is the one thing that differs
     between models (`TileRequests`: an `img_gen` a tile for PiD, redraw and
     edit; the runner's `upscale` a tile for SeedVR2).

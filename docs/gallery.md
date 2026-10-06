@@ -74,9 +74,10 @@ the **model** to do it with, an **▸ Advanced** section — folded, the way an
 architecture's LoRAs are — holding every other parameter, and last of all what
 the job will be and the button that starts it.
 Nothing of a task sits after its own button, and Advanced stays open once you
-open it, keeping what you typed while you move between tasks and images. A
-redraw puts the two switches for the grid drawn over the picture beside that
-last line rather than in the form: they change nothing about the job.
+open it, keeping what you typed while you move between tasks and images. The
+tiled tasks — redraw, edit, and a SeedVR2 or PiD upscale — put the two
+switches for the grid drawn over the picture beside that last line rather
+than in the form: they change nothing about the job.
 
 - **⬆ Upscale** is one task whatever enlarges the picture: its **model**
   select lists every upscaler you have — the SeedVR2 and PiD run
@@ -93,7 +94,8 @@ last line rather than in the form: they change nothing about the job.
   **SeedVR2 3B upscale** is lighter and a little faster; *Advanced* holds the
   seed. There is no prompt. A picture larger than one pass (about 1088 px a
   side at ×4) is cut in tiles like a PiD's — the line before the button says
-  how many, **show the grid** draws them, and the job can be paused and
+  how many, **show the grid** draws them, *Advanced* holds the **tile** size
+  (see the tile grid below), and the job can be paused and
   resumed; the target stops at 16384 px on the longest side. A video keeps its
   frame rate and its soundtrack and comes back as a new video entry.
   **Original** / **Result** compares the two. A picture's colours
@@ -123,7 +125,8 @@ last line rather than in the form: they change nothing about the job.
     a 4096² target is a single pass: the whole image decoded at once, with no
     seams. It takes about 5 minutes for 1024 → 4096. Larger targets are cut
     into 4096² tiles. The tile grid shown before the job follows the default
-    runtime.
+    runtime; *Advanced* holds the **tile** size, and the grid can be moved
+    (see the tile grid below).
 - **✨ Redraw**: a low-strength img2img pass, tile by tile, that repaints
   texture (skin, hair, fabric) while the composition stays. Pick an image
   configuration, a strength (0.4 by default), and optionally *instructions*
@@ -140,6 +143,16 @@ last line rather than in the form: they change nothing about the job.
   and fine hairs", "coarse sand with small pebbles") and its own strength:
   0 for a tile to leave as it is (an even sky), 0.2–0.3 for a face, 0.4–0.5
   where detail should be added. It takes two to three minutes for 24 tiles.
+
+  With no such assistant running, the line under the button offers to start
+  one: the chat configuration with a vision projector you ran last (a select
+  when you have several), and **▶ Start … and read the picture** — the
+  picture is read as soon as the model has loaded, so it is still one click.
+  If a chat model that does not read images is running, the button says so
+  and replaces it: **⏹ Stop …, start … and read the picture**. Nothing is
+  stopped or started beside another without that click. The assistant stays
+  loaded afterwards, for the next picture; stop it from the Sandbox or its
+  project when you want its memory back.
   The line beside the button sums it up, **Tiles** lists every tile with
   its strength and prompt, all editable, and nothing starts until you press
   **✨ Redraw**; untick **use it for this redraw** to go back to one prompt
@@ -196,8 +209,9 @@ last line rather than in the form: they change nothing about the job.
   *drift skin de-artifacting* restoration prompt with it, and keep the area
   small — at that strength the composition holds because the region is small
   and feathered, not because the model is being careful.
-- **The tile grid** is drawn over the picture while the **Redraw** or **Edit**
-  task is open: every tile the job would run, one pass of the model each, with the
+- **The tile grid** is drawn over the picture while a tiled task is open —
+  **Redraw**, **Edit**, or **Upscale** with a SeedVR2 or PiD model: every tile
+  the job would run, one pass of the model each, with the
   brighter bands where neighbours overlap and are blended back together. It
   follows the fields as you type them — a larger tile means fewer boxes — and
   once you drag a box it switches to the tiles of the *window* that box is
@@ -223,6 +237,13 @@ last line rather than in the form: they change nothing about the job.
   the sign that the grid can be moved at all. Opening another image starts from an
   unshifted grid; stepping through a batch keeps the shift, the images being
   the same size.
+
+  An **upscale** has the same grid, switch and reset, drawn where its tiles
+  fall on the picture you are looking at. Its **tile** field (*Advanced*) is
+  in pixels of the result: empty is the largest tile the model takes in one
+  pass, which is the fewest tiles; a smaller number, from 1024, cuts more of
+  them. An upscale always works the whole picture — no box can be drawn while
+  it is open, and the one you drew for a redraw is kept for when you come back.
 - **The tile size** is rounded up to what the model accepts — most take any
   multiple of 16, Qwen Image 2.1 wants 32 — so the tile count before the button
   may sit on a slightly larger tile than the one you typed.

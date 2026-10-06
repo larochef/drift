@@ -34,12 +34,16 @@ class GenerationMediaViewer(
       * does not act on.
       */
     selectable: Signal[Boolean],
-    /** The image on screen and the box drawn on it, for the redraw panel. */
-    viewed: Var[Option[ViewedImage]],
-    /** What a redraw would make of that box, from the redraw panel's fields —
-      * what the drag moves, and what the box sticks to.
+    /** Whether a tiled task is on screen: its grid is drawn over the picture
+      * and can be dragged, whether or not the task takes a box.
       */
-    geometry: Signal[RedrawGeometry],
+    tiled: Signal[Boolean],
+    /** The image on screen and the box drawn on it, for the tiled tasks. */
+    viewed: Var[Option[ViewedImage]],
+    /** How the open task would cut the picture, from its panel's fields — what
+      * the drag moves, and what the box sticks to.
+      */
+    geometry: Signal[TileGeometry],
     /** The tiles to draw over the picture, in its own pixels, each with what
       * has become of it: a running job's are done, running or still to come; a
       * task's are all still to come (`specs/15-post-hoc-resize.md`).
@@ -69,7 +73,8 @@ class GenerationMediaViewer(
   private val sizeOf = ApiClient.stream(getOutputSize)
 
   /** What a press, a move and a release do to the box and the grid. */
-  private val pointer = PicturePointer(viewed, geometry, showTiles, gridOffset)
+  private val pointer =
+    PicturePointer(viewed, geometry, selectable, showTiles, gridOffset)
 
   /** The box, its handles and what it would cost, over the picture. */
   private val overlay: Signal[Option[HtmlElement]] =
@@ -78,8 +83,9 @@ class GenerationMediaViewer(
         image <- shown
         region <- image.selection
       } yield {
-        val tiles = sticky.tilesFor(region, image.width, image.height)
-        val window = sticky.windowFor(region, image.width, image.height)
+        val tiles =
+          sticky.layoutFor(Some(region), image.width, image.height).size
+        val window = sticky.areaFor(Some(region), image.width, image.height)
         div(
           cls := "gallery-selection",
           styleAttr :=
@@ -148,6 +154,7 @@ class GenerationMediaViewer(
 
   private def media(
       output: GenerationOutput,
+      tiled: Boolean,
       selectable: Boolean
   ): HtmlElement =
     if (GenerationMediaViewer.isVideo(output))
@@ -166,22 +173,23 @@ class GenerationMediaViewer(
         alt := RecordedParameters.titleOf(generation),
         // The browser's own image drag would take over the selection drag.
         onDragStart --> (_.preventDefault()),
-        // The file's own size, not the preview's: the selection is in its
-        // pixels. The preview's size stands in until the answer arrives.
+        // The file's own size, not the preview's: the selection and the tiles
+        // are in its pixels. The preview's size stands in until the answer
+        // arrives. It is the picture's, whatever task is open: every tiled
+        // task plans with it (bug 45).
         sizeOf((output.date, output.fileName)).recoverToTry --> Observer[
           scala.util.Try[OutputSize]
         ] { answer =>
-          if (selectable)
-            answer.toOption.foreach(size =>
-              viewed.update(
-                _.map(_.copy(width = size.width, height = size.height))
-                  .orElse(Some(ViewedImage(size.width, size.height)))
-              )
+          answer.toOption.foreach(size =>
+            viewed.update(
+              _.map(_.copy(width = size.width, height = size.height))
+                .orElse(Some(ViewedImage(size.width, size.height)))
             )
+          )
         },
         onLoad --> { event =>
           val loaded = event.target.asInstanceOf[dom.html.Image]
-          if (selectable && viewed.now().isEmpty)
+          if (viewed.now().isEmpty)
             viewed.set(
               Some(ViewedImage(loaded.naturalWidth, loaded.naturalHeight))
             )
@@ -196,18 +204,21 @@ class GenerationMediaViewer(
           .map(image => s"aspect-ratio: ${image.width} / ${image.height};")
           .getOrElse("")
       )
-      if (!selectable)
+      // A tiled task draws its grid, which can be dragged; the box belongs to
+      // the tasks that take a selection.
+      if (!tiled)
         div(cls := "gallery-selectable", ratio, picture, jobPictureLayer)
       else
         div(
-          cls := "gallery-selectable is-selecting",
+          cls := "gallery-selectable",
+          cls("is-selecting") := selectable,
           ratio,
           picture,
           jobPictureLayer,
           cls("is-on-grid") <-- pointer.overGrid,
           pointer.modifiers,
           child.maybe <-- tileGrid,
-          child.maybe <-- overlay
+          if (selectable) child.maybe <-- overlay else emptyMod
         )
     }
 
@@ -230,6 +241,8 @@ class GenerationMediaViewer(
     // The box was drawn on one picture; showing another is not a request to
     // repaint the same place on it.
     pointer.clearOnChange(selectedIndex.signal.changes, shown.changes),
+    // Nor is its size the next one's: the new picture records its own.
+    shown.changes --> (_ => viewed.set(None)),
     div(
       cls := "gallery-media-row",
       // The batch down the side, where it costs no height and cannot be
@@ -248,11 +261,11 @@ class GenerationMediaViewer(
       div(
         cls := "gallery-detail-media",
         child <-- shown
-          .combineWith(selectable)
+          .combineWith(tiled, selectable)
           .distinct
-          .map { (output, canSelect) =>
+          .map { (output, hasTiles, canSelect) =>
             output
-              .map(media(_, selectable = canSelect))
+              .map(media(_, tiled = hasTiles, selectable = canSelect))
               .getOrElse(p(cls := "text-secondary", "No output file recorded."))
           }
       )

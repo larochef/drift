@@ -1,8 +1,9 @@
 # Bug 44 — Stop does not always end the server's process: the model stays in memory
 
-**Status:** open — cause read in the code 2026-10-05 for the case François hit (a redraw on FLUX.2 dev on the
-drift runner, stopped with the redraw task's Stop); not fixed, not reproduced; why the runner ignores a SIGTERM
-sent by hand is still not known
+**Status:** fixed in code 2026-10-06 for the case François hit (a redraw on FLUX.2 dev on the drift runner,
+stopped with the redraw task's Stop) — compiled, not run live: a cancel stops a tiled job's own server at once,
+and the runner cancels a running job between two steps (Fixed, below). Still open: why the runner ignores a
+SIGTERM sent by hand (a lead below), and the audit of the other stop paths (Wanted)
 **Severity:** high (the memory of the old model stays taken, and probably its job keeps the GPU; the next
 model is loaded beside it — the oversubscription `MemoryHeadroom` warns about — and only a `kill -9` from a
 terminal frees it)
@@ -54,21 +55,33 @@ simply finishes"), so the wait in 3 is not the runner's alone.
 Still unexplained: the SIGTERM sent by hand did not end the runner either. See the first lead below — and if
 that is what happens, step 4's own SIGTERM is ignored too and the kill comes only after the grace period.
 
-## To do
+## Fixed (2026-10-06, not run live)
 
 - **A cancel stops a tiled job's server at once**: `TileRun` registers its server with `jobs.runsOn`, as the
-  SeedVR2 video does, when the server is the job's own (not a session's it borrowed). The tile's wait then ends
-  on a dead server and must be read as the cancel it is, not as a failure.
-- **The runner cancels a running job**: a flag the samplers read between two steps (and the tiled VAE between
-  two tiles), the job ending `cancelled`, 200 to the cancel. A pause's forced stop and a session's Stop get it
-  too, and the server stays loaded for the next job where that is wanted.
+  SeedVR2 video and `EditCarry` do, when the server is the job's own (not a session's it borrowed). The cancel
+  goes through `ServerProcesses.terminate` — SIGTERM, the grace period, SIGKILL — before it answers, so the
+  process is gone when the page says stopped (up to ~15 s when the SIGTERM is ignored). The tile's wait ends on
+  a dead server, which `PostProcessJobs.fail` records as the cancel it is.
+- **The runner cancels a running job**: `ImageServer` answers 200 to the cancel of a generating job and sets a
+  flag its step callback reads (`stepPrinter`, which every pipeline reports its steps to); the generation
+  unwinds and the job ends `cancelled`. Its capabilities now say `cancel_generating: true`, so a session's
+  Stop and a pause's forced stop drop the generation and keep the model loaded. Between two steps only: a
+  one-step job (SeedVR2) and the VAE's tiles are not interrupted.
+
+## To do
+
 - **The runner ends on SIGTERM** whatever its GPU thread is doing (below).
 
 ## Leads
 
 - **The process ignores SIGTERM.** Confirmed by hand. A JVM on SIGTERM runs its shutdown hooks and waits for
   them: a hook, or an ox scope closing, that waits on a thread blocked in a native GPU call (the blocking wait
-  of bug 38, a kernel that never returns) never finishes. sd-cpp and llama.cpp have their own handlers and may
+  of bug 38, a kernel that never returns) never finishes. Read 2026-10-06: the image runner registers no
+  shutdown hook of its own (only `HipRuntime.Trace`'s, under `DRIFT_HIP_TRACE`), so the likelier place is
+  after the hooks — the JVM's exit runs libc's `exit()`, and with it the HIP runtime's own teardown, which
+  may wait for the kernel in flight. Not verified: `jstack <pid>` and `gdb -p <pid>` (or
+  `/proc/<pid>/stack`) on the hung process tell. If so, a shutdown hook that calls `_exit` through FFM
+  would end it. sd-cpp and llama.cpp have their own handlers and may
   wait for the step in progress.
 - **The SIGKILL that should follow is not sent, or not to that process.** Which stop paths go through
   `terminate` and which only ask the server to stop over HTTP or call `destroy()` alone; a stop that returns to

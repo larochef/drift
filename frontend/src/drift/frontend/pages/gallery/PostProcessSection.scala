@@ -38,16 +38,14 @@ class PostProcessSection(
       * cannot start yet offers the download instead of its job.
       */
     prerequisites: LaunchPrerequisites,
+    /** The assistants that can read the picture, for an auto redraw. */
+    assistants: VisionAssistants,
     /** The image on screen and the box drawn on it, for the redraw panel. */
     viewed: Var[Option[ViewedImage]],
-    /** Where the redraw panel publishes what a selection would cost. */
-    geometry: Var[RedrawGeometry],
-    /** Where the upscale task publishes the tiles its job would run, in the
-      * picture's own pixels — its grid is not a redraw's.
-      */
-    pidTiles: Var[List[ImageRegion]],
-    /** Whether the picture shows the tiles a redraw would run — the redraw
-      * panel's checkbox, the viewer's to draw.
+    /** Where the task on screen publishes how it would cut the picture. */
+    geometry: Var[TileGeometry],
+    /** Whether the picture shows the tiles the open task would run — the task's
+      * checkbox, the viewer's to draw.
       */
     showTileGrid: Var[Boolean],
     /** Where that grid is cut: the viewer moves it, the redraw panel sends it
@@ -105,6 +103,7 @@ class PostProcessSection(
         gridOffset,
         openTask.signal.map(_ == PostProcessSection.RedrawTask),
         prerequisites,
+        assistants,
         onRedraw
       ).element
     ),
@@ -133,9 +132,11 @@ class PostProcessSection(
         seedVr2Configurations,
         pidConfigurations,
         upscalers,
-        viewed.signal,
-        pidTiles,
+        viewed,
+        geometry,
         showTileGrid,
+        gridOffset,
+        shownTask.map(_ == PostProcessSection.UpscaleTask),
         sourcePrompt,
         prerequisites,
         onSeedVr2,
@@ -196,11 +197,17 @@ object PostProcessSection {
   val RedrawTask = "redraw"
   val EditTask = "edit"
 
-  /** The tasks that read the picture: a box may be drawn and the tiles are
-    * shown while one of them is open.
-    */
-  val TiledTasks: Set[String] = Set(RedrawTask, EditTask)
   val UpscaleTask = "upscale"
+
+  /** The tasks that cut the picture in tiles: the grid is drawn over it while
+    * one of them is open.
+    */
+  val TiledTasks: Set[String] = Set(RedrawTask, EditTask, UpscaleTask)
+
+  /** Those that take a selection: a box may be drawn while one of them is open.
+    * An upscale cannot work a partial tile set.
+    */
+  val SelectionTasks: Set[String] = Set(RedrawTask, EditTask)
 
   /** A panel's opening line: what this task does to the image, and what it
     * costs. Each panel says it for itself — one caption over all three could

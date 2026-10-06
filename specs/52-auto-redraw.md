@@ -16,6 +16,13 @@ and the redraw starts on the user's click.
 - **🤖 Read the picture**, in the redraw panel, asks the first running
   assistant whose model reads images. One call, whatever the picture's size,
   never one per tile.
+- With none running, the card offers to start one (`VisionAssistants`,
+  `VisionAssistantStarter`): a chat configuration that reads images —
+  `Architecture.readsImages`, a `--mmproj` slot with a file assigned — the
+  last one run first, launched through the gallery's own launch-or-download;
+  the reading is asked once it serves. A live chat model that does not read
+  images is replaced only by the one button that names both. The assistant
+  started stays loaded; its session's memory warning is shown in the card.
 - The answer gives **each tile its own prompt and strength**:
   - the prompt names the materials the tile shows and the fine detail they
     should have ("skin with pores and fine hairs", "coarse sand with small

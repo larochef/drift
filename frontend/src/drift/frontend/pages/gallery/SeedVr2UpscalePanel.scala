@@ -2,6 +2,7 @@ package drift.frontend.pages.gallery
 
 import drift.frontend.components.{Component, LaunchOrDownload}
 import drift.frontend.pages.gallery.PostProcessSection.*
+import drift.frontend.pages.gallery.TileAreaFields.Cut
 import drift.frontend.services.LaunchPrerequisites
 import drift.shared.*
 
@@ -11,20 +12,22 @@ import com.raquo.laminar.api.L.*
   * (`specs/51-seedvr2-upscaling.md`): the scale, a seed, and the button — for a
   * picture and for a video alike. One diffusion step on the drift runner, no
   * prompt; it restores harder than the other upscalers and says so. A picture
-  * past one pass is cut in tiles (`SeedVr2UpscaleRequest.tilesFor`), which the
-  * line before the button counts and the viewer can draw.
+  * past one pass is cut in tiles (`SeedVr2UpscaleRequest.tilingFor`): a tiled
+  * task like the others, with their tile field and their grid
+  * (`TileAreaFields`).
   */
 class SeedVr2UpscalePanel(
     output: Signal[Option[GenerationOutput]],
     /** The chosen configuration: the task's model select writes it. */
     configurationVar: Var[String],
     /** The picture on screen, for the size it really has. */
-    viewed: Signal[Option[ViewedImage]],
-    /** Where this panel puts the tiles its job would run, in the picture's own
-      * pixels.
-      */
-    gridTiles: Var[List[ImageRegion]],
+    viewed: Var[Option[ViewedImage]],
+    /** Where this panel's tiles go, for the picture to draw them. */
+    geometry: Var[TileGeometry],
     showTileGrid: Var[Boolean],
+    gridOffset: Var[TileOffset],
+    /** Whether this is the model the upscale task on screen runs. */
+    active: Signal[Boolean],
     prerequisites: LaunchPrerequisites,
     onSeedVr2: (GenerationOutput, SeedVr2UpscaleRequest) => Unit
 ) extends Component {
@@ -38,7 +41,7 @@ class SeedVr2UpscalePanel(
 
   /** The size a picture would come out at, or why the job is refused. */
   private val planned: Signal[Option[Either[String, (Int, Int)]]] =
-    viewed
+    viewed.signal
       .combineWith(scaleVar.signal, isVideo)
       .map((shown, scale, video) =>
         shown
@@ -50,39 +53,48 @@ class SeedVr2UpscalePanel(
       )
       .distinct
 
-  /** The tiles a picture's job would run, in the picture's own pixels. */
-  private val tiles: Signal[List[ImageRegion]] =
-    viewed
+  /** How a picture's job would cut it — nothing for a video or a refusal. */
+  private val cut: Signal[Option[Cut]] =
+    viewed.signal
       .combineWith(scaleVar.signal, planned)
       .map { (shown, scale, outcome) =>
         (shown, outcome) match {
           case (Some(picture), Some(Right(_))) =>
-            SeedVr2UpscaleRequest
-              .tilesFor((picture.width, picture.height), scale)
-              .flatten
-              .map(tile =>
-                ImageRegion(
-                  tile.x / scale,
-                  tile.y / scale,
-                  tile.width / scale,
-                  tile.height / scale
-                )
+            Some(
+              Cut.Whole(
+                SeedVr2UpscaleRequest
+                  .tilingFor((picture.width, picture.height), scale),
+                scale.toDouble
               )
-          case _ => List.empty
+            )
+          case _ => None
         }
       }
       .distinct
 
+  private val area = TileAreaFields(
+    cut,
+    takesSelection = false,
+    viewed,
+    geometry,
+    showTileGrid,
+    gridOffset,
+    active
+  )
+
   private val summary: Signal[String] =
     isVideo
-      .combineWith(scaleVar.signal, planned, tiles)
-      .map { (video, scale, outcome, laid) =>
+      .combineWith(scaleVar.signal, planned, area.plan)
+      .map { (video, scale, outcome, plan) =>
         if (video) s"→ ×$scale · the whole video, batch by batch: minutes"
         else
           outcome match {
             case Some(Right((width, height))) =>
               s"→ ×$scale of the source · $width × $height" +
-                (if (laid.size == 1) " · 1 tile" else s" · ${laid.size} tiles")
+                plan.fold("")(laid =>
+                  if (laid.tiles == 1) " · 1 tile"
+                  else s" · ${laid.tiles} tiles"
+                )
             case Some(Left(reason)) => s"→ ×$scale — $reason"
             case None               => s"→ ×$scale of the source"
           }
@@ -108,28 +120,23 @@ class SeedVr2UpscalePanel(
     )
 
   lazy val element: HtmlElement = div(
-    tiles.changes --> gridTiles,
+    area.publishGeometry,
     intro(
       "SeedVR2 restores and enlarges a picture or a video in one diffusion " +
         "step, on the drift runner — a video keeps its frame rate and its " +
         "soundtrack. The original stays in the gallery."
     ),
     group("size", plainField(scaleSelect)),
-    advanced(advancedVar, group("pass", seedField(seedVar))),
+    advanced(
+      advancedVar,
+      div(cls("is-hidden") <-- isVideo, area.areaGroup),
+      group("pass", seedField(seedVar))
+    ),
     foot(
       div(
         cls := "post-foot-lines",
         div(child.text <-- summary),
-        div(
-          cls := "post-foot-controls",
-          cls("is-hidden") <-- isVideo,
-          checkField(
-            showTileGrid,
-            "show the grid",
-            "draw the tiles this upscale would run over the picture — one " +
-              "pass of the model each"
-          )
-        )
+        area.gridControls.amend(cls("is-hidden") <-- isVideo)
       ),
       LaunchOrDownload(
         prerequisites.of(configurationVar.signal),
@@ -144,7 +151,10 @@ class SeedVr2UpscalePanel(
               SeedVr2UpscaleRequest(
                 runConfigurationId = configurationVar.now(),
                 scale = scaleVar.now(),
-                seed = seedOf(seedVar)
+                seed = seedOf(seedVar),
+                tileSize = area.askedTileSize,
+                gridOffsetX = area.targetGridOffset._1,
+                gridOffsetY = area.targetGridOffset._2
               )
             )
           ))

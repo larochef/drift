@@ -139,6 +139,8 @@ class GenerationDetail(
       * yet is offered its download instead (`specs/46`).
       */
     prerequisites: LaunchPrerequisites,
+    /** The assistants that can read a picture, for an auto redraw. */
+    assistants: VisionAssistants,
     /** Which output of a batch the strip starts on — the one that was clicked
       * where the caller shows a batch as separate tiles.
       */
@@ -220,9 +222,9 @@ class GenerationDetail(
       liveSessions,
       jobs,
       prerequisites,
+      assistants,
       picture.viewed,
-      picture.redrawGeometry,
-      picture.pidTiles,
+      picture.tileGeometry,
       picture.showTileGrid,
       picture.gridOffset,
       sourcePrompt,
@@ -415,8 +417,9 @@ class GenerationDetail(
               picture.selectedIndex,
               picture.shownOutput,
               picture.selectable,
+              picture.tiled,
               picture.viewed,
-              picture.redrawGeometry.signal,
+              picture.tileGeometry.signal,
               picture.drawnTiles,
               picture.jobPicture.map(_.map(_.screen)).distinct,
               picture.showTileGrid.signal,

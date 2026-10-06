@@ -1,37 +1,43 @@
 package drift.frontend.pages.gallery
 
 import drift.frontend.pages.gallery.PostProcessSection.*
-import drift.frontend.pages.gallery.TileAreaFields.TilePlan
+import drift.frontend.pages.gallery.TileAreaFields.{Cut, TilePlan}
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
 
 /** Where a tiled task's tiles fall (`specs/27-redraw.md`,
-  * `specs/39-seamless-edit.md`): the tile, window and margin fields, the grid
-  * drawn over the picture, and the plan read off the box dragged on it — one
-  * piece redraw and edit each hold their own of, since both cut the picture the
-  * same way.
+  * `specs/39-seamless-edit.md`, `specs/26-tiled-pid.md`,
+  * `specs/51-seedvr2-upscaling.md`): the tile field, the grid drawn over the
+  * picture and moved by hand, and the plan — one piece every tiled task holds
+  * its own of, since they all cut the picture the same way. A redraw and an
+  * edit take a selection, and have the window and margin it is worked through;
+  * an upscale works the whole picture only (`takesSelection`).
   *
-  * Both panels stay built while hidden, so only the one on screen publishes its
+  * The panels stay built while hidden, so only the one on screen publishes its
   * numbers to the picture: `active` says which, and becoming active publishes
   * them at once.
   */
 class TileAreaFields(
-    /** The configurations the task offers, and the one chosen — its model's
-      * size multiple is what the tiles are aligned to.
+    /** How the task cuts the picture as its other fields stand — none while
+      * there is nothing to plan: no model chosen yet, a job that is refused, a
+      * model that cuts nothing.
       */
-    configurations: Signal[List[ConfigurationOption]],
-    chosenConfiguration: Signal[String],
+    cut: Signal[Option[Cut]],
+    /** Whether the task works a box drawn on the picture. */
+    takesSelection: Boolean,
     /** The image on screen and the box drawn on it. */
     viewed: Var[Option[ViewedImage]],
     /** Where the numbers go for the picture to count and draw tiles with. */
-    geometry: Var[RedrawGeometry],
+    geometry: Var[TileGeometry],
     showTileGrid: Var[Boolean],
     gridOffset: Var[TileOffset],
     active: Signal[Boolean]
 ) {
 
-  private val tileVar = Var("1280")
+  // A selection's tile is the model's to bear, 1280 by default; an upscale's
+  // is the largest its runtime takes until a smaller one is asked for.
+  private val tileVar = Var(if (takesSelection) "1280" else "")
   private val windowVar = Var("1024")
   private val marginVar = Var("64")
 
@@ -39,6 +45,9 @@ class TileAreaFields(
     state.now().trim.toIntOption.getOrElse(fallback)
 
   def tileSize: Int = number(tileVar, 1280)
+
+  /** The tile an upscale asks for, in target px — none for the largest. */
+  def askedTileSize: Option[Int] = tileVar.now().trim.toIntOption
   def minimumWindowSide: Int = number(windowVar, 1024)
   def selectionMargin: Int = number(marginVar, 64)
   def region: Option[ImageRegion] = viewed.now().flatMap(_.selection)
@@ -49,50 +58,56 @@ class TileAreaFields(
   val hasSelection: Signal[Boolean] =
     viewed.signal.map(_.exists(_.selection.isDefined)).distinct
 
-  /** The multiple the chosen configuration's model aligns its sides up to —
-    * none until the list has arrived and one is chosen, which is also when
-    * there is nothing to plan. No fallback: a tile count on a guessed multiple
-    * would be a wrong number shown as a right one.
-    */
-  private val architectureMultiple: Signal[Option[Int]] =
-    configurations
-      .combineWith(chosenConfiguration)
-      .map((options, chosen) =>
-        options.find(_.id == chosen).map(_.sizeMultiple)
+  /** The numbers the picture is judged by, as the fields stand. */
+  private val currentGeometry: Signal[Option[TileGeometry]] =
+    tileVar.signal
+      .combineWith(marginVar.signal, windowVar.signal, cut, gridOffset.signal)
+      .map((tile, margin, window, shape, offset) =>
+        shape.map {
+          case Cut.Selection(sizeMultiple) =>
+            RedrawGeometry(
+              tileSize = tile.trim.toIntOption.getOrElse(1280),
+              margin = margin.trim.toIntOption.getOrElse(64),
+              minimumWindow = window.trim.toIntOption.getOrElse(1024),
+              sizeMultiple = sizeMultiple,
+              offsetX = offset.x,
+              offsetY = offset.y
+            )
+          case Cut.Whole(tiling, targetPerPixel) =>
+            UpscaleGeometry(
+              tiling.withTile(tile.trim.toIntOption),
+              targetPerPixel,
+              offset.x,
+              offset.y
+            )
+        }
       )
       .distinct
 
-  /** The numbers the picture is judged by, as the fields stand. */
-  private val currentGeometry: Signal[Option[RedrawGeometry]] =
-    tileVar.signal
-      .combineWith(
-        marginVar.signal,
-        windowVar.signal,
-        architectureMultiple,
-        gridOffset.signal
-      )
-      .map((tile, margin, window, multiple, offset) =>
-        multiple.map(aligned =>
-          RedrawGeometry(
-            tileSize = tile.trim.toIntOption.getOrElse(1280),
-            margin = margin.trim.toIntOption.getOrElse(64),
-            minimumWindow = window.trim.toIntOption.getOrElse(1024),
-            sizeMultiple = aligned,
-            offsetX = offset.x,
-            offsetY = offset.y
-          )
-        )
-      )
-      .distinct
+  /** The geometry as it stands, for the request built on a click. */
+  private val latestGeometry = Var(Option.empty[TileGeometry])
+
+  /** How far an upscale's grid is shifted, in target px — what its request
+    * carries, and what the grid on the picture is drawn from.
+    */
+  def targetGridOffset: (Int, Int) =
+    latestGeometry.now() match {
+      case Some(upscale: UpscaleGeometry) =>
+        (upscale.shifted.offsetX, upscale.shifted.offsetY)
+      case _ => (0, 0)
+    }
 
   /** The picture gets them as they are typed, while this task is the one on
     * screen: the box counts its tiles, sticks to their boundaries and draws the
-    * grid from the very numbers this panel plans with.
+    * grid from the very numbers this panel plans with. With nothing to plan
+    * there is no grid, rather than the last task's.
     */
-  val publishGeometry: Modifier[HtmlElement] =
+  val publishGeometry: Modifier[HtmlElement] = Seq(
+    currentGeometry --> latestGeometry,
     currentGeometry.combineWith(active).changes.collect {
-      case (Some(published), true) => published
+      case (published, true) => published.getOrElse(NoTiles)
     } --> geometry
+  )
 
   /** What the fields as they stand would run on the picture on screen. */
   val plan: Signal[Option[TilePlan]] =
@@ -100,15 +115,43 @@ class TileAreaFields(
       for {
         picture <- shown
         sticky <- current
-      } yield TilePlan(
-        picture.selection,
-        sticky.areaFor(picture.selection, picture.width, picture.height),
-        sticky.layoutFor(picture.selection, picture.width, picture.height).size
-      )
+      } yield {
+        val selection = picture.selection.filter(_ => takesSelection)
+        TilePlan(
+          selection,
+          sticky.areaFor(selection, picture.width, picture.height),
+          sticky.layoutFor(selection, picture.width, picture.height).size
+        )
+      }
     }
 
+  /** The largest tile an upscale's runtime takes, as the field's hint. */
+  private val largestTile: Signal[String] =
+    cut.map {
+      case Some(Cut.Whole(tiling, _)) => tiling.tile.toString
+      case _                          => ""
+    }.distinct
+
   /** What is worked on, and how it is cut up to fit through the model. */
-  def areaGroup: HtmlElement = group(
+  def areaGroup: HtmlElement =
+    if (takesSelection) selectionGroup
+    else
+      group(
+        "area",
+        field(
+          "tile",
+          numberField(tileVar, "5rem").amend(
+            minAttr := UpscaleTiling.MinimumTile.toString,
+            stepAttr := "64",
+            placeholder <-- largestTile,
+            title := "largest tile, in px of the result — empty for the " +
+              "largest the model takes in one pass, which is the fewest " +
+              "tiles; smaller means more tiles and more seams to blend"
+          )
+        )
+      )
+
+  private def selectionGroup: HtmlElement = group(
     "area",
     field(
       "tile",
@@ -200,6 +243,38 @@ class TileAreaFields(
 }
 
 object TileAreaFields {
+
+  /** How a task cuts the picture, the one thing that differs between them. */
+  enum Cut {
+
+    /** A redraw or an edit: tiles in the picture's own pixels, over the whole
+      * of it or the window around a box, aligned to the model's multiple.
+      */
+    case Selection(sizeMultiple: Int)
+
+    /** An upscale: the whole picture only, its tiles laid out in the target's
+      * pixels, `targetPerPixel` of them to one of the picture's.
+      */
+    case Whole(tiling: UpscaleTiling, targetPerPixel: Double)
+  }
+
+  /** A redraw's or an edit's cut: the multiple the chosen configuration's model
+    * aligns its sides up to — none until the list has arrived and one is
+    * chosen, which is also when there is nothing to plan. No fallback: a tile
+    * count on a guessed multiple would be a wrong number shown as a right one.
+    */
+  def selectionCut(
+      configurations: Signal[List[ConfigurationOption]],
+      chosenConfiguration: Signal[String]
+  ): Signal[Option[Cut]] =
+    configurations
+      .combineWith(chosenConfiguration)
+      .map((options, chosen) =>
+        options
+          .find(_.id == chosen)
+          .map(option => Cut.Selection(option.sizeMultiple): Cut)
+      )
+      .distinct
 
   /** What the fields as they stand would run: the selection if there is one,
     * the window its tiles cover, and how many tiles that is — one inference

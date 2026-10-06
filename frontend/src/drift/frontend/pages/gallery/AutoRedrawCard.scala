@@ -2,7 +2,8 @@ package drift.frontend.pages.gallery
 
 import drift.frontend.components.*
 import drift.frontend.pages.gallery.PostProcessSection.*
-import drift.frontend.services.ApiClient
+import drift.frontend.pages.gallery.VisionAssistants.State
+import drift.frontend.services.{ApiClient, LaunchPrerequisites}
 import drift.shared.*
 
 import scala.concurrent.duration.DurationInt
@@ -16,6 +17,10 @@ import com.raquo.laminar.api.L.*
   * unseen: the tiles are listed and stay editable, the job starts on the
   * panel's own button, and a repair — which changes what the picture shows — is
   * only ever a button here.
+  *
+  * With no assistant that reads images running, the card offers to start one
+  * (`VisionAssistantStarter`, `bugs/43`) and asks its question once that one
+  * serves: one click still reads the picture.
   */
 class AutoRedrawCard(
     image: Signal[Option[GenerationOutput]],
@@ -23,6 +28,9 @@ class AutoRedrawCard(
     fields: () => RedrawPlanRequest,
     /** Whether a box narrows the job: a reading is of the whole picture. */
     hasSelection: Signal[Boolean],
+    /** The assistants that can read a picture, and the start of one. */
+    assistants: VisionAssistants,
+    prerequisites: LaunchPrerequisites,
     /** Sets the form up to repaint one proposed repair. */
     onRepair: PlannedRepair => Unit
 ) extends Component {
@@ -41,6 +49,26 @@ class AutoRedrawCard(
   private val errorVar = Var(Option.empty[String])
   private val useVar = Var(true)
   private val listVar = Var(false)
+
+  /** A reading waiting for its assistant to serve: asked for while none could
+    * answer. `loadingSeen` once that assistant has shown up loading — if it
+    * then goes away without serving, the wait is over rather than left for
+    * whichever assistant is started next.
+    */
+  private val waitingVar = Var(Option.empty[AutoRedrawCard.Waiting])
+
+  private val starter = VisionAssistantStarter(
+    assistants,
+    prerequisites,
+    waitingVar.signal.map(_.isDefined),
+    () => waitingVar.set(Some(AutoRedrawCard.Waiting(loadingSeen = false)))
+  )
+
+  private def ask(output: GenerationOutput): Unit = {
+    askingVar.set(true)
+    errorVar.set(None)
+    asks.writer.onNext((output.date, output.fileName, fields()))
+  }
 
   /** What the job carries: each tile's settings while a reading is in use,
     * nothing otherwise.
@@ -130,7 +158,21 @@ class AutoRedrawCard(
       planVar.set(None)
       tilesVar.set(Nil)
       errorVar.set(None)
+      waitingVar.set(None)
     }),
+    // the reading that waited for its assistant
+    assistants.state.combineWith(waitingVar.signal, image) --> Observer[
+      (State, Option[AutoRedrawCard.Waiting], Option[GenerationOutput])
+    ] {
+      case (State.Ready(_), Some(_), shown) =>
+        waitingVar.set(None)
+        shown.foreach(ask)
+      case (State.Loading(_), Some(waiting), _) if !waiting.loadingSeen =>
+        waitingVar.set(Some(waiting.copy(loadingSeen = true)))
+      case (State.Loading(_) | State.Ready(_), _, _)    => ()
+      case (_, Some(waiting), _) if waiting.loadingSeen => waitingVar.set(None)
+      case _                                            => ()
+    },
     asks.events.flatMapSwitch(input => planFn(input).recoverToTry) --> Observer[
       Try[RedrawPlan]
     ] {
@@ -148,8 +190,19 @@ class AutoRedrawCard(
       plainField(
         button(
           cls := "button is-small",
-          cls("is-loading") <-- askingVar.signal,
-          disabled <-- askingVar.signal.combineWith(hasSelection).map(_ || _),
+          cls("is-loading") <-- askingVar.signal
+            .combineWith(waitingVar.signal)
+            .map((asking, waiting) => asking || waiting.isDefined),
+          // Without an assistant to answer, the way in is the line below,
+          // which starts one; while one loads, a click waits for it.
+          disabled <-- askingVar.signal
+            .combineWith(hasSelection, waitingVar.signal, assistants.state)
+            .map((asking, selected, waiting, state) =>
+              asking || selected || waiting.isDefined || (state match {
+                case State.Ready(_) | State.Loading(_) => false
+                case _                                 => true
+              })
+            ),
           title := "the running assistant reads the whole picture once, with " +
             "these tiles drawn on it, and sets each tile's prompt and " +
             "strength; it needs a model that reads images. A reading is of " +
@@ -157,11 +210,12 @@ class AutoRedrawCard(
           child.text <-- planVar.signal.map(plan =>
             if (plan.isDefined) "🤖 Ask again" else "🤖 Read the picture"
           ),
-          onClick.compose(_.sample(image)) --> (_.foreach { output =>
-            askingVar.set(true)
-            errorVar.set(None)
-            asks.writer.onNext((output.date, output.fileName, fields()))
-          })
+          onClick.compose(_.sample(image, assistants.state)) --> {
+            case (Some(output), State.Ready(_)) => ask(output)
+            case (Some(_), State.Loading(_))    =>
+              waitingVar.set(Some(AutoRedrawCard.Waiting(loadingSeen = true)))
+            case _ => ()
+          }
         )
       ),
       plainField(
@@ -183,6 +237,7 @@ class AutoRedrawCard(
         child.text <-- summary
       )
     ),
+    div(cls("is-hidden") <-- hasSelection, starter.element),
     p(
       cls := "is-size-7 has-text-danger auto-redraw-error",
       cls("is-hidden") <-- errorVar.signal.map(_.isEmpty),
@@ -213,4 +268,10 @@ class AutoRedrawCard(
       ).element
     )
   )
+}
+
+object AutoRedrawCard {
+
+  /** A reading asked for before an assistant could answer it. */
+  case class Waiting(loadingSeen: Boolean)
 }

@@ -2,6 +2,7 @@ package drift.frontend.pages.gallery
 
 import drift.frontend.components.{Component, LaunchOrDownload}
 import drift.frontend.pages.gallery.PostProcessSection.*
+import drift.frontend.pages.gallery.TileAreaFields.Cut
 import drift.frontend.services.LaunchPrerequisites
 import drift.shared.*
 
@@ -24,15 +25,16 @@ class PidUpscalePanel(
     /** The chosen configuration: the task's model select writes it. */
     configurationVar: Var[String],
     /** The picture on screen, for the size it really has. */
-    viewed: Signal[Option[ViewedImage]],
-    /** Where this panel puts the tiles its job would decode, in the picture's
-      * own pixels, for the viewer to draw them.
-      */
-    gridTiles: Var[List[ImageRegion]],
-    /** Whether the picture draws them — the same switch the redraw panel has,
+    viewed: Var[Option[ViewedImage]],
+    /** Where this panel's tiles go, for the picture to draw them. */
+    geometry: Var[TileGeometry],
+    /** Whether the picture draws them — the same switch every tiled task has,
       * since one grid is on screen at a time.
       */
     showTileGrid: Var[Boolean],
+    gridOffset: Var[TileOffset],
+    /** Whether this is the model the upscale task on screen runs. */
+    active: Signal[Boolean],
     /** The source's prompt, inherited — what the prompt field starts with. */
     sourcePrompt: String,
     /** What each configuration still has to download: the job's button becomes
@@ -73,7 +75,7 @@ class PidUpscalePanel(
     */
   private val planned: Signal[(String, Option[Either[String, (Int, Int)]])] =
     widthVar.signal
-      .combineWith(heightVar.signal, viewed)
+      .combineWith(heightVar.signal, viewed.signal)
       .map { (w, h, shown) =>
         val asked =
           if (w.trim.isEmpty && h.trim.isEmpty) "→ ×4 of the source"
@@ -91,45 +93,47 @@ class PidUpscalePanel(
       }
       .distinct
 
-  /** The tiles the job would decode, in the picture's own pixels: laid out over
-    * the target (`PidUpscaleRequest.tilesFor`) and brought back to the source's
-    * scale, since the picture on screen is the source.
+  /** How the job would cut its target (`PidUpscaleRequest.tilingFor`): laid out
+    * over the target and drawn at the source's scale, since the picture on
+    * screen is the source. Nothing for a job that is refused.
     */
-  private val tiles: Signal[List[ImageRegion]] =
+  private val cut: Signal[Option[Cut]] =
     planned
-      .combineWith(viewed, maxTile)
+      .combineWith(viewed.signal, maxTile)
       .map { (_, outcome, shown, largest) =>
         (outcome, shown) match {
-          case (Some(Right(target)), Some(picture)) if target._1 > 0 =>
-            val scale = picture.width.toDouble / target._1
-            PidUpscaleRequest
-              .tilesFor(target, largest)
-              .flatten
-              .map(tile =>
-                ImageRegion(
-                  math.round(tile.x * scale).toInt,
-                  math.round(tile.y * scale).toInt,
-                  math.round(tile.width * scale).toInt,
-                  math.round(tile.height * scale).toInt
-                )
+          case (Some(Right(target)), Some(picture))
+              if target._1 > 0 && picture.width > 0 =>
+            Some(
+              Cut.Whole(
+                PidUpscaleRequest.tilingFor(target, largest),
+                target._1.toDouble / picture.width
               )
-          case _ => List.empty
+            )
+          case _ => None
         }
       }
       .distinct
 
-  private val publishTiles: Modifier[HtmlElement] =
-    tiles.changes --> gridTiles
+  private val area = TileAreaFields(
+    cut,
+    takesSelection = false,
+    viewed,
+    geometry,
+    showTileGrid,
+    gridOffset,
+    active
+  )
 
   private val target: Signal[String] =
     planned
-      .combineWith(tiles)
-      .map { (asked, outcome, laid) =>
-        val passes = Option
-          .when(laid.nonEmpty)(
-            if (laid.size == 1) " · 1 tile" else s" · ${laid.size} tiles"
+      .combineWith(area.plan)
+      .map { (asked, outcome, plan) =>
+        val passes = plan
+          .filter(_.tiles > 0)
+          .fold("")(laid =>
+            if (laid.tiles == 1) " · 1 tile" else s" · ${laid.tiles} tiles"
           )
-          .getOrElse("")
         outcome match {
           case Some(Right((width, height))) if asked.endsWith("source") =>
             s"$asked · $width × $height$passes"
@@ -170,6 +174,7 @@ class PidUpscalePanel(
           numberField(heightVar, "5.5rem").amend(placeholder := "×4")
         )
       ),
+      area.areaGroup,
       group(
         "pass",
         field(
@@ -197,15 +202,7 @@ class PidUpscalePanel(
       div(
         cls := "post-foot-lines",
         div(child.text <-- target),
-        div(
-          cls := "post-foot-controls",
-          checkField(
-            showTileGrid,
-            "show the grid",
-            "draw the tiles this decode would run over the picture — one " +
-              "pass of the model each, shown where they fall on the source"
-          )
-        )
+        area.gridControls
       ),
       LaunchOrDownload(
         prerequisites.of(configurationVar.signal),
@@ -223,7 +220,10 @@ class PidUpscalePanel(
                 height = heightVar.now().trim.toIntOption,
                 prompt = promptVar.now(),
                 steps = stepsVar.now().trim.toIntOption.getOrElse(4),
-                seed = seedOf(seedVar)
+                seed = seedOf(seedVar),
+                tileSize = area.askedTileSize,
+                gridOffsetX = area.targetGridOffset._1,
+                gridOffsetY = area.targetGridOffset._2
               )
             )
           ))
@@ -233,7 +233,7 @@ class PidUpscalePanel(
   )
 
   lazy val element: HtmlElement = div(
-    publishTiles,
+    area.publishGeometry,
     pidConfigurations --> Observer[List[ConfigurationOption]](list =>
       if (configurationVar.now().isEmpty)
         list.headOption.foreach(option => configurationVar.set(option.id))

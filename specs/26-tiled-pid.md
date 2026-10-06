@@ -74,8 +74,12 @@ and the results are feather-blended.
   the blend back to the target. Crops and results are written beside the job
   log and deleted when the job ends.
 - `PostProcessJob.progress: PostProcessProgress(completed, total)`.
-- A PiD decode passes no grid offset (27): there is no picture on screen to cut
-  around, so its tiles fall where the even spread puts them.
+- A PiD request carries a tile size and a grid offset in target px
+  (`tileSize`, `gridOffsetX`, `gridOffsetY`), as a redraw's does (27): the
+  panel holds the tiled tasks' shared piece (`TileAreaFields`, `Cut.Whole`),
+  its grid drawn on the source and moved there. Browser and backend lay the
+  tiles out from one `UpscaleTiling` (`PidUpscaleRequest.tilingFor`); the tile
+  is kept between 1024 px and the runtime's largest.
 - The PiD panel (`pages/gallery/PidUpscalePanel`): the configuration, then
   Advanced (15) holding the target size, steps, seed and the prompt it sends —
   the source's, inherited through the derivation chain; "→ ×4" and the button
@@ -155,4 +159,4 @@ and the results are feather-blended.
   resolution through.
 - The overlap blend averages two renderings of fine detail and is slightly
   softer there; narrower overlaps keep more of it.
-- Tiles run sequentially; tile size and overlap are constants, not settings.
+- Tiles run sequentially; the overlap is a constant, not a setting.

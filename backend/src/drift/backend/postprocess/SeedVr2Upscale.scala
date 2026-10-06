@@ -71,7 +71,13 @@ final private[postprocess] class SeedVr2Upscale(
           reference <- referenceFor(src, size)
         } yield {
           val scale = request.scale
-          val rows = SeedVr2UpscaleRequest.tilesFor(size, scale)
+          val rows = SeedVr2UpscaleRequest.tilesFor(
+            size,
+            scale,
+            request.tileSize,
+            request.gridOffsetX,
+            request.gridOffsetY
+          )
           tiles.startTiles(
             SeedVr2UpscaleRequest.Kind,
             src,

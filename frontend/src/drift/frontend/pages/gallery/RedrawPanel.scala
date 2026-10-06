@@ -32,7 +32,7 @@ class RedrawPanel(
     /** Where this panel's tile size, margin and window go, for the box on the
       * image to count its tiles and stick to their boundaries.
       */
-    geometry: Var[RedrawGeometry],
+    geometry: Var[TileGeometry],
     /** Whether the picture draws the tiles this panel's fields describe. */
     showTileGrid: Var[Boolean],
     /** How far that grid is shifted: dragged on the picture, sent with the job,
@@ -47,6 +47,8 @@ class RedrawPanel(
       * the download while the chosen model cannot start (`specs/46`).
       */
     prerequisites: LaunchPrerequisites,
+    /** The assistants that can read the picture, for the auto redraw card. */
+    assistants: VisionAssistants,
     onRedraw: (GenerationOutput, RedrawRequest) => Unit
 ) extends Component {
 
@@ -101,8 +103,8 @@ class RedrawPanel(
     state.now().trim.toIntOption.getOrElse(fallback)
 
   private val area = TileAreaFields(
-    redrawConfigurations,
-    configurationVar.signal,
+    TileAreaFields.selectionCut(redrawConfigurations, configurationVar.signal),
+    takesSelection = true,
     viewed,
     geometry,
     showTileGrid,
@@ -120,6 +122,8 @@ class RedrawPanel(
         gridOffsetY = area.gridOffsetY
       ),
     area.hasSelection,
+    assistants,
+    prerequisites,
     repair
   )
 

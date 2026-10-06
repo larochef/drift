@@ -67,7 +67,14 @@ case class PidUpscaleRequest(
     steps: Int = 4,
     cfgScale: Double = 1.0,
     seed: Long = -1,
-    runtimeId: Option[String] = None
+    runtimeId: Option[String] = None,
+    /** The largest tile, in target px — none for the largest the job's runtime
+      * decodes (`UpscaleTiling.withTile`).
+      */
+    tileSize: Option[Int] = None,
+    /** How far the grid is shifted, in target px (`Tiling.axis`). */
+    gridOffsetX: Int = 0,
+    gridOffsetY: Int = 0
 )
 object PidUpscaleRequest {
   given JsonValueCodec[PidUpscaleRequest] = JsonCodecMaker.make
@@ -147,31 +154,31 @@ object PidUpscaleRequest {
       Tiling.roundUp(target._2 / 4, 16)
     )
 
-  /** The tiles a PiD job decodes, in target px: the padded reference ×4, cut
-    * into tiles of `maxTile` at most (`maxTileFor` the job's runtime)
-    * overlapping by `Tiling.Overlap`, every side a multiple of 64 and every
-    * start on a multiple of 4, so each tile is an exact crop of the reference.
-    * The browser lays out the very tiles the backend runs, and can say how many
-    * passes a job is before it starts.
+  /** How a PiD job cuts its target: the padded reference ×4, in tiles of
+    * `maxTile` at most (`maxTileFor` the job's runtime), every side a multiple
+    * of 64 and every start on a multiple of 4, so each tile is an exact crop of
+    * the reference. The browser lays out the very tiles the backend runs, and
+    * can say how many passes a job is before it starts.
+    */
+  def tilingFor(
+      target: (Int, Int),
+      maxTile: Int = MaxTile
+  ): UpscaleTiling = {
+    val (width, height) = referenceSizeOf(target)
+    UpscaleTiling(width * 4, height * 4, maxTile, multiple = 64, align = 4)
+  }
+
+  /** The tiles a PiD job decodes, in target px, as the request asks for them:
+    * its tile size, its grid shifted.
     */
   def tilesFor(
       target: (Int, Int),
-      maxTile: Int = MaxTile
-  ): List[List[Tiling.Tile]] = {
-    val (width, height) = referenceSizeOf(target)
-    Tiling.layout(
-      width * 4,
-      height * 4,
-      maxTile,
-      Tiling.Overlap,
-      multiple = 64,
-      align = 4,
-      // Nothing to line up with: a PiD decode has no picture on screen to cut
-      // around, so the grid stays where it falls.
-      offsetX = 0,
-      offsetY = 0
-    )
-  }
+      maxTile: Int = MaxTile,
+      tileSize: Option[Int] = None,
+      offsetX: Int = 0,
+      offsetY: Int = 0
+  ): List[List[Tiling.Tile]] =
+    tilingFor(target, maxTile).withTile(tileSize).shifted(offsetX, offsetY).rows
 
   /** `target` when it is larger than `source` on at least one side, else why
     * this job would only shrink the image.
@@ -203,7 +210,14 @@ case class SeedVr2UpscaleRequest(
     runConfigurationId: String,
     scale: Int = SeedVr2UpscaleRequest.DefaultScale,
     seed: Long = -1,
-    runtimeId: Option[String] = None
+    runtimeId: Option[String] = None,
+    /** The largest tile of a picture's job, in target px — none for `MaxTile`
+      * (`UpscaleTiling.withTile`).
+      */
+    tileSize: Option[Int] = None,
+    /** How far the grid is shifted, in target px (`Tiling.axis`). */
+    gridOffsetX: Int = 0,
+    gridOffsetY: Int = 0
 )
 object SeedVr2UpscaleRequest {
   given JsonValueCodec[SeedVr2UpscaleRequest] = JsonCodecMaker.make
@@ -249,25 +263,103 @@ object SeedVr2UpscaleRequest {
   def referenceSizeOf(source: (Int, Int)): (Int, Int) =
     (Tiling.roundUp(source._1, 16), Tiling.roundUp(source._2, 16))
 
-  /** The tiles a picture's job restores, in target px: the padded source times
-    * `scale`, cut into tiles of `MaxTile` at most overlapping by
-    * `Tiling.Overlap`, every side a multiple of `16 × scale` and every start on
-    * a multiple of `scale`, so each tile is an exact crop of the source. One
-    * tile for a target within `MaxTile`.
+  /** How a picture's job cuts its target: the padded source times `scale`, in
+    * tiles of `MaxTile` at most, every side a multiple of `16 × scale` and
+    * every start on a multiple of `scale`, so each tile is an exact crop of the
+    * source. One tile for a target within `MaxTile`.
     */
-  def tilesFor(source: (Int, Int), scale: Int): List[List[Tiling.Tile]] = {
+  def tilingFor(source: (Int, Int), scale: Int): UpscaleTiling = {
     val (width, height) = referenceSizeOf(source)
-    Tiling.layout(
+    UpscaleTiling(
       width * scale,
       height * scale,
       MaxTile,
-      Tiling.Overlap,
       multiple = 16 * scale,
-      align = scale,
-      offsetX = 0,
-      offsetY = 0
+      align = scale
     )
   }
+
+  /** The tiles a picture's job restores, in target px, as the request asks for
+    * them: its tile size, its grid shifted.
+    */
+  def tilesFor(
+      source: (Int, Int),
+      scale: Int,
+      tileSize: Option[Int] = None,
+      offsetX: Int = 0,
+      offsetY: Int = 0
+  ): List[List[Tiling.Tile]] =
+    tilingFor(source, scale).withTile(tileSize).shifted(offsetX, offsetY).rows
+}
+
+/** How an upscale cuts its target into tiles (`specs/26-tiled-pid.md`,
+  * `specs/51-seedvr2-upscaling.md`), in target px: the padded target, the
+  * largest tile, the multiple every side keeps and the one every start keeps,
+  * and how far the grid is shifted. Neighbours overlap by `Tiling.Overlap`. The
+  * browser and the backend lay the tiles out from the same value, so the grid
+  * drawn over the picture is the grid of the job.
+  */
+case class UpscaleTiling(
+    width: Int,
+    height: Int,
+    tile: Int,
+    multiple: Int,
+    align: Int,
+    offsetX: Int = 0,
+    offsetY: Int = 0
+) {
+
+  /** The same cut with tiles of `asked` px at most, brought to the multiple and
+    * kept between `UpscaleTiling.MinimumTile` and the tile it has — the largest
+    * its runtime takes. None leaves it as it is.
+    */
+  def withTile(asked: Option[Int]): UpscaleTiling =
+    asked.fold(this)(size =>
+      copy(tile =
+        Tiling
+          .roundUp(size, multiple)
+          .max(Tiling.roundUp(UpscaleTiling.MinimumTile, multiple))
+          .min(tile)
+      )
+    )
+
+  /** The same cut on a grid shifted by that much, snapped to the multiple a
+    * shift must keep (`Tiling.axis`).
+    */
+  def shifted(x: Int, y: Int): UpscaleTiling = {
+    def snapped(offset: Int) =
+      math.round(offset.toDouble / multiple).toInt * multiple
+    copy(offsetX = snapped(x), offsetY = snapped(y))
+  }
+
+  /** The tiles, row by row. */
+  def rows: List[List[Tiling.Tile]] =
+    Tiling.layout(
+      width,
+      height,
+      tile,
+      Tiling.Overlap,
+      multiple,
+      align,
+      offsetX,
+      offsetY
+    )
+
+  /** How far apart the tiles start on an axis of `length` target px. */
+  def strideFor(length: Int): Int =
+    Tiling.strideFor(
+      Tiling.roundUp(length, multiple),
+      tile,
+      Tiling.Overlap,
+      multiple
+    )
+}
+object UpscaleTiling {
+
+  /** The smallest tile an upscale is cut in, in target px: under it the
+    * overlaps are most of every tile.
+    */
+  val MinimumTile: Int = 1024
 }
 
 /** A redraw (`specs/27-redraw.md`): an img2img pass over the source at

@@ -1387,7 +1387,7 @@ select.select:focus {
 
 /* A line of the tile grid under the pointer: pressing it moves the whole grid
    rather than drawing a box (specs/27-redraw.md). */
-.gallery-selectable.is-selecting.is-on-grid {
+.gallery-selectable.is-on-grid {
   cursor: move;
 }
 

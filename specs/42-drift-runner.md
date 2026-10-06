@@ -1456,7 +1456,8 @@ on the old tool.
          and `ImageOptions`. drift also installs `drift-runner-images`
          (tool SdCpp, launcher `sd-server`). The
          capabilities come from the launch flags. The server loads, then
-         listens. Jobs run one at a time and can be cancelled while queued.
+         listens. Jobs run one at a time and can be cancelled while queued, or
+         between two steps once generating (`cancel_generating`).
          What it planned:
          - `/sdcpp/v1/capabilities`, `img_gen`, `jobs/{id}`, `cancel`;
          - sd-server's flags, as drift passes them;

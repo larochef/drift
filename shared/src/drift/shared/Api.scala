@@ -126,7 +126,22 @@ case class Architecture(
       * where it has been run (`specs/43`).
       */
     runners: List[RuntimeEngine]
-)
+) {
+
+  /** Whether `configuration`, one of this architecture's, is a chat model
+    * launched with a vision projector — what a live session's `/props` says
+    * once it serves (`AssistantProperties.vision`), known before any launch.
+    */
+  def readsImages(configuration: RunConfiguration): Boolean =
+    tool == RuntimeTool.LlamaCpp &&
+      // a flag the configuration removes is not passed, whatever is assigned
+      !configuration.removedParameters
+        .contains(CheckpointRef.VisionProjectorFlag) &&
+      checkpoints.exists(slot =>
+        slot.flag == CheckpointRef.VisionProjectorFlag &&
+          configuration.assignments.get(slot.name).exists(_.nonEmpty)
+      )
+}
 object Architecture {
   // No discriminator: `RuntimeTool` has only singleton cases, so it encodes as
   // a plain string ("SdCpp"), as the seed file and the UI write it. The config
@@ -198,6 +213,10 @@ case class CheckpointRef(
   def ownModel: Boolean = CheckpointRef.ownModelFlags.contains(flag)
 }
 object CheckpointRef {
+
+  /** The flag a chat model's vision projector is passed with. */
+  val VisionProjectorFlag = "--mmproj"
+
   private val ownModelFlags = Set(
     "--diffusion-model",
     "--high-noise-diffusion-model",

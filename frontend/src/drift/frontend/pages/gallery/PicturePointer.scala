@@ -18,7 +18,11 @@ class PicturePointer(
     /** The picture on screen and the box on it: what a drag writes. */
     viewed: Var[Option[ViewedImage]],
     /** The tiles the open task would run, which the box sticks to. */
-    geometry: Signal[RedrawGeometry],
+    geometry: Signal[TileGeometry],
+    /** Whether a box may be drawn: only a task that takes a selection has one,
+      * and the grid is all there is to grab on the others.
+      */
+    selectable: Signal[Boolean],
     /** Whether the grid is drawn, since only a drawn line can be grabbed. */
     showTiles: Signal[Boolean],
     /** Where the grid is cut: a grid drag moves it. */
@@ -34,7 +38,10 @@ class PicturePointer(
     * no signal to observe, and `Signal.now` is Airstream's own business — so
     * the latest value is kept here.
     */
-  private val currentGeometry = Var(RedrawGeometry())
+  private val currentGeometry = Var[TileGeometry](RedrawGeometry())
+
+  /** Whether a press may draw a box, kept for the same reason. */
+  private val boxAllowed = Var(false)
 
   /** Whether the grid is on screen, for the same reason: a press has to know
     * whether there are lines to grab.
@@ -86,7 +93,7 @@ class PicturePointer(
     */
   private def gridLines(
       image: ViewedImage,
-      sticky: RedrawGeometry
+      sticky: TileGeometry
   ): (List[Int], List[Int]) = {
     val tiles = sticky.layoutFor(image.selection, image.width, image.height)
     def inner(edges: List[Int], limit: Int) =
@@ -118,7 +125,8 @@ class PicturePointer(
   /** What a press starts: moving the grid by the line it landed on, resizing
     * the box by the corner it landed on, moving the box it landed in, or
     * drawing a new one. The box wins over the grid where both are under the
-    * pointer — it is the thing the user just drew.
+    * pointer — it is the thing the user just drew. Where no box may be drawn, a
+    * press off the grid starts nothing.
     */
   private def press(event: dom.MouseEvent): Unit =
     viewed.now().foreach { image =>
@@ -126,10 +134,12 @@ class PicturePointer(
       val point = pointOf(event, image)
       val radius = grabRadius(event, image)
       val grip =
-        image.selection.flatMap(PicturePointer.Grip.at(_, point, radius))
+        image.selection
+          .filter(_ => boxAllowed.now())
+          .flatMap(PicturePointer.Grip.at(_, point, radius))
       if (grip.isEmpty && onGrid(point, image, radius))
         movingGrid.set(Some(PicturePointer.GridMove(point, gridOffset.now())))
-      else
+      else if (boxAllowed.now())
         dragging.set(
           Some(PicturePointer.Drag(point, point, grip, image.selection))
         )
@@ -146,7 +156,7 @@ class PicturePointer(
         val (x, y) = pointOf(event, image)
         val sticky = currentGeometry.now()
         def shifted(from: Int, delta: Int, length: Int): Int = {
-          val multiple = sticky.sizeMultiple max 1
+          val multiple = sticky.gridStep
           val stride = sticky.strideFor(length)
           val snapped =
             math.round((from - delta).toDouble / multiple).toInt * multiple
@@ -258,6 +268,7 @@ class PicturePointer(
     */
   val modifiers: Seq[Mod[HtmlElement]] = Seq(
     geometry --> currentGeometry,
+    selectable --> boxAllowed,
     showTiles --> gridShown,
     onMouseDown --> press,
     onMouseMove --> { event =>

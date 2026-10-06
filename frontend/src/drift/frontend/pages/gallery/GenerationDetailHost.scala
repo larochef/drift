@@ -73,6 +73,9 @@ class GenerationDetailHost(
     */
   private val openTask = Var(PostProcessSection.RedrawTask)
 
+  private val visionAssistants =
+    VisionAssistants(sessionService, runConfigurationService, launchingProject)
+
   private val labels: Signal[Map[String, String]] =
     runConfigurationService.runConfigurations
       .map(_.map(rm => rm.id -> rm.label).toMap)
@@ -429,6 +432,7 @@ class GenerationDetailHost(
       openTask = openTask,
       panelHidden = panelHidden,
       prerequisites = prerequisites,
+      assistants = visionAssistants,
       initialOutputIndex = shown.outputIndex
     ).element
   }

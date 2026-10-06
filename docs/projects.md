@@ -101,6 +101,16 @@ never changes what you typed.
 
 ## Projects in the gallery
 
+Any picture or video can be moved to a project — an import, something made in
+the Sandbox, or a result of another project. The header of its detail view has a
+**Project** select showing where it is: pick another project and press **Move**. To move
+several, tick them in the gallery (**☑ Select**), pick the project in the
+selection bar and press **Move N selected**. *No project* takes them out of
+any. The button spins while the move runs, then a line says where they went
+and how many upscales, redraws and edits went with them. The recipe of a moved
+generation becomes one of the project's versions; an imported file has no
+recipe and shows under *untagged*.
+
 Gallery cards carry a project badge, and the gallery toolbar has a project
 filter. "Reuse these parameters" on a result inside the workspace also moves
 the selection to that result's version.

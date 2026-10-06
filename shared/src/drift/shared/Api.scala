@@ -203,8 +203,17 @@ case class CheckpointRef(
       * `--diffusion-model` (sd-cpp) or `--mmproj` (llama.cpp).
       */
     flag: String,
-    required: Boolean = true
+    required: Boolean = true,
+    /** The runners the slot is for; empty means every runner of the
+      * architecture. On another runner the slot does not exist: nothing is
+      * asked for it and nothing assigned to it is passed — a tokenizer file the
+      * drift runner cannot do without and sd-cpp does not read (`bugs/36`).
+      */
+    runners: List[RuntimeEngine]
 ) {
+
+  def appliesTo(runner: RuntimeEngine): Boolean =
+    runners.isEmpty || runners.contains(runner)
 
   /** The architecture's own model — what makes it this architecture — rather
     * than a component it shares with others (a text encoder, a VAE, a vision

@@ -18,8 +18,14 @@ object ParameterResolutionTests extends TestSuite {
     id = "test",
     label = "Test",
     tool = RuntimeTool.SdCpp,
-    checkpoints =
-      List(CheckpointRef("Diffusion", "diffusion", "--diffusion-model")),
+    checkpoints = List(
+      CheckpointRef(
+        "Diffusion",
+        "diffusion",
+        "--diffusion-model",
+        runners = Nil
+      )
+    ),
     defaultParameters = Map("--steps" -> "30", "--diffusion-fa" -> ""),
     sizeMultiple = 16,
     modelKind = None,

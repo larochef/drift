@@ -112,6 +112,13 @@ final class GenerationManager(
       .mapValues(_.sortBy(_.submittedAt))
       .toMap
 
+  /** Replaces the in-memory record of a generation whose sidecar was rewritten
+    * — moved to another project — so a live session's list does not push the
+    * old one back.
+    */
+  def replace(generation: Generation): Unit =
+    registry.get(generation.id).foreach(_.generation = generation)
+
   /** Drops the in-memory record — what the gallery's delete calls once the
     * files are gone, so a live session's panel does not keep showing an output
     * that no longer exists. An active job is never forgotten: its monitor

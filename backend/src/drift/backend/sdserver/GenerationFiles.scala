@@ -166,10 +166,16 @@ final private[sdserver] class GenerationFiles(outputsRoot: Path) {
     * parameters" reloads after a restart. Free play writes none.
     */
   def writeSidecar(generation: Generation): Unit =
+    writeSidecar(generation, dateOf(generation.submittedAt))
+
+  /** The sidecar under a day that is given: a derived entry is filed beside
+    * its source, under the source's day, not the day it was made
+    * (`specs/15`) — rewriting one must put it back where it was read.
+    */
+  def writeSidecar(generation: Generation, date: String): Unit =
     if (generation.scratch) ()
     else
       try {
-        val date = dateOf(generation.submittedAt)
         Files.write(
           outputsRoot.resolve(date).resolve(s"${generation.id}.json"),
           writeToString(generation, WriterConfig.withIndentionStep(2))

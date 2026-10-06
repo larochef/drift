@@ -1089,7 +1089,8 @@
         "name": "tokenizer",
         "familyId": "qwen3-tokenizer",
         "flag": "--tokenizer",
-        "required": false
+        "required": true,
+        "runners": ["DriftRunner"]
       },
       {
         "name": "control-net",
@@ -1163,7 +1164,8 @@
         "name": "tokenizer",
         "familyId": "umt5-tokenizer",
         "flag": "--tokenizer",
-        "required": false
+        "required": true,
+        "runners": ["DriftRunner"]
       }
     ],
     "defaultParameters": {

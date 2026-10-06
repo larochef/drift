@@ -1,0 +1,8 @@
+{
+  "version": 12,
+  "description": "bugs/36: a checkpoint slot can be for some runners only — the tokenizers of MiniMax H3 and Wan 2.2 A14B are the drift runner's, and required there",
+  "steps": [
+    { "collection": "architectures", "op": "reseed", "where": { "id": "minimax-h3", "builtIn": true } },
+    { "collection": "architectures", "op": "reseed", "where": { "id": "wan-2.2-14B", "builtIn": true } }
+  ]
+}

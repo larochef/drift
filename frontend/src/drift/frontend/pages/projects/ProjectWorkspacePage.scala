@@ -271,6 +271,7 @@ class ProjectWorkspacePage(
     historyService.events --> Observer[HistoryService.Event] {
       case HistoryService.Event.Deleted(id) => projectService.forget(id)
       case HistoryService.Event.Imported(_) => ()
+      case HistoryService.Event.Moved(list) => projectService.moved(list)
     },
     onUnmountCallback { _ =>
       assistantService.projectBrief.set(None)
@@ -351,6 +352,7 @@ class ProjectWorkspacePage(
       upscalerService,
       runtimeService,
       prerequisites,
+      projectService.projects,
       launchingProject = Some(projectId),
       // Both columns are already on screen here: staging into them is the
       // whole action, and the modal steps out of the way.

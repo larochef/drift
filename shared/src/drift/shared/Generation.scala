@@ -584,7 +584,7 @@ val submitImageGeneration: PublicEndpoint[
     .in("sessions" / path[String] / "generations" / "image")
     .in(submitContextInput)
     .in(query[Option[Boolean]]("scratch"))
-    .in(jsonBody[ImageGenerationParameters])
+    .in(LargeJsonBody[ImageGenerationParameters])
     .out(jsonBody[Generation])
 
 /** Submits a video generation to the session's `sd-server`, versioned inside a
@@ -600,7 +600,7 @@ val submitVideoGeneration: PublicEndpoint[
     .in("sessions" / path[String] / "generations" / "video")
     .in(submitContextInput)
     .in(query[Option[Boolean]]("scratch"))
-    .in(jsonBody[VideoGenerationParameters])
+    .in(LargeJsonBody[VideoGenerationParameters])
     .out(jsonBody[Generation])
 
 /** This session's generations, oldest first. The backend polls the native job

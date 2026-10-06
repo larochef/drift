@@ -20,8 +20,9 @@ object ParameterOverridesTests extends TestSuite {
     id = id,
     label = id,
     tool = RuntimeTool.SdCpp,
-    checkpoints =
-      List(CheckpointRef("Diffusion", familyId, "--diffusion-model")),
+    checkpoints = List(
+      CheckpointRef("Diffusion", familyId, "--diffusion-model", runners = Nil)
+    ),
     defaultParameters = defaults,
     sizeMultiple = 16,
     modelKind = None,

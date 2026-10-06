@@ -86,6 +86,27 @@ class ProjectService(statusSocket: StatusSocketService) extends ServiceErrors {
       _.view.mapValues(_.filterNot(_.id == generationId)).toMap
     )
 
+  /** Entries that changed project: out of the list they were in, into the one
+    * they belong to now; the projects are re-read, a move may have appended a
+    * version or cleared a cover.
+    */
+  def moved(generations: List[Generation]): Unit = {
+    val ids = generations.map(_.id).toSet
+    _generations.update(
+      _.view.mapValues(_.filterNot(g => ids(g.id))).toMap
+    )
+    generations.foreach(generation =>
+      generation.projectId
+        .filter(_generations.now().contains)
+        .foreach(projectId =>
+          _generations.update(lists =>
+            lists + (projectId -> newestFirst(generation :: lists(projectId)))
+          )
+        )
+    )
+    push(Command.Load)
+  }
+
   /** Folds a pushed generation into its project's list; a new version id means
     * the project document changed too.
     */

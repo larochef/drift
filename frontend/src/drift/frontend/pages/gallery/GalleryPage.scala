@@ -382,11 +382,13 @@ class GalleryPage(
       label(cls := "label text-primary is-small", "Import"),
       label(
         cls := "button is-small",
-        title := "PNG or JPEG images from your computer, to upscale, " +
-          "redraw or edit — or drop them on the gallery",
+        title := "PNG or JPEG images and WebM, MP4, MOV or Matroska videos " +
+          "from your computer, to upscale, redraw, edit or use as inputs — " +
+          "or drop them on the gallery",
         input(
           typ := "file",
-          accept := "image/png,image/jpeg",
+          accept := "image/png,image/jpeg,video/webm,video/mp4," +
+            "video/quicktime,video/x-matroska,.mkv",
           multiple := true,
           styleAttr := "display: none;",
           onChange --> { event =>
@@ -396,7 +398,7 @@ class GalleryPage(
             field.value = ""
           }
         ),
-        "⤓ Import images"
+        "⤓ Import images or videos"
       )
     ),
     div(
@@ -419,15 +421,20 @@ class GalleryPage(
     */
   private var openImported = false
 
-  /** Images from outside drift, each a gallery entry of its own (`specs/30`).
+  /** Images and videos from outside drift, each a gallery entry of its own
+    * (`specs/30`). A video is sent as the file it is; anything that does not
+    * say it is one goes the images' way, where the server judges the bytes.
     */
   private def importFiles(files: dom.FileList): Unit = {
     val picked = (0 until files.length).map(files(_)).toList
     openImported = picked.size == 1
     picked.foreach(file =>
-      readAsDataUrl(file)(data =>
-        historyService.push(Command.Import(ImageImport(file.name, data)))
-      )
+      if (GalleryPage.isVideo(file))
+        historyService.push(Command.ImportVideo(file))
+      else
+        readAsDataUrl(file)(data =>
+          historyService.push(Command.Import(ImageImport(file.name, data)))
+        )
     )
   }
 
@@ -454,6 +461,16 @@ class GalleryPage(
             disabled <-- selection.signal.map(_.isEmpty),
             onClick --> (_ => selection.set(Set.empty))
           ),
+          ProjectMover(
+            projectService.projects,
+            targets = loaded.combineWith(selection.signal).map(
+              (list, chosen) => list.filter(g => chosen(g.id))
+            ),
+            state = historyService.moveState,
+            onMove = (chosen, projectId) =>
+              historyService.push(Command.Move(chosen, projectId)),
+            label = count => s"Move $count selected"
+          ).element,
           button(
             cls := "button is-small is-danger",
             child.text <-- selection.signal.map(chosen =>
@@ -529,8 +546,11 @@ class GalleryPage(
       case Event.Imported(generation) =>
         if (openImported)
           openDetail.set(Some(GenerationDetailHost.Open(generation.id, 0)))
+      case Event.Moved(list) =>
+        projectService.moved(list)
+        selection.update(_ -- list.map(_.id))
     },
-    // Images dropped anywhere on the gallery are imported like picked ones.
+    // Images and videos dropped anywhere on the gallery are imported like picked ones.
     onDragOver --> (_.preventDefault()),
     onDrop --> { event =>
       event.preventDefault()
@@ -660,9 +680,21 @@ class GalleryPage(
       upscalerService,
       runtimeService,
       prerequisites,
+      projectService.projects,
       launchingProject = None,
       onReuseStaged = () => Page.Sandbox.navigate(),
       onAssistantStaged = () => Page.Sandbox.navigateTo(ProjectKind.Text)
     )
   )
+}
+
+object GalleryPage {
+  private val videoExtensions = Set("webm", "mp4", "m4v", "mov", "mkv")
+
+  /** Whether a picked or dropped file is a video: by its type, or by its name
+    * where the browser gives none (Matroska, often).
+    */
+  def isVideo(file: dom.File): Boolean =
+    file.`type`.startsWith("video/") ||
+      videoExtensions.contains(file.name.toLowerCase.split('.').last)
 }

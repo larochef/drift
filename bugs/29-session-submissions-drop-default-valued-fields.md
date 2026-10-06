@@ -1,6 +1,7 @@
 # Bug 29 — Session image/video submissions drop every field equal to its Scala default
 
-**Status:** open (found by reading the code, 2026-09-25; not reproduced at runtime)
+**Status:** fixed in code 2026-10-06 — `ServerRequests` holds the one codec (every field written) for the
+session path and `NativeJobs`, images and videos; unit-tested (`ServerRequestsTests`), not run live
 **Severity:** medium (a request silently runs with the server's launch-flag values instead of what the user asked)
 **Files:** `backend/src/drift/backend/sdserver/GenerationSubmissions.scala` (~lines 64–80, ~119), `shared/src/drift/shared/Generation.scala` (~lines 171–178 and the video codec)
 

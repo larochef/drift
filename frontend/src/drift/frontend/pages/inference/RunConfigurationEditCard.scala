@@ -87,7 +87,8 @@ class RunConfigurationEditCard(
         architecture,
         modelService,
         browsers,
-        assignments
+        assignments,
+        runnerVar.signal
       ).element,
       // The assistant prompt an image or video configuration prefers; a chat
       // configuration is the assistant.

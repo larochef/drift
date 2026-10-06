@@ -1,6 +1,7 @@
 # Bug 41 — Importing a large picture into the gallery is refused
 
-**Status:** open (found 2026-10-05, during the spec 52 end-to-end run; not investigated)
+**Status:** fixed in code 2026-10-06 — `LargeJsonBody` reads with `maxCharBufSize` at 256 MiB, on the import and
+on the image and video generation requests (their input images and videos travel the same way); not run live
 **Severity:** medium (a picture of a few megabytes cannot be imported; the message names a buffer, not the cause)
 **Files:** `shared/src/drift/shared/History.scala` (`importHistoryImage`, `ImageImport`), the server options the
 backend's endpoints are served with

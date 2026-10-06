@@ -20,7 +20,7 @@ prompts are long. Plus one gap: post-processing only accepts gallery entries.
   a "▦ 2/4" badge; selecting one ticks the whole generation, since a delete
   removes it all.
 
-- **Importing images.** "⤓ Import images" in the gallery toolbar, or files
+- **Importing images.** "⤓ Import images or videos" in the gallery toolbar, or files
   dropped anywhere on the gallery, `POST /api/history/imports` (file name +
   data URL). Each image becomes a gallery entry of its own: kind `import`,
   completed, one output `<id>-0.<png|jpeg>` and its `<id>.json` sidecar under
@@ -30,6 +30,10 @@ prompts are long. Plus one gap: post-processing only accepts gallery entries.
   derivations chain from it. Only PNG and JPEG, judged from the bytes — what
   sd-cli and the JDK decoders read; anything else is refused, not converted.
   One picked image opens in the detail view; several stay in the grid.
+  Videos go the same way from the same button and drop, as a file body:
+  `POST /api/history/imports/videos?fileName=…`, written to disk as it arrives
+  and moved into the gallery unchanged, `<id>-0.<webm|mkv|mp4|mov>` judged from
+  the container's first bytes (`GenerationImports.videoFormatOf`).
 
 ## Remaining
 

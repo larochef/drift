@@ -219,7 +219,8 @@ class RunConfigurationForm(
             archs.find(_.id == archId),
             modelService,
             browsers,
-            assignments
+            assignments,
+            runnerVar.signal
           ).element
       },
       child <-- generatesMedia.map(

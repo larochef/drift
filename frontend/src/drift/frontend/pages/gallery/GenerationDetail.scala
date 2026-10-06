@@ -1,7 +1,7 @@
 package drift.frontend.pages.gallery
 
 import drift.frontend.components.*
-import drift.frontend.services.LaunchPrerequisites
+import drift.frontend.services.{HistoryService, LaunchPrerequisites}
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -121,6 +121,10 @@ class GenerationDetail(
     onStopSession: String => Unit,
     onClose: () => Unit,
     onDelete: () => Unit,
+    /** The projects it can be moved to, and the move (`specs/19`). */
+    projects: Signal[List[Project]],
+    moveState: Signal[HistoryService.MoveState],
+    onMove: Option[String] => Unit,
     /** Which section of the right column is open. The host holds it, so the
       * choice survives opening the next image.
       */
@@ -376,6 +380,19 @@ class GenerationDetail(
           cls := "modal-card-title",
           s"${RecordedParameters.kindLabel(generation)} · " +
             RecordedParameters.dateTimeOf(generation.submittedAt)
+        ),
+        // Where it is filed, and the way to file it elsewhere: beside what it
+        // is rather than among the footer's actions (François, 2026-10-06)
+        span(
+          cls := "detail-project mr-3",
+          span(cls := "text-secondary is-size-7 mr-1", "Project"),
+          ProjectMover(
+            projects,
+            targets = Val(List(generation)),
+            state = moveState,
+            onMove = (_, projectId) => onMove(projectId),
+            label = _ => "Move"
+          ).element
         ),
         // What is being looked at belongs in the header, where nothing has to
         // be scrolled to reach it; what is done with it stays in the footer.

@@ -22,14 +22,18 @@ above them suggests starting one, with the same button.
   from its heading, and delete them behind one confirmation. Deleting removes
   the files and everything recorded about them.
 
-## Importing images
+## Importing images and videos
 
-**⤓ Import images** in the toolbar, or dropping files anywhere on the gallery,
-brings in PNG or JPEG images from your computer so you can upscale, redraw or
-edit them. Each lands under today with an "⤓ imported" badge and its original
-file name; one picked image opens straight in the detail view. Imports belong
-to no project and have no parameters to reuse. Other formats (WebP, GIF…) are
-refused — convert them to PNG first.
+**⤓ Import images or videos** in the toolbar, or dropping files anywhere on
+the gallery, brings in PNG or JPEG images from your computer so you can
+upscale, redraw or edit them, and WebM, MP4, MOV or Matroska videos so you can
+upscale them or use them as inputs. Each lands under today with an
+"⤓ imported" badge and its original file name; one picked file opens straight
+in the detail view. Imports belong to no project and have no parameters to
+reuse. Other image formats (WebP, GIF…) are refused — convert them to PNG
+first. A video is stored as it is, not re-encoded: whether it plays depends on
+what your browser reads (a Matroska file often does not, and still works as an
+input).
 
 ## The detail view
 

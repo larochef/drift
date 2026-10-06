@@ -9,7 +9,8 @@ case class CheckpointRow(
     name: String,
     flag: String,
     familyId: String,
-    required: Boolean
+    required: Boolean,
+    runners: List[RuntimeEngine]
 )
 
 class CheckpointEditor(init: List[CheckpointRef] = Nil) extends Component {
@@ -19,7 +20,7 @@ class CheckpointEditor(init: List[CheckpointRef] = Nil) extends Component {
   private def toRow(cp: CheckpointRef): CheckpointRow = {
     val id = nextId
     nextId += 1
-    CheckpointRow(id, cp.name, cp.flag, cp.familyId, cp.required)
+    CheckpointRow(id, cp.name, cp.flag, cp.familyId, cp.required, cp.runners)
   }
 
   def reset(newCheckpoints: List[CheckpointRef] = Nil): Unit = {
@@ -30,7 +31,9 @@ class CheckpointEditor(init: List[CheckpointRef] = Nil) extends Component {
   def snapshot(): List[CheckpointRef] =
     rows
       .now()
-      .map(r => CheckpointRef(r.name, r.familyId, r.flag, r.required))
+      .map(r =>
+        CheckpointRef(r.name, r.familyId, r.flag, r.required, r.runners)
+      )
 
   lazy val element: HtmlElement =
     div(
@@ -93,6 +96,31 @@ class CheckpointEditor(init: List[CheckpointRef] = Nil) extends Component {
               "required"
             )
           ),
+          // One runner or all of them: an architecture has two at most
+          div(
+            cls := "column is-narrow",
+            select(
+              cls := "select is-small",
+              title := "The runner this slot is for. On another runner it " +
+                "is neither asked for nor passed.",
+              onChange.mapToValue --> (v =>
+                rows.update(
+                  _.map(r =>
+                    if (r.id == id)
+                      r.copy(runners =
+                        RuntimeEngine.values.find(_.toString == v).toList
+                      )
+                    else r
+                  )
+                )
+              ),
+              option(value := "", "every runner"),
+              RuntimeEngine.values.toList.map(engine =>
+                option(value := engine.toString, s"${engine.displayName} only")
+              ),
+              value <-- rowSignal.map(_.runners.headOption.fold("")(_.toString))
+            )
+          ),
           div(
             cls := "column is-narrow",
             button(
@@ -110,7 +138,9 @@ class CheckpointEditor(init: List[CheckpointRef] = Nil) extends Component {
         onClick --> { _ =>
           val id = nextId;
           nextId += 1
-          rows.update(_ :+ CheckpointRow(id, "", "", "", required = true))
+          rows.update(
+            _ :+ CheckpointRow(id, "", "", "", required = true, runners = Nil)
+          )
         }
       )
     )

@@ -2,9 +2,11 @@ package drift.frontend.services
 
 import drift.shared.*
 
+import scala.concurrent.duration.DurationInt
 import scala.util.*
 
 import com.raquo.laminar.api.L.*
+import org.scalajs.dom
 
 object HistoryService {
   enum Command {
@@ -21,10 +23,32 @@ object HistoryService {
     /** An image from outside drift, as a gallery entry of its own (`specs/30`).
       */
     case Import(image: ImageImport)
+
+    /** A video from outside drift, likewise; the file itself is sent. */
+    case ImportVideo(file: dom.File)
+
+    /** Entries given to a project, or taken out of any (`specs/19`). */
+    case Move(generations: List[Generation], projectId: Option[String])
   }
   enum Event {
     case Deleted(generationId: String)
     case Imported(generation: Generation)
+
+    /** Every entry a move rewrote, what was derived from the moved ones
+      * included.
+      */
+    case Moved(generations: List[Generation])
+  }
+
+  /** Where the last move stands, for whatever asked for it to say so: `ids`
+    * are the entries asked for, `rewritten` counts what was derived from them
+    * too.
+    */
+  enum MoveState {
+    case Idle
+    case Moving(ids: Set[String])
+    case Done(ids: Set[String], projectId: Option[String], rewritten: Int)
+    case Failed(ids: Set[String])
   }
 }
 
@@ -42,6 +66,16 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
   private val dayOfFn = ApiClient.stream(findHistoryGenerationDay)
   private val deleteFn = ApiClient.stream(deleteHistoryGeneration)
   private val importFn = ApiClient.streamWithFailureReason(importHistoryImage)
+
+  /** A video is as long to send as it is large. */
+  private val moveFn = ApiClient.streamWithFailureReason(moveHistoryGenerations)
+
+  private val _moveState = Var[HistoryService.MoveState](
+    HistoryService.MoveState.Idle
+  )
+  val moveState: Signal[HistoryService.MoveState] = _moveState.signal
+  private val importVideoFn =
+    ApiClient.streamWithFailureReason(importHistoryVideo, within = 30.minutes)
 
   private val _days = Var(List.empty[HistoryDay])
 
@@ -84,6 +118,16 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
     * completion pushed by the socket.
     */
   def adopt(generation: Generation): Unit = fold(generation)
+
+  /** A generation whose record changed — its project — in place, where its day
+    * is loaded.
+    */
+  private def replace(generation: Generation): Unit =
+    _generationsByDay.update(
+      _.view
+        .mapValues(_.map(g => if (g.id == generation.id) generation else g))
+        .toMap
+    )
 
   /** A completion pushed by the socket. A loaded day takes the generation in
     * place; a day that is not loaded (or not yet listed) only needs the index
@@ -214,6 +258,38 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
         fold(generation)
         evtBus.writer.onNext(Event.Imported(generation))
       case Failure(err) => reportFailure("Importing an image", err)
+    },
+    cmdBus.events
+      .collect { case Command.ImportVideo(file) => file }
+      .flatMapMerge(file =>
+        importVideoFn((file.name, file)).recoverToTry
+      ) --> Observer[Try[Generation]] {
+      case Success(generation) =>
+        clearError()
+        fold(generation)
+        evtBus.writer.onNext(Event.Imported(generation))
+      case Failure(err) => reportFailure("Importing a video", err)
+    },
+    cmdBus.events
+      .collect { case Command.Move(generations, projectId) =>
+        (generations.map(_.id).toSet, projectId, generations)
+      }
+      .flatMapMerge { (ids, projectId, generations) =>
+        _moveState.set(HistoryService.MoveState.Moving(ids))
+        moveFn(
+          GenerationMove(generations.flatMap(GenerationReference.of), projectId)
+        ).recoverToTry.map(result => (ids, projectId, result))
+      } --> Observer[(Set[String], Option[String], Try[List[Generation]])] {
+      case (ids, projectId, Success(moved)) =>
+        clearError()
+        moved.foreach(replace)
+        _moveState.set(
+          HistoryService.MoveState.Done(ids, projectId, moved.size)
+        )
+        evtBus.writer.onNext(Event.Moved(moved))
+      case (ids, _, Failure(err)) =>
+        _moveState.set(HistoryService.MoveState.Failed(ids))
+        reportFailure("Moving to the project", err)
     },
     // Completions arrive by themselves: the socket pushes a session's list
     // whenever any of its generations change.

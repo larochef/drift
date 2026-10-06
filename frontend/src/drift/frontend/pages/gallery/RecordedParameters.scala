@@ -47,8 +47,11 @@ object RecordedParameters {
     case "redraw"                   => "Redraw"
     case "edit"                     => "Edit"
     case "resize"                   => "Resize"
-    case "import"                   => "Imported image"
-    case _                          => "Image"
+    case "import"                   =>
+      if (generation.outputs.exists(_.mimeType.startsWith("video/")))
+        "Imported video"
+      else "Imported image"
+    case _ => "Image"
   }
 
   /** What was done to the parent, in words. */

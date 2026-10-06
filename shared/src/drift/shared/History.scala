@@ -75,6 +75,54 @@ object ImageImport {
 val importHistoryImage: PublicEndpoint[ImageImport, String, Generation, Any] =
   historyBase.post
     .in("history" / "imports")
-    .in(jsonBody[ImageImport])
+    .in(LargeJsonBody[ImageImport])
     .errorOut(stringBody)
     .out(jsonBody[Generation])
+
+/** Imports one video the same way. The file is the body itself, written to disk
+  * as it arrives: a video inside a JSON string would be held whole in memory
+  * several times over, on both sides. The failure is why it was refused — not a
+  * WebM, MP4, MOV or Matroska file.
+  */
+val importHistoryVideo
+    : PublicEndpoint[(String, TapirFile), String, Generation, Any] =
+  historyBase.post
+    .in("history" / "imports" / "videos")
+    .in(query[String]("fileName"))
+    .in(fileBody)
+    .errorOut(stringBody)
+    .out(jsonBody[Generation])
+
+/** Gallery entries given to a project, or taken out of any (`projectId` none).
+  * `generations` names each by the day it is filed under and its id.
+  */
+case class GenerationMove(
+    generations: List[GenerationReference],
+    projectId: Option[String]
+)
+object GenerationMove {
+  given Schema[GenerationMove] = Schema.derived
+  given JsonValueCodec[GenerationMove] = JsonCodecMaker.make
+}
+
+case class GenerationReference(date: String, generationId: String)
+object GenerationReference {
+  given Schema[GenerationReference] = Schema.derived
+
+  def of(generation: Generation): Option[GenerationReference] =
+    generation.outputs.headOption
+      .map(output => GenerationReference(output.date, generation.id))
+}
+
+/** Moves generations to a project (`specs/19-projects-and-prompt-versions.md`):
+  * orphans — imports, the Sandbox's — or another project's. What was derived
+  * from one follows it. Answers every entry it rewrote; the failure is why
+  * nothing moved — the project does not exist.
+  */
+val moveHistoryGenerations
+    : PublicEndpoint[GenerationMove, String, List[Generation], Any] =
+  historyBase.post
+    .in("history" / "moves")
+    .in(jsonBody[GenerationMove])
+    .errorOut(stringBody)
+    .out(jsonBody[List[Generation]])

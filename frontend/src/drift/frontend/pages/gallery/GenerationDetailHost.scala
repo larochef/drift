@@ -41,6 +41,8 @@ class GenerationDetailHost(
       * that download until the weights are on disk (`specs/46`).
       */
     prerequisites: LaunchPrerequisites,
+    /** The projects an entry can be moved to (`specs/19`). */
+    projects: Signal[List[Project]],
     /** The project a launch from here is made for, recorded on its session: the
       * workspace's; none from the gallery, whose launches land in the Sandbox
       * (`specs/47-sandbox.md`).
@@ -319,6 +321,7 @@ class GenerationDetailHost(
       case HistoryService.Event.Deleted(id) =>
         if (open.now().exists(_.generationId == id)) open.set(None)
       case HistoryService.Event.Imported(_) => ()
+      case HistoryService.Event.Moved(_)    => ()
     },
     // Keyed on the generation and the output clicked, so a detail is built
     // once per opening and nothing else rebuilds it (bugs/24).
@@ -428,6 +431,12 @@ class GenerationDetailHost(
       onClose = () => open.set(None),
       onDelete =
         () => GenerationDetailHost.confirmAndDelete(generation, historyService),
+      projects = projects,
+      moveState = historyService.moveState,
+      onMove = projectId =>
+        historyService.push(
+          HistoryService.Command.Move(List(generation), projectId)
+        ),
       openSection = openSection,
       openTask = openTask,
       panelHidden = panelHidden,

@@ -1,5 +1,6 @@
 package drift.backend.sdserver
 
+import drift.backend.sdserver.ServerRequests.given
 import drift.shared.*
 
 import java.net.URI
@@ -86,17 +87,6 @@ object NativeJobs {
 
   /** A completed job is one base64 image; a 1536² PNG runs to megabytes. */
   private val readerConfig = ReaderConfig.withMaxCharBufSize(256 * 1024 * 1024)
-
-  /** Every field written, even one equal to its default: a 512 px tile must not
-    * fall back to the server's own width. Requests start from the server's
-    * img_gen defaults, so nothing written differs from what it would assume.
-    */
-  private given JsonValueCodec[ImageGenerationParameters] = JsonCodecMaker.make(
-    CodecMakerConfig
-      .withDiscriminatorFieldName(None)
-      .withFieldNameMapper(JsonCodecMaker.enforce_snake_case)
-      .withTransientDefault(false)
-  )
 
   private def uri(port: Int, path: String): URI =
     URI.create(s"http://127.0.0.1:$port$path")

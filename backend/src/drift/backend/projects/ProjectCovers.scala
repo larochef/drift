@@ -67,6 +67,11 @@ final class ProjectCovers(
       .map(day => s"${day.date}:${day.count}")
       .getOrElse("empty")
 
+  /** Forgets the newest results: a generation changed project, which no
+    * directory listing shows.
+    */
+  def invalidate(): Unit = synchronized { signature = None }
+
   /** The cover for a project as bytes and their content type, or `None` when it
     * has made nothing of its kind yet - which is not a failure, just a project
     * the user has not run.

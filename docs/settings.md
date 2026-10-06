@@ -137,12 +137,15 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     (32 kHz stereo, about a second to decode); without it they are silent.
     It takes Qwen3's
     `tokenizer.json` as the configuration's **tokenizer** (the text encoder's
-    file has none; drift downloads it with the other files), and **ffmpeg**
+    file has none; drift downloads it with the other files — the slot shows
+    only when the configuration's runner is the drift runner, and is required
+    there), and **ffmpeg**
     installed, which encodes the webm. First and last frames and references
     are not supported yet.
   - **Wan 2.2 14B** makes videos from text, and from a first frame with the
     I2V experts, in about half sd-cpp's time. It takes UMT5's
-    `tokenizer.json` as the configuration's **tokenizer**. Unlike sd-cpp, it
+    `tokenizer.json` as the configuration's **tokenizer** (a slot of the drift
+    runner only, required there). Unlike sd-cpp, it
     applies the **high-noise CFG scale**: sd-cpp ignores it whenever the
     low-noise CFG is 1, so a configuration that looked right on sd-cpp with
     a high-noise CFG of 3.5 was really running at 1. Step-distilled experts

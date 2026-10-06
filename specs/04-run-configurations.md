@@ -54,7 +54,9 @@ configuration prefers over its architecture's default — 32)
 - `CommandLine.blockers` (shared) answers `List[LaunchBlocker]`:
   `UnknownArchitecture`, `UnassignedCheckpoint`, `MissingModel`,
   `WeightsNotCached`, `WeightsUnreadable`. `CommandLine.resolve` builds the argv and
-  the notes; the preview and the launcher both call it.
+  the notes; the preview and the launcher both call it. Both read only the slots
+  of the configuration's runner (`CheckpointRef.appliesTo`), and the form shows
+  only those.
 - UI: `frontend/.../pages/inference/{RunConfigurationsPage,RunConfigurationCard,
   RunConfigurationEditCard,RunConfigurationForm,CheckpointAssignments}.scala`,
   hosted by `pages/models/ModelsPage.scala`; `services/RunConfigurationService`.

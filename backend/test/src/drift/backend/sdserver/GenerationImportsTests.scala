@@ -47,6 +47,34 @@ object GenerationImportsTests extends TestSuite {
       assert(sidecar == imported)
       assert(sidecar.importedFileName.contains("holiday.jpg"))
     }
+    test("a video is moved in under the container its bytes say") {
+      val root = Files.createTempDirectory("drift-imports")
+      def upload(bytes: Array[Byte]) =
+        Files.write(Files.createTempFile("drift-upload", ".bin"), bytes)
+      val ebml = Array(0x1a, 0x45, 0xdf, 0xa3).map(_.toByte)
+      val webm =
+        upload(ebml ++ "\u0001B\u0082\u0084webm".getBytes("ISO-8859-1"))
+      val imported =
+        GenerationImports(root).importVideo("clip.mp4", webm).toOption.get
+      val output = imported.outputs.head
+      assert(imported.kind == "import")
+      assert(output.fileName == s"${imported.id}-0.webm")
+      assert(output.mimeType == "video/webm")
+      assert(
+        Files.isRegularFile(root.resolve(output.date).resolve(output.fileName))
+      )
+      assert(!Files.exists(webm))
+      assert(imported.importedFileName.contains("clip.mp4"))
+
+      val quickTime = upload(Array[Byte](0, 0, 0, 20) ++ "ftypqt  ".getBytes)
+      assert(GenerationImports.videoFormatOf(quickTime).contains("mov"))
+      val mp4 = upload(Array[Byte](0, 0, 0, 24) ++ "ftypisom".getBytes)
+      assert(GenerationImports.videoFormatOf(mp4).contains("mp4"))
+
+      val text = upload("not a video".getBytes)
+      assert(GenerationImports(root).importVideo("notes.webm", text).isLeft)
+      assert(!Files.exists(text))
+    }
     test("the format comes from the bytes, not the name or the mime type") {
       val root = Files.createTempDirectory("drift-imports")
       val imported = GenerationImports(root)

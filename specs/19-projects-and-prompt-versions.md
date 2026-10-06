@@ -78,6 +78,21 @@ them.
 - In an SFW project the LoRA picker starts with NSFW off; in an NSFW project
   on.
 - The gallery shows a project badge on cards and a project filter.
+- **Moving to a project.** `ProjectMover`, in the detail view's header and in the
+  gallery's selection bar (for the ticked ones): a select showing the project
+  the entries are in (*Choose a project…* when they differ), a **Move**
+  button enabled once another is picked — a project or *No project* — and
+  the outcome beside it, from `HistoryService.moveState`: the button loading,
+  then "✓ Moved to X, with n made from it" or "✗ Not moved". The ticks go once
+  the move is done.
+  `POST /api/history/moves` (`GenerationMoves`) rewrites the
+  sidecars only — the files stay under their day. What was derived from a
+  moved entry (upscales, redraws, edits, and theirs) follows it. A generation
+  with a recipe joins the target's version already holding that recipe on its
+  configuration, else appends one (`ProjectManager.adopt`); an import, or a
+  derived entry moved without its source, has no version and shows as
+  *untagged*. The versions of the project it left stay. A chosen cover that
+  left its project is cleared.
 
 ## Shape
 

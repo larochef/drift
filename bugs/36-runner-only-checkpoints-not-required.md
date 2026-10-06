@@ -1,7 +1,12 @@
 # Bug 36 — A slot the drift runner needs is optional for every runner
 
-**Status:** open (found 2026-09-30 launching MiniMax H3 on the drift runner;
-worked around by assigning `qwen3-tokenizer` in the configuration)
+**Status:** fixed in code 2026-10-06 — `CheckpointRef.runners` (empty = every
+runner); blockers, the argv and the configuration form read only the slots of
+the configuration's runner; the H3 and Wan 2.2 A14B tokenizers are the drift
+runner's and required there (migration 12 reseeds both); the architecture
+editor sets it per slot. Unit-tested (`SlotsPerRunnerTests`), not seen in a
+browser. Left as they were: the tokenizer slots of PiD and HiDream O1, required
+on every runner
 **Severity:** medium (a configuration that passes every launch check dies at
 startup; the reverse case passes a flag sd-cpp may reject)
 **Files:** `shared/src/drift/shared/Api.scala` (`CheckpointRef`),

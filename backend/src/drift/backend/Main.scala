@@ -147,6 +147,14 @@ import sttp.tapir.server.netty.sync.*
       generationHistory,
       outputsRoot
     )
+  val generationMoves = GenerationMoves(
+    outputsRoot,
+    generationHistory,
+    generationManager,
+    projectManager,
+    projectCovers,
+    storage
+  )
   // Free play does not survive a restart: whatever the last run left in
   // `outputs/scratch/` was never kept, and the records that pointed at it are
   // gone with the process (`specs/22-free-play-and-scratch-generations.md`).
@@ -188,7 +196,7 @@ import sttp.tapir.server.netty.sync.*
         OutputPreviews(outputsRoot, locations.cacheRoot)
       ) ++
       scratchEndpoints(generationManager) ++
-      historyEndpoints(generationHistory, generationImports) ++
+      historyEndpoints(generationHistory, generationImports, generationMoves) ++
       projectEndpoints(storage, generationHistory, projectCovers) ++
       postProcessEndpoints(postProcessManager) ++
       conversionEndpoints(conversionManager) ++

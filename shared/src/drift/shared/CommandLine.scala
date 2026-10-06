@@ -63,6 +63,13 @@ object LaunchBlocker {
   */
 object CommandLine {
 
+  /** The architecture's slots that exist on the configuration's runner. */
+  private def slots(
+      configuration: RunConfiguration,
+      architecture: Architecture
+  ): List[CheckpointRef] =
+    architecture.checkpoints.filter(_.appliesTo(configuration.runner))
+
   /** Everything standing between a configuration and a launch, in checkpoint
     * order. Empty means ready.
     *
@@ -82,7 +89,7 @@ object CommandLine {
       case None =>
         List(LaunchBlocker.UnknownArchitecture(configuration.architectureId))
       case Some(architecture) =>
-        architecture.checkpoints.flatMap { checkpoint =>
+        slots(configuration, architecture).flatMap { checkpoint =>
           configuration.assignments.get(checkpoint.name) match {
             case None if checkpoint.required =>
               Some(
@@ -210,7 +217,7 @@ object CommandLine {
     // carry parameters, and a uniform rule needs no exceptions. A model's own
     // removals come after its values, so one that both sets and removes a flag
     // removes it.
-    val modelEntries = architecture.checkpoints.flatMap(checkpoint =>
+    val modelEntries = slots(configuration, architecture).flatMap(checkpoint =>
       configuration.assignments
         .get(checkpoint.name)
         .flatMap(byId.get)
@@ -374,12 +381,13 @@ object CommandLine {
         architectures.find(_.id == configuration.architectureId).get
       val byId = models.map(m => m.id -> m).toMap
 
-      val checkpointArguments = architecture.checkpoints.flatMap { checkpoint =>
-        configuration.assignments
-          .get(checkpoint.name)
-          .flatMap(byId.get)
-          .toList
-          .flatMap(model => List(checkpoint.flag, resolvePath(model)))
+      val checkpointArguments = slots(configuration, architecture).flatMap {
+        checkpoint =>
+          configuration.assignments
+            .get(checkpoint.name)
+            .flatMap(byId.get)
+            .toList
+            .flatMap(model => List(checkpoint.flag, resolvePath(model)))
       }
 
       // An empty value means a valueless flag; that is the convention in

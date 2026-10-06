@@ -67,6 +67,32 @@ final class ProjectManager(storage: StorageService) {
         }
     }
 
+  /** The version of `projectId` a generation made elsewhere joins when it is
+    * moved there: the one already holding its recipe on its configuration,
+    * else a new one — twenty pictures of one recipe moved together are one
+    * version, not twenty.
+    */
+  def adopt(
+      projectId: String,
+      generation: Generation
+  ): Either[String, Option[(String, String)]] =
+    versionFor(
+      SubmitContext(
+        projectId = Some(projectId),
+        versionId = storage
+          .get[Project]("projects", projectId)
+          .flatMap(
+            _.versions.find(version =>
+              version.runConfigurationId == generation.runConfigurationId &&
+                ProjectManager.sameRecipe(version, generation)
+            )
+          )
+          .map(_.id),
+        origin = Some("manual")
+      ),
+      generation
+    )
+
   private def touch(project: Project): Unit =
     storage.save(
       "projects",

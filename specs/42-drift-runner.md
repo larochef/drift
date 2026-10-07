@@ -1,6 +1,6 @@
 # 42 — drift runner: an inference engine for Strix Halo
 
-**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1, Mage-Flow (Turbo, Edit Turbo), Nucleus-Image and LLaDA-Image draw; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX with their soundtracks), with LoRAs and image inputs (H3 also guides and a ControlNet, its references built but broken live; LTX guides); groom each later step before building it
+**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1, Mage-Flow (Turbo, Edit Turbo), Nucleus-Image, LLaDA-Image and GRN draw; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX with their soundtracks), with LoRAs and image inputs (H3 also guides and a ControlNet, its references built but broken live; LTX guides); groom each later step before building it
 **Depends on:** 06 (runtimes, TheRock), 07 (launch and supervision), 16 (parameter resolution), 17 and 18 (the chat runtime and its sessions), 41 (text projects)
 
 drift's own runner replaces sd-cpp and llama.cpp for one machine: Strix Halo
@@ -1803,6 +1803,44 @@ on the old tool.
         step, 36 s: with its levels (1.0, 0.9375, 0.875, 0.75, 0.5, 0.25) a
         clean photograph; on the model's own schedule, the same seed comes
         out with debris and broken structures.
+    - **Done 2026-10-07: GRN** (the 2B text-to-image model), an experiment in
+      a model that does not diffuse (`models/Grn`, `diffusion/GrnPipeline`,
+      the tokenizer through `models/QwenImage21Vae`). sd-cpp has no support
+      for it.
+      - **Reference.** bytedance's code (`MGenAI/GRN`, fe71a70:
+        `grn/models/grn.py`, `grn/models/hbq_tokenizer.py`,
+        `tools/grn_pipeline.py`).
+      - **Model.** A picture is 256 bits a latent at 1/16 (the tokenizer's 64
+        channels, four bits each, coarse to fine). The transformer (28 blocks
+        as Qwen 3's, 2304 wide, 18 heads of 128, no modulation) reads one
+        sequence — a token per latent with its bits one-hot, the prompt's
+        umT5 features, one token for the progress — and gives two logits a
+        bit. RoPE on three axes of 21, 21 and 22 pairs: the text along the
+        first, the latents at 600 on it with rows and columns stretched onto
+        the grid the model was trained to cover (129 × 129 for a square).
+      - **Sampling.** Random bits to start; at each step every bit is
+        predicted from the picture as it stands (guidance on the logits, a
+        temperature of 1.1), drawn, and a random share of the draw kept —
+        `0.95 × (1 − cos(π / 2 × (s + 1) / (n − 1)))` after step `s` of `n` —
+        the rest staying the starting noise's. The last draw is the picture.
+        The draws are made on the host. The released code ignores its seed;
+        here the seed decides the picture.
+      - **Tokenizer.** Wan 2.2's VAE in RGB with its pixels shuffled 2 × 2:
+        the network `QwenImage21Vae` already ran, which now takes that variant
+        (`pixelPatch`), its latents as they are. Only its decoder runs.
+      - **Weights.** Published as PyTorch pickles, which the runner does not
+        read: converted on the CPU to safetensors, tensors only
+        (`grn_convert.py`), the transformer to BF16, and published as
+        `drift-generator/grn-safetensor`, which the built-in models point at.
+        umT5 from ComfyUI's safetensors (the runner's `Umt5` reads
+        transformers' names, not the GGUF).
+      - **Checks.** A tiny transformer and tokenizer from the official
+        modules (`fixtures/tiny_grn.py`): one refinement pass's logits 0.01 %
+        on `Cpu`, the decoder 0.14 %.
+      - **Live.** 1024², 50 steps at CFG 3 in 156 s (3.1 s a guided step),
+        loaded in 4 s; pictures in `~/dev/redraw-experiments/2026-10-07-grn/`.
+      - **Left.** Other shapes than a square run live; the 8B and video
+        models; a launch from drift.
     - **Done 2026-10-07: LLaDA-Image** (base and Turbo), txt2img, editing
       with one reference, img2img with a mask (`models/LladaImage`,
       `models/Llada2`, `models/LladaConnectors`, `models/PlainAttention`,

@@ -164,6 +164,18 @@ object TinyModelGpuTests extends TestSuite {
         assert(same && error < 2e-2)
       } finally ops.close()
     }
+    test("GRN: one refinement pass and its tokenizer's decoder") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val logits = TinyGrnCase.logitsError(ops)
+        val image = TinyGrnCase.tokenizerError(ops)
+        println(
+          f"  worst logit error ${logits * 100}%.4f%%, image error ${image * 100}%.4f%% of the largest"
+        )
+        // the decoder's 3×3 convolutions take BF16 patches
+        assert(logits < 2e-2 && image < 4e-2)
+      } finally ops.close()
+    }
     test("Nucleus-Image: text as keys and values and experts that choose") {
       val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
       try {

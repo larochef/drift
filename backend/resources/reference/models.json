@@ -858,6 +858,45 @@
     "builtIn": true
   },
   {
+    "id": "grn-t2i-2b-bf16",
+    "familyId": "grn-diffusion",
+    "label": "GRN T2I 2B bf16 (converted)",
+    "source": {
+      "type": "huggingface",
+      "repo": "drift-generator/grn-safetensor",
+      "filename": "grn-t2i-2b-bf16.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "grn-hbq-tokenizer",
+    "familyId": "grn-tokenizer",
+    "label": "GRN HBQ tokenizer (converted)",
+    "source": {
+      "type": "huggingface",
+      "repo": "drift-generator/grn-safetensor",
+      "filename": "grn-hbq-tokenizer.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "umt5-xxl-fp8-scaled",
+    "familyId": "umt5-xxl",
+    "label": "umt5_xxl fp8 (scaled)",
+    "source": {
+      "type": "huggingface",
+      "repo": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+      "filename": "split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
     "id": "nucleus-image-bf16",
     "familyId": "nucleus-image-diffusion",
     "label": "Nucleus-Image bf16 (official, 7 shards)",

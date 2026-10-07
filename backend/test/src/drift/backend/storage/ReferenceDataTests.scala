@@ -26,11 +26,13 @@ object ReferenceDataTests extends TestSuite {
           "mage-flow-edit-turbo",
           "nucleus-image",
           "llada-image",
-          "llada-image-turbo"
+          "llada-image-turbo",
+          "grn"
         ).subsetOf(architectures)
       )
       assert(models.exists(_.id == "nucleus-image-bf16"))
       assert(starters.exists(_.id == "starter-llada-image-turbo"))
+      assert(starters.exists(_.id == "starter-grn-2b"))
       // a starter names an architecture and models that exist
       val known = models.map(_.id).toSet
       val broken = starters.filter(starter =>

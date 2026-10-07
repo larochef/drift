@@ -216,5 +216,22 @@
     "lastUsedAt": 0,
     "loras": [],
     "runner": "DriftRunner"
+  },
+  {
+    "id": "starter-grn-2b",
+    "label": "GRN 2B",
+    "architectureId": "grn",
+    "assignments": {
+      "diffusion": "grn-t2i-2b-bf16",
+      "vae": "grn-hbq-tokenizer",
+      "llm": "umt5-xxl-fp8-scaled",
+      "tokenizer": "umt5-tokenizer"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "DriftRunner"
   }
 ]

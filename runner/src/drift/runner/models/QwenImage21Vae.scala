@@ -23,6 +23,9 @@ import java.nio.file.Path
   *     of which the image is the last;
   *   - the latent is the mean (the first 64 of the encoder's 128 channels),
   *     normalized by the per-channel statistics.
+  * GRN's HBQ tokenizer is the same network in RGB with its pixels shuffled 2 ×
+  * 2 into 12 channels and three resampling levels; its decoder runs here
+  * (`pixelPatch`), on latents taken as they are.
   */
 final class QwenImage21Vae private (ops: Ops, source: WeightSource)
     extends AutoCloseable {
@@ -99,10 +102,6 @@ final class QwenImage21Vae private (ops: Ops, source: WeightSource)
     * variance).
     */
   val channels: Long = encoderOut.outChannels / 2
-  require(
-    channels == LatentMean.length,
-    s"$channels latent channels, not ${LatentMean.length}"
-  )
   private val quant = weights.conv1x1("conv1").take(channels)
 
   private val postQuant = weights.conv1x1("conv2")
@@ -110,13 +109,46 @@ final class QwenImage21Vae private (ops: Ops, source: WeightSource)
   private val decoderMiddle = layers.middle("decoder")
   private val ups = levels("decoder", "upsamples")
   private val decoderNorm = layers.norm("decoder.head.0")
-  private val decoderOut = weights.conv3x3("decoder.head.2")
+  private val storedOut = weights.conv3x3("decoder.head.2")
 
-  /** Image pixels per latent pixel along each side: 16 for four levels. */
-  val scale: Int = 1 << downs.count(_.resample.isDefined)
+  /** Pixels shuffled into the channels along each side: 2 for GRN's HBQ
+    * tokenizer (the same network in RGB, 12 channels in and out, three
+    * resampling levels), whose latents are also taken as they are, with no
+    * statistics; 1 for Qwen Image 2.1's.
+    */
+  val pixelPatch: Int = if (storedOut.outChannels == 12) 2 else 1
+  private val normalized = pixelPatch == 1
+  require(
+    !normalized || channels == LatentMean.length,
+    s"$channels latent channels, not ${LatentMean.length}"
+  )
 
-  /** Image channels: RGBA. */
-  val imageChannels: Long = encoderIn.weight.shape.last / 9
+  // the tokenizer's channels are `c × 4 + dx × 2 + dy`; `unpackPatches` takes
+  // `c × 4 + dy × 2 + dx`
+  private val decoderOut =
+    if (pixelPatch == 1) storedOut
+    else {
+      val weight =
+        weights.keep(
+          ops.allocate(storedOut.weight.dtype, storedOut.weight.shape)
+        )
+      val bias =
+        weights.keep(ops.allocate(storedOut.bias.dtype, storedOut.bias.shape))
+      (0L until storedOut.outChannels).foreach { row =>
+        val (c, dy, dx) = (row / 4, row % 4 / 2, row % 2)
+        val stored = c * 4 + dx * 2 + dy
+        ops.copy(storedOut.weight.rows(stored, 1), weight.rows(row, 1))
+        ops.copy(storedOut.bias.rows(stored, 1), bias.rows(row, 1))
+      }
+      Convolution(weight, bias)
+    }
+
+  /** Image pixels per latent pixel along each side: 16. */
+  val scale: Int = (1 << downs.count(_.resample.isDefined)) * pixelPatch
+
+  /** Image channels: RGBA, or the tokenizer's RGB. */
+  val imageChannels: Long =
+    encoderIn.weight.shape.last / 9 / (pixelPatch * pixelPatch)
 
   // (z − mean) / std and back, as `modulate`'s x × (1 + scale) + shift
   private val normalizeScale = weights.floats(LatentStd.map(1 / _ - 1))
@@ -137,6 +169,7 @@ final class QwenImage21Vae private (ops: Ops, source: WeightSource)
       pixelChannels == imageChannels && height % scale == 0 && width % scale == 0,
       s"encode: image ${image.shape}"
     )
+    require(pixelPatch == 1, "the HBQ tokenizer's encoder is not run here")
     val run = new VaeRun(ops)
     import run.{dimensions, pixels}
     try {
@@ -176,9 +209,9 @@ final class QwenImage21Vae private (ops: Ops, source: WeightSource)
     } finally run.release()
   }
 
-  /** The image of `latents` (`[h, w, 64]`, as `encode` gives them): `[16h, 16w,
-    * 4]`, values in [−1, 1]. The tensors it allocates are released but for the
-    * result's.
+  /** The image of `latents` (`[h, w, 64]`, as `encode` gives them; the HBQ
+    * tokenizer's as they are): `[16h, 16w, imageChannels]`, values in [−1, 1].
+    * The tensors it allocates are released but for the result's.
     */
   def decode(latents: Tensor): Tensor = {
     val Seq(h, w, c) = latents.shape.dimensions
@@ -187,7 +220,9 @@ final class QwenImage21Vae private (ops: Ops, source: WeightSource)
     import run.{dimensions, pixels}
     try {
       val z = run.image(h, w, c)
-      ops.modulate(pixels(latents), restoreScale, restoreShift, pixels(z))
+      if (normalized)
+        ops.modulate(pixels(latents), restoreScale, restoreShift, pixels(z))
+      else ops.copy(latents, z)
       var x = run.conv3x3(run.conv1x1(z, postQuant), decoderIn)
       x = run.middle(x, decoderMiddle)
       ups.foreach { level =>
@@ -210,7 +245,18 @@ final class QwenImage21Vae private (ops: Ops, source: WeightSource)
       }
       val normed = run.normSilu(x, decoderNorm)
       run.free(x)
-      run.result(run.conv3x3(normed, decoderOut))
+      val out = run.conv3x3(normed, decoderOut)
+      if (pixelPatch == 1) run.result(out)
+      else {
+        val (height, width, packed) = dimensions(out)
+        val image = run.image(
+          height * pixelPatch,
+          width * pixelPatch,
+          packed / (pixelPatch * pixelPatch)
+        )
+        ops.unpackPatches(pixels(out), height.toInt, pixelPatch, image)
+        run.result(image)
+      }
     } finally run.release()
   }
 

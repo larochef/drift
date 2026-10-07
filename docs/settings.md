@@ -80,8 +80,8 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
 8-bit inputs as in the fork that made the format.
 
 - **Images: Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, HiDream O1,
-  Mage-Flow, Nucleus-Image, LLaDA-Image and PiD; video: MiniMax H3, Wan 2.2 A14B and LTX 2.5.** A second runtime, **drift runner, images (gfx1151)**, runs Krea 2,
-  FLUX.2 [klein] 9B, FLUX.2 [dev], Qwen Image 2.1, HiDream O1, Mage-Flow, Nucleus-Image, LLaDA-Image, PiD 1.5,
+  Mage-Flow, Nucleus-Image, LLaDA-Image, GRN and PiD; video: MiniMax H3, Wan 2.2 A14B and LTX 2.5.** A second runtime, **drift runner, images (gfx1151)**, runs Krea 2,
+  FLUX.2 [klein] 9B, FLUX.2 [dev], Qwen Image 2.1, HiDream O1, Mage-Flow, Nucleus-Image, LLaDA-Image, GRN, PiD 1.5,
   MiniMax H3, Wan 2.2 14B and LTX 2.5 configurations in
   place of sd-cpp: pick
   it in the launch control. It tells them apart by the checkpoint, and reads
@@ -132,6 +132,14 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     reads the picture being edited, and the tokenizer are shared. Turbo's
     flow shift of 3 comes with its stochastic steps, as its scheduler is
     released: without it its edits come out gritty.
+  - **GRN** (experimental, the 2B text-to-image model) runs on the drift
+    runner only. It does not diffuse: a picture is a grid of bits, all
+    predicted again at each of 50 steps while a growing share of them is
+    kept; a 1024² image at CFG 3 takes about two and a half minutes. Its
+    weights are published as PyTorch pickles, which drift does not read: the
+    built-in files are a safetensors conversion of them
+    (`drift-generator/grn-safetensor`). Its text encoder is umT5 as a
+    safetensors file.
   - **Nucleus-Image** runs on the drift runner only (sd-cpp does not know
     it): text to image and img2img with a mask, from the official 34 GB
     checkpoint in its seven shards, Qwen3-VL-8B and the Qwen Image VAE. It is

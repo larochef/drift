@@ -27,8 +27,8 @@ missing runtime or download is offered in place of the launch.
   - `starter-pid-flux2` — PiD 1.5, FLUX.2, 1024 → 4096 in 4 steps
   - `starter-qwen3.6-35b-a3b` — Qwen 3.6 35B-A3B, UD-Q4_K_XL MTP build with
     its vision projector (MTP and vision together need llama.cpp b9240+)
-  Five more are seeded on the drift runner itself, the only engine drift
-  runs them on (Nucleus-Image, LLaDA-Image) or the one worth using (Mage-Flow:
+  Six more are seeded on the drift runner itself, the only engine drift
+  runs them on (Nucleus-Image, LLaDA-Image, GRN) or the one worth using (Mage-Flow:
   an edit in 10 s against sd-cpp's 150):
   - `starter-mage-flow-turbo`, `starter-mage-flow-edit-turbo` — Mage-Flow's
     BF16 checkpoints with Qwen3-VL-4B, the Edit one with the vision projector
@@ -36,6 +36,8 @@ missing runtime or download is offered in place of the launch.
   - `starter-llada-image-turbo`, `starter-llada-image` — LLaDA-Image, each with
     its own transformer, LLaDA2 text encoder, QueryFormer and text projection,
     and the shared SigVQ encoder and tokenizer
+  - `starter-grn-2b` — GRN's 2B text-to-image model, from the safetensors
+    conversion of its weights, with umT5 as a safetensors file
 - Wherever a model is started, a configuration missing weights offers their
   download instead: the run configuration card's footer, a project's image,
   video, chat and assistant pickers (the entry is suffixed *download the

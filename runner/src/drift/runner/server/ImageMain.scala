@@ -30,6 +30,7 @@ object ImageMain {
       "mage-flow",
       "nucleus-image",
       "llada-image",
+      "grn",
       "minimax-h3",
       "wan-2.2-14b",
       "ltx-2.5",
@@ -42,7 +43,7 @@ object ImageMain {
       RunnerIdentity.modelKinds(ModelKinds)
     if (arguments.contains("--help") || arguments.contains("-h")) {
       println(
-        s"$Version: sd-server's native API on drift's own engine (Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, PiD, HiDream O1, Mage-Flow, Nucleus-Image, LLaDA-Image; MiniMax H3, Wan 2.2 A14B and LTX 2.5 video; SeedVR2 upscaling)\n" +
+        s"$Version: sd-server's native API on drift's own engine (Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, PiD, HiDream O1, Mage-Flow, Nucleus-Image, LLaDA-Image, GRN; MiniMax H3, Wan 2.2 A14B and LTX 2.5 video; SeedVR2 upscaling)\n" +
           "  --diffusion-model FILE  --vae FILE  --llm FILE  (or --model FILE, one file)  --tokenizer FILE  --listen-ip HOST  --listen-port PORT\n" +
           "  LLaDA-Image: --llada-queryformer FILE  --llada-text-projection FILE  --llada-sigvq FILE  (or --embeddings-connectors FILE)\n" +
           "  -W WIDTH  -H HEIGHT  --steps N  --cfg-scale S  --guidance G  --flow-shift MU  -s SEED  --video-frames N  --audio-vae FILE\n" +

@@ -776,6 +776,57 @@
     ]
   },
   {
+    "id": "grn",
+    "label": "GRN",
+    "tool": "SdCpp",
+    "builtIn": true,
+    "civitaiBaseModels": [],
+    "huggingFaceBaseModels": [
+      "bytedance-research/GRN"
+    ],
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "grn-diffusion",
+        "flag": "--diffusion-model",
+        "required": true
+      },
+      {
+        "name": "vae",
+        "familyId": "grn-tokenizer",
+        "flag": "--vae",
+        "required": true
+      },
+      {
+        "name": "llm",
+        "familyId": "umt5-xxl",
+        "flag": "--llm",
+        "required": true
+      },
+      {
+        "name": "tokenizer",
+        "familyId": "umt5-tokenizer",
+        "flag": "--tokenizer",
+        "required": true
+      }
+    ],
+    "defaultParameters": {
+      "--cfg-scale": "3.0",
+      "--steps": "50",
+      "-H": "1024",
+      "-W": "1024"
+    },
+    "tags": [
+      "image"
+    ],
+    "promptingNotes": "An experimental model that does not diffuse: a picture is a grid of bits, all predicted again at each of 50 steps while a growing share of them is kept. Text to image only, 2B parameters; CFG 3 is the vendor's setting and the negative prompt has an effect. Write a plain description through umT5 (the Wan text encoder, as a safetensors file: the runner does not read its GGUF). Trained around a megapixel; width and height must be multiples of 16. Its weights are published as PyTorch pickles, which drift does not read: the built-in files are a safetensors conversion of the official ones (drift-generator/grn-safetensor). It runs on the drift runner only.",
+    "sizeMultiple": 16,
+    "modelKind": "grn",
+    "runners": [
+      "DriftRunner"
+    ]
+  },
+  {
     "id": "nucleus-image",
     "label": "Nucleus-Image",
     "tool": "SdCpp",

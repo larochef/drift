@@ -102,7 +102,7 @@ object ImagePipeline {
       connectors: Option[Path] = None,
       lladaParts: Map[String, Path] = Map.empty
   ): ImagePipeline = {
-    val (hiDreamO1, flux2, qwenImage21, pid, mageFlow, nucleus, llada) = {
+    val (hiDreamO1, flux2, qwenImage21, pid, mageFlow, nucleus, llada, grn) = {
       val source = WeightSource.open(ops, diffusionModel)
       try
         (
@@ -114,7 +114,8 @@ object ImagePipeline {
           MageFlowConfig.holds(source) && source("img_in.weight").shape.last ==
             MageFlowConfig.LatentChannels,
           NucleusConfig.holds(source),
-          LladaImageConfig.holds(source)
+          LladaImageConfig.holds(source),
+          GrnConfig.holds(source)
         )
       finally source.close()
     }
@@ -154,6 +155,14 @@ object ImagePipeline {
         )
       )
     else if (nucleus) new NucleusPipeline(ops, diffusionModel, vae, textEncoder)
+    else if (grn)
+      new GrnPipeline(
+        ops,
+        diffusionModel,
+        vae,
+        needed(textEncoderFile, "--llm", "umT5"),
+        needed(tokenizer, "--tokenizer", "umT5's tokenizer.json")
+      )
     else if (llada)
       new LladaImagePipeline(
         ops,

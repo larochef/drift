@@ -17,7 +17,7 @@ when you hand it a reference image to edit.
 
 drift ships built-in architectures for Flux.2 (dev, Klein 9B and 4B), Z-Image
 Turbo, Krea 2, Qwen Image, Qwen Image 2.1, Ideogram 4, Mage-Flow Turbo and
-Edit Turbo, Nucleus-Image, LLaDA-Image and LLaDA-Image Turbo, SenseNova U1.5, Boogu Image and Boogu Image Edit, ERNIE Image,
+Edit Turbo, Nucleus-Image, LLaDA-Image and LLaDA-Image Turbo, GRN, SenseNova U1.5, Boogu Image and Boogu Image Edit, ERNIE Image,
 HiDream O1 Image, Wan 2.2, LTX 2.3 and 2.5, MiniMax H3, HunyuanVideo 1.5, the
 PiD upscalers and two chat models. They are refreshed on every start and cannot be
 edited or deleted; **New Architecture** creates your own — where, besides the

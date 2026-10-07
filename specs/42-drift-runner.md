@@ -1,6 +1,6 @@
 # 42 — drift runner: an inference engine for Strix Halo
 
-**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1 draws; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX with their soundtracks), with LoRAs and image inputs (H3 also guides and a ControlNet, its references built but broken live; LTX guides); groom each later step before building it
+**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1, Mage-Flow (Turbo, Edit Turbo), Nucleus-Image and LLaDA-Image draw; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX with their soundtracks), with LoRAs and image inputs (H3 also guides and a ControlNet, its references built but broken live; LTX guides); groom each later step before building it
 **Depends on:** 06 (runtimes, TheRock), 07 (launch and supervision), 16 (parameter resolution), 17 and 18 (the chat runtime and its sessions), 41 (text projects)
 
 drift's own runner replaces sd-cpp and llama.cpp for one machine: Strix Halo
@@ -1803,6 +1803,145 @@ on the old tool.
         step, 36 s: with its levels (1.0, 0.9375, 0.875, 0.75, 0.5, 0.25) a
         clean photograph; on the model's own schedule, the same seed comes
         out with debris and broken structures.
+    - **Done 2026-10-07: LLaDA-Image** (base and Turbo), txt2img, editing
+      with one reference, img2img with a mask (`models/LladaImage`,
+      `models/Llada2`, `models/LladaConnectors`, `models/PlainAttention`,
+      `diffusion/LladaImagePipeline`). The runner reads the official BF16
+      files; sd-cpp runs the model from converted ones, which drift does not
+      seed, so the built-in architectures list the drift runner alone.
+      - **Reference.** inclusionAI's code (`LLaDA-Image`,
+        `src/models/transformer_llada_image.py`,
+        `src/pipelines/pipeline_llada_image.py`) and the text encoder's
+        `modeling_llada2uni_moe.py` from the model repository.
+      - **Text.** `Generate an image: …` in LLaDA2's roles, tokenized by
+        LLaDA2's `tokenizer.json` (`--tokenizer`; ids the same as
+        HuggingFace's); the token embeddings read by the QueryFormer (256
+        learned queries, cross attention); [tokens ; queries] through LLaDA2
+        (20 bidirectional layers, the text blind to the queries; a fused
+        q/k/v projection, half of each head rotated; from the second layer
+        256 experts in 8 groups, 8 chosen per token among the 4 best groups,
+        chosen on the host and run as small GEMMs per expert); every hidden
+        state through the text projection (6 blocks) to caption features.
+      - **Transformer.** A Lumina 2 / Z-Image NextDiT, 3840 wide, 30 heads of
+        128: refiners for the noise, the caption and the semantic tokens, then
+        30 blocks over the joined sequence, each sequence padded to a
+        multiple of 32 with a learned token. Editing puts the caption twice,
+        the source's latents beside the target's and the source's semantic
+        tokens in one sequence, the clean parts modulated as at timestep 0.
+        What no step changes (the refined caption and semantic tokens) is made
+        once per prompt (`LladaImage.condition`).
+      - **SigVQ** (editing): a 40-block ViT with heads of 96, padded to the
+        attention kernels' 128 in the weights (zero rows and columns); its
+        position table sampled on the host; the nearest code chosen on the
+        host from the products with the unit-length codebook.
+      - **Sampling.** The released Kumaraswamy schedule; the model gives the
+        velocity's opposite; plain guidance. The base model's scheduler is
+        unshifted and steps by Euler; Turbo's shifts the schedule by 3 and
+        samples stochastically (each step's clean image under fresh noise at
+        the next level). The pipeline reads `scheduler_config.json` where the
+        released folders are whole; otherwise the flow shift says which
+        (`--flow-shift 3`, the Turbo architecture's default, brings the
+        stochastic steps with it). sd-cpp runs both on the unshifted grid by
+        Euler: on Turbo that leaves an edit gritty where the released
+        scheduler's is clean (`llada-turbo-sheet.jpg`). Editing with guidance
+        keeps the source's latents on the negative side and drops its
+        semantic tokens.
+      - **Checks.** Tiny models from the official modules
+        (`fixtures/tiny_llada_image.py`): the transformer (text to image and
+        editing) 0.02 % on `Cpu` and 0.7 % on `Hip`; QueryFormer, LLaDA2 and
+        the projection 0.01–0.02 % on both; SigVQ's codes the official ones.
+      - **Live** (official BF16 files). Turbo, 4 steps: 1024² in 18.4 s, an
+        edit of a 1024² picture in 43 s (two cases: sunglasses added, a sign's
+        text changed; the rest kept). Base: 6.9 s a guided step at 1024² (20
+        steps at CFG 5 in 143 s), 19 s a guided step editing (20 steps in
+        373 s; at 20 steps its edit comes out harsh — 50 are the model's).
+        Loaded in 6 to 11 s. Pictures in
+        `~/dev/redraw-experiments/2026-10-07-llada/`.
+      - **Left.** LoRAs; the base model at its 50 steps; the mask and img2img
+        run live; a launch from drift; VQ-conditioned generation (the text
+        model drawing image tokens first), which sd-cpp does not have either.
+    - **Done 2026-10-07: Nucleus-Image**, txt2img and img2img with a mask
+      (`models/Nucleus`, `diffusion/NucleusPipeline`). sd-cpp has no support
+      for it: the runner is its only runtime in drift (a built-in
+      architecture whose `runners` is the drift runner alone).
+      - **Reference.** diffusers' `NucleusMoEImageTransformer2DModel` and
+        `NucleusMoEImagePipeline` (main, 122b1e1).
+      - **Model.** 32 single-stream blocks, 2048 wide, on the image tokens
+        alone (64 packed features, Qwen Image's VAE). The text (Qwen3-VL-8B's
+        `hidden_states[−8]`, the whole chat with the pipeline's system turn)
+        never runs through the blocks: each block projects it to keys and
+        values of its own, made once per prompt and written before the
+        image's at every step. 16 query heads over 4 key-value heads, RoPE
+        16/56/56 with the image centred and the text after it. Two scales and
+        two gates per block from the timestep (gates held to ±2, through
+        `tanh`).
+      - **Experts.** From the fourth block on the MLP is a mixture where the
+        experts choose their tokens: a router scores every token for the 64
+        experts from the timestep and the unmodulated token; each expert
+        takes its best `⌈factor × tokens / 64⌉` (factor 4 for two blocks,
+        then 2), weighted by its share among the experts that took the token,
+        times 2.5; a shared expert takes them all. The choice is made on the
+        host from the router's scores (`Nucleus.route`); the chosen rows are
+        gathered, run expert by expert through BF16 GEMMs and added back by a
+        weighted scatter (`Ops.scatterAddRows`). The experts' weights are
+        stored `[experts, in, out]` and transposed once at load
+        (`Ops.transpose` on 16-bit values): 30 GB, in 11 s.
+      - **Sampling.** Euler on the unshifted schedule (the released scheduler
+        has dynamic shifting off, so the pipeline's μ does nothing); the model
+        gives the velocity's opposite; guidance is rescaled token by token to
+        the prompt's own length. σ and the sinusoid are rounded to BF16 as
+        the released pipeline rounds them.
+      - **Checks.** A tiny model from diffusers (`fixtures/tiny_nucleus.py`,
+        a dense block and two routed ones): 0.01 % on `Cpu`, 0.3 % on `Hip`.
+      - **Live** (official BF16 shards, Qwen3-VL-8B Q4_K_XL): 1024², 50 steps
+        at CFG 4 in 141.5 s (1.4 s a pass), loaded in 11.4 s.
+      - **Left.** LoRAs; the routing on the GPU and the experts' 128 GEMMs a
+        block in fewer launches; not launched from drift yet.
+    - **Done 2026-10-07: Mage-Flow** (Turbo and Edit Turbo), txt2img, img2img
+      with a mask, references, LoRAs (`models/MageFlow`, `models/MageVae`,
+      `diffusion/MageFlowPipeline`).
+      - **Reference.** Microsoft's own code (`microsoft/Mage`, 76bec2b:
+        `mage_flow/models/mage_flow.py`, `modules/mage_layers.py`,
+        `modules/mage_vae.py`, `pipeline.py`); sd-cpp's `mage_flow.hpp` and
+        `mage_vae.hpp` are the tool to beat.
+      - **Transformer.** The first Qwen Image's double-stream blocks (12 of
+        them, 3072 wide, 24 heads of 128) on 128 latent channels, one token
+        per latent, every linear with a bias, GELU (tanh) MLPs. RoPE on the
+        image tokens alone (16/56/56: image index, row and column centred);
+        the text sits at position 0. The timestep's sinusoid is rounded to
+        BF16 as the released pipeline rounds it. The attention's values
+        outgrow the F16 cache at the first step (5·10⁵): scaled down by a
+        power of two before it and back after, as for PiD.
+      - **VAE.** A new one (128 channels at 1/16): an encoder of DiCo blocks
+        (1×1 convolutions, a depthwise 3×3, a channel attention), and a
+        decoder that turns the latent into a condition (residual blocks and
+        attention over windows of 32 × 32 latents), runs DiCo blocks over it
+        and then decodes every pixel with a small MLP. Its timestep is
+        always 0, so every modulation is a constant computed at load. Two
+        kernels were added for it (`Ops.depthwiseConv3x3`,
+        `Ops.columnMean`); the windows run as gathered rows through the
+        GEMMs the other VAEs' attention uses.
+      - **Text.** Qwen3-VL-4B's last hidden state (after the final norm) in
+        the Qwen Image template, 34 tokens dropped (64 in the edit
+        template). With references the text encoder counts its positions
+        straight through the image tokens, as the released code calls it.
+      - **Sampling.** Euler on the flow schedule at shift 6. References are
+        encoded at the output's size, drawn from the VAE's posterior (its
+        deviation averages 0.2), and kept clean after the target's tokens.
+        The released pipeline's watermark in the starting noise and its
+        prompt screening are not part of the model and are left out.
+      - **Checks.** A tiny transformer and a tiny VAE built from the official
+        modules (`fixtures/tiny_mage_flow.py`): velocity within 0.003 % on
+        `Cpu` and 0.2 % on `Hip`, the encoder within 0.0001 %, the decoder
+        within 0.6 % and 1.6 % (its 3×3 convolutions take BF16 patches). On
+        the released VAE against the official one on the CPU
+        (`gpuTest`'s `MageVaeCheck`): a decoded crop differs by 0.0013 on
+        average.
+      - **Live** (BF16 checkpoints, Qwen3-VL-4B Q8_0, 4 steps, CFG 1): 1024²
+        in 4.8 s; 2048² in 25.5 s; an edit with one reference 10.0 s at 1024²
+        and 29.6 s at 1536² (sd-cpp without flash attention: 150–163 s at
+        1024², `bugs/51`); a rank-32 LoRA 6.0 s; img2img at 0.6 over 8 steps
+        5.1 s. The mask was not run live.
     - **Done 2026-09-29: HiDream O1 Image** (Dev and full), txt2img and
       img2img (`models/HiDreamO1`, `diffusion/HiDreamO1Pipeline`).
       - **Reference.** HiDream-ai's own code (`HiDream-O1-Image`, main:

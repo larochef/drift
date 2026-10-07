@@ -57,7 +57,8 @@ object ImageDemo {
       Option.when(vae != "-")(Paths.get(vae)),
       Option.when(llm != "-")(Paths.get(llm)),
       options.collectFirst { case ("--tokenizer", path) => Paths.get(path) },
-      options.collectFirst { case ("--llm-vision", path) => Paths.get(path) }
+      options.collectFirst { case ("--llm-vision", path) => Paths.get(path) },
+      options.collectFirst { case ("--connectors", path) => Paths.get(path) }
     )
     println(
       f"${pipeline.family} loaded in ${(System.nanoTime() - loading) / 1e9}%.1f s"

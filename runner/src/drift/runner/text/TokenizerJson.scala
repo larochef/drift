@@ -82,8 +82,16 @@ object TokenizerJson {
     val vocabulary = model("vocab").obj.view.mapValues(_.num.toInt).toMap
     val added = json("added_tokens").arr.toSeq
     added.foreach { token =>
+      // a token matched in the normalized text: the same match where the
+      // normalizer (none, or NFC) leaves the token as it is written
+      val content = token("content").str
+      val renormalized = token("normalized").bool &&
+        java.text.Normalizer.normalize(
+          content,
+          java.text.Normalizer.Form.NFC
+        ) != content
       if (
-        Seq("lstrip", "rstrip", "single_word", "normalized")
+        renormalized || Seq("lstrip", "rstrip", "single_word")
           .exists(flag => token(flag).bool)
       )
         fail(

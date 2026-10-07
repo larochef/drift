@@ -86,8 +86,11 @@ object ImagePipeline {
 
   /** The pipeline of `diffusionModel`'s family: HiDream O1 (one file, which
     * takes a `tokenizer.json`), FLUX.2, Qwen Image 2.1 (which edits with the
-    * text encoder's vision tower), PiD (which takes a `tokenizer.json`), else
-    * Krea 2. All but HiDream O1 take a VAE and a text encoder.
+    * text encoder's vision tower), PiD (which takes a `tokenizer.json`),
+    * Nucleus-Image, LLaDA-Image (which takes LLaDA2's `tokenizer.json` and its
+    * `connectors`, or finds both in the released folders), Mage-Flow (which
+    * edits with the vision tower too), else Krea 2. All but HiDream O1 take a
+    * VAE and a text encoder.
     */
   def open(
       ops: Ops,
@@ -95,16 +98,23 @@ object ImagePipeline {
       vaeFile: Option[Path],
       textEncoderFile: Option[Path],
       tokenizer: Option[Path],
-      textEncoderVision: Option[Path]
+      textEncoderVision: Option[Path],
+      connectors: Option[Path] = None,
+      lladaParts: Map[String, Path] = Map.empty
   ): ImagePipeline = {
-    val (hiDreamO1, flux2, qwenImage21, pid) = {
+    val (hiDreamO1, flux2, qwenImage21, pid, mageFlow, nucleus, llada) = {
       val source = WeightSource.open(ops, diffusionModel)
       try
         (
           HiDreamO1.holds(source),
           Flux2Config.holds(source),
           QwenImage21Config.holds(source),
-          source.has("lq_proj.pit_head.weight")
+          source.has("lq_proj.pit_head.weight"),
+          // the first Qwen Image has the same blocks, on 64 packed channels
+          MageFlowConfig.holds(source) && source("img_in.weight").shape.last ==
+            MageFlowConfig.LatentChannels,
+          NucleusConfig.holds(source),
+          LladaImageConfig.holds(source)
         )
       finally source.close()
     }
@@ -142,6 +152,25 @@ object ImagePipeline {
             "PiD needs Gemma 2's tokenizer.json: pass --tokenizer <file>"
           )
         )
+      )
+    else if (nucleus) new NucleusPipeline(ops, diffusionModel, vae, textEncoder)
+    else if (llada)
+      new LladaImagePipeline(
+        ops,
+        diffusionModel,
+        vae,
+        textEncoder,
+        tokenizer,
+        connectors,
+        lladaParts
+      )
+    else if (mageFlow)
+      new MageFlowPipeline(
+        ops,
+        diffusionModel,
+        vae,
+        textEncoder,
+        textEncoderVision
       )
     else new Krea2Pipeline(ops, diffusionModel, vae, textEncoder)
   }

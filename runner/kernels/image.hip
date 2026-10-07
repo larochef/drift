@@ -106,6 +106,63 @@ extern "C" __global__ void transpose_f32(const float* x, float* out, int rows, i
   out[(long long)c * rows + r] = x[index];
 }
 
+// A depthwise 3×3 convolution, zeros around the image: out[y][x][c] =
+// bias[c] + Σ weight[c][ky * 3 + kx] × x[y + ky − 1][x + kx − 1][c].
+extern "C" __global__ void depthwise_conv_3x3_f32(const float* x, const float* weight, const float* bias,
+                                                  float* out, int height, int width, int channels) {
+  const long long index = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+  if (index >= (long long)height * width * channels) return;
+  const int c = index % channels;
+  const long long p = index / channels;
+  const int y = p / width, xx = p % width;
+  const float* taps = weight + (long long)c * 9;
+  float sum = bias[c];
+  for (int ky = 0; ky < 3; ++ky) {
+    const int sy = y + ky - 1;
+    if (sy < 0 || sy >= height) continue;
+    for (int kx = 0; kx < 3; ++kx) {
+      const int sx = xx + kx - 1;
+      if (sx < 0 || sx >= width) continue;
+      sum += taps[ky * 3 + kx] * x[((long long)sy * width + sx) * channels + c];
+    }
+  }
+  out[index] = sum;
+}
+
+// Each column's mean over the rows, one block per column: its threads sum
+// every blockDim-th row, then their sums.
+extern "C" __global__ void column_mean_f32(const float* x, float* out, long long rows, int columns) {
+  __shared__ float partial[256];
+  const int c = blockIdx.x;
+  float sum = 0.0f;
+  for (long long r = threadIdx.x; r < rows; r += blockDim.x) sum += x[r * columns + c];
+  partial[threadIdx.x] = sum;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride /= 2) {
+    if (threadIdx.x < stride) partial[threadIdx.x] += partial[threadIdx.x + stride];
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) out[c] = partial[0] / rows;
+}
+
+// transpose_f32 of 16-bit values as they are stored (F16, BF16).
+extern "C" __global__ void transpose_16(const unsigned short* x, unsigned short* out, int rows, int cols) {
+  const long long index = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+  if (index >= (long long)rows * cols) return;
+  const int r = index / cols, c = index % cols;
+  out[(long long)c * rows + r] = x[index];
+}
+
+// out[ids[s]][c] += weights[s] * rows[s][c]: several slots may add to one
+// token, so the sums are atomic.
+extern "C" __global__ void scatter_add_rows_f32(const float* rows, const int* ids, const float* weights,
+                                                float* out, long long slots, int columns) {
+  const long long index = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+  if (index >= slots * columns) return;
+  const long long slot = index / columns;
+  atomicAdd(out + (long long)ids[slot] * columns + index % columns, weights[slot] * rows[index]);
+}
+
 // Packed patches [grid_h * grid_w][channels * patch * patch] (feature
 // c * patch² + py * patch + px) back to an image [grid_h * patch][grid_w *
 // patch][channels].

@@ -1,0 +1,8 @@
+{
+  "version": 14,
+  "description": "specs/42: the drift runner runs Mage-Flow (Turbo and Edit Turbo)",
+  "steps": [
+    { "collection": "architectures", "op": "reseed", "where": { "id": "mage-flow-turbo", "builtIn": true } },
+    { "collection": "architectures", "op": "reseed", "where": { "id": "mage-flow-edit-turbo", "builtIn": true } }
+  ]
+}

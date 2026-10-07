@@ -618,13 +618,14 @@ final class DenseDecoder private[models] (
 
   /** As a text encoder, transformers' `last_hidden_state`: every layer, then
     * the final norm, into `out` (`[tokens + padding, hidden]`), the padding as
-    * `encode` masks it.
+    * `encode` masks it and `images` as it places them.
     */
   def lastHiddenState(
       ids: Array[Int],
       out: Tensor,
       padding: Int = 0,
-      padId: Int = 0
+      padId: Int = 0,
+      images: Option[SeenImages] = None
   ): Unit = {
     val prompt = ids.length
     val tokens = prompt + padding
@@ -635,6 +636,7 @@ final class DenseDecoder private[models] (
     val sequence = newSequence(tokens, 64)
     try {
       sequence.reserve(tokens)
+      images.foreach(seen => sequence.place(0, seen.positions))
       val w = workspaceFor(tokens, allLogits = false)
       val x = run(
         ids ++ Array.fill(padding)(padId),
@@ -643,7 +645,8 @@ final class DenseDecoder private[models] (
         w,
         config.layers,
         prompt,
-        _ => ()
+        _ => (),
+        images
       )
       ops.rmsNorm(x, finalNorm, config.rmsEpsilon, style.normOffset, out)
     } finally sequence.close()

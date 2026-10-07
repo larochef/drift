@@ -728,6 +728,149 @@
     "builtIn": true
   },
   {
+    "id": "llada-image-turbo-bf16",
+    "familyId": "llada-image-turbo-diffusion",
+    "label": "LLaDA-Image Turbo bf16 (official, 4 shards)",
+    "source": {
+      "type": "huggingface",
+      "repo": "inclusionAI/LLaDA-Image-Turbo",
+      "filename": "transformer/diffusion_pytorch_model.safetensors.index.json"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "llada-image-turbo-llada2-bf16",
+    "familyId": "llada-image-turbo-llm",
+    "label": "LLaDA-Image Turbo LLaDA2 text encoder bf16 (official, 9 shards)",
+    "source": {
+      "type": "huggingface",
+      "repo": "inclusionAI/LLaDA-Image-Turbo",
+      "filename": "text_encoder/model.safetensors.index.json"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "llada-image-turbo-queryformer",
+    "familyId": "llada-image-turbo-queryformer",
+    "label": "LLaDA-Image Turbo QueryFormer",
+    "source": {
+      "type": "huggingface",
+      "repo": "inclusionAI/LLaDA-Image-Turbo",
+      "filename": "queryformer/diffusion_pytorch_model.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "llada-image-turbo-text-projection",
+    "familyId": "llada-image-turbo-text-projection",
+    "label": "LLaDA-Image Turbo text projection",
+    "source": {
+      "type": "huggingface",
+      "repo": "inclusionAI/LLaDA-Image-Turbo",
+      "filename": "text_projection/diffusion_pytorch_model.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "llada-image-bf16",
+    "familyId": "llada-image-diffusion",
+    "label": "LLaDA-Image bf16 (official, 4 shards)",
+    "source": {
+      "type": "huggingface",
+      "repo": "inclusionAI/LLaDA-Image",
+      "filename": "transformer/diffusion_pytorch_model.safetensors.index.json"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "llada-image-llada2-bf16",
+    "familyId": "llada-image-llm",
+    "label": "LLaDA-Image LLaDA2 text encoder bf16 (official, 9 shards)",
+    "source": {
+      "type": "huggingface",
+      "repo": "inclusionAI/LLaDA-Image",
+      "filename": "text_encoder/model.safetensors.index.json"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "llada-image-queryformer",
+    "familyId": "llada-image-queryformer",
+    "label": "LLaDA-Image QueryFormer",
+    "source": {
+      "type": "huggingface",
+      "repo": "inclusionAI/LLaDA-Image",
+      "filename": "queryformer/diffusion_pytorch_model.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "llada-image-text-projection",
+    "familyId": "llada-image-text-projection",
+    "label": "LLaDA-Image text projection",
+    "source": {
+      "type": "huggingface",
+      "repo": "inclusionAI/LLaDA-Image",
+      "filename": "text_projection/diffusion_pytorch_model.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "llada-image-sigvq",
+    "familyId": "llada-image-sigvq",
+    "label": "LLaDA-Image SigVQ encoder",
+    "source": {
+      "type": "huggingface",
+      "repo": "inclusionAI/LLaDA-Image-Turbo",
+      "filename": "sigvq/diffusion_pytorch_model.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "llada2-tokenizer",
+    "familyId": "llada2-tokenizer",
+    "label": "LLaDA2 tokenizer.json",
+    "source": {
+      "type": "huggingface",
+      "repo": "inclusionAI/LLaDA-Image-Turbo",
+      "filename": "tokenizer/tokenizer.json"
+    },
+    "format": "json",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "nucleus-image-bf16",
+    "familyId": "nucleus-image-diffusion",
+    "label": "Nucleus-Image bf16 (official, 7 shards)",
+    "source": {
+      "type": "huggingface",
+      "repo": "NucleusAI/Nucleus-Image",
+      "filename": "transformer/diffusion_pytorch_model.safetensors.index.json"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
     "id": "qwen3-vl-4b-instruct-mmproj-bf16",
     "familyId": "qwen3-vl-4b-instruct-mmproj",
     "label": "Qwen3-VL-4B-Instruct mmproj-BF16",

@@ -726,8 +726,72 @@ final class CpuOps extends Ops {
 
   def transpose(x: Tensor, out: Tensor): Unit = {
     val Seq(rows, cols) = Ops.checkTranspose(x, out)
+    if (x.dtype == DType.F32) {
+      val input = reader(x)
+      fill(out)(index => input((index % rows) * cols + index / rows))
+    } else {
+      val (from, to) = (segment(x), segment(out))
+      (0L until rows.toLong * cols).foreach { index =>
+        val source = (index % rows) * cols + index / rows
+        to.setAtIndex(JAVA_SHORT, index, from.getAtIndex(JAVA_SHORT, source))
+      }
+    }
+  }
+
+  def scatterAddRows(
+      rows: Tensor,
+      ids: Tensor,
+      weights: Tensor,
+      out: Tensor
+  ): Unit = {
+    val (slots, columns) = Ops.checkScatterAddRows(rows, ids, weights, out)
+    val (input, factors, index, target) =
+      (reader(rows), reader(weights), segment(ids), segment(out))
+    for {
+      slot <- 0L until slots
+      column <- 0 until columns
+    } {
+      val at = index.getAtIndex(JAVA_INT, slot).toLong * columns + column
+      target.setAtIndex(
+        JAVA_FLOAT,
+        at,
+        (target.getAtIndex(JAVA_FLOAT, at) +
+          factors(slot) * input(slot * columns + column)).toFloat
+      )
+    }
+  }
+
+  def depthwiseConv3x3(
+      x: Tensor,
+      weight: Tensor,
+      bias: Tensor,
+      out: Tensor
+  ): Unit = {
+    val (height, width, channels) =
+      Ops.checkDepthwiseConv3x3(x, weight, bias, out)
+    val (input, taps, offset) = (reader(x), reader(weight), reader(bias))
+    val result = new Array[Float](height * width * channels)
+    result.indices.foreach { index =>
+      val c = index % channels
+      val (y, xx) = (index / channels / width, index / channels % width)
+      var sum = offset(c)
+      for {
+        ky <- 0 until 3
+        kx <- 0 until 3
+        (sy, sx) = (y + ky - 1, xx + kx - 1)
+        if sy >= 0 && sy < height && sx >= 0 && sx < width
+      } sum += taps(c * 9L + ky * 3 + kx) *
+        input((sy.toLong * width + sx) * channels + c)
+      result(index) = sum.toFloat
+    }
+    // `out` may be `x`
+    fill(out)(index => result(index.toInt))
+  }
+
+  def columnMean(x: Tensor, out: Tensor): Unit = {
+    val (rows, columns) = Ops.checkColumnMean(x, out)
     val input = reader(x)
-    fill(out)(index => input((index % rows) * cols + index / rows))
+    fill(out)(c => (0L until rows).map(r => input(r * columns + c)).sum / rows)
   }
 
   def unpackPatches(

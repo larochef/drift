@@ -1214,13 +1214,75 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
   def transpose(x: Tensor, out: Tensor): Unit = {
     val Seq(rows, cols) = Ops.checkTranspose(x, out)
     launch(
-      kernel(imageKernels, "transpose_f32"),
+      kernel(
+        imageKernels,
+        if (x.dtype == DType.F32) "transpose_f32" else "transpose_16"
+      ),
       (x.shape.elementCount + 255) / 256,
       256,
       Pointer(pointer(x)),
       Pointer(pointer(out)),
       I32(rows),
       I32(cols)
+    )
+  }
+
+  def scatterAddRows(
+      rows: Tensor,
+      ids: Tensor,
+      weights: Tensor,
+      out: Tensor
+  ): Unit = {
+    val (slots, columns) = Ops.checkScatterAddRows(rows, ids, weights, out)
+    launch(
+      kernel(imageKernels, "scatter_add_rows_f32"),
+      (slots * columns + 255) / 256,
+      256,
+      Pointer(pointer(rows)),
+      Pointer(pointer(ids)),
+      Pointer(pointer(weights)),
+      Pointer(pointer(out)),
+      I64(slots),
+      I32(columns)
+    )
+  }
+
+  def depthwiseConv3x3(
+      x: Tensor,
+      weight: Tensor,
+      bias: Tensor,
+      out: Tensor
+  ): Unit = {
+    val (height, width, channels) =
+      Ops.checkDepthwiseConv3x3(x, weight, bias, out)
+    require(
+      pointer(x) != pointer(out),
+      "depthwiseConv3x3 reads its neighbours: not in place"
+    )
+    launch(
+      kernel(imageKernels, "depthwise_conv_3x3_f32"),
+      (x.shape.elementCount + 255) / 256,
+      256,
+      Pointer(pointer(x)),
+      Pointer(pointer(weight)),
+      Pointer(pointer(bias)),
+      Pointer(pointer(out)),
+      I32(height),
+      I32(width),
+      I32(channels)
+    )
+  }
+
+  def columnMean(x: Tensor, out: Tensor): Unit = {
+    val (rows, columns) = Ops.checkColumnMean(x, out)
+    launch(
+      kernel(imageKernels, "column_mean_f32"),
+      columns,
+      256,
+      Pointer(pointer(x)),
+      Pointer(pointer(out)),
+      I64(rows),
+      I32(columns)
     )
   }
 

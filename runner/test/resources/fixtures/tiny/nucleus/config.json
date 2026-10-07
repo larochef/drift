@@ -1,0 +1,28 @@
+{
+  "patch_size": 2,
+  "in_channels": 16,
+  "out_channels": 4,
+  "num_layers": 3,
+  "attention_head_dim": 128,
+  "num_attention_heads": 2,
+  "num_key_value_heads": 1,
+  "joint_attention_dim": 48,
+  "axes_dims_rope": [
+    16,
+    56,
+    56
+  ],
+  "mlp_ratio": 4.0,
+  "moe_enabled": true,
+  "dense_moe_strategy": "leave_first_block_dense",
+  "num_experts": 4,
+  "moe_intermediate_dim": 64,
+  "capacity_factors": [
+    0.0,
+    4.0,
+    2.0
+  ],
+  "use_sigmoid": false,
+  "route_scale": 2.5,
+  "use_grouped_mm": false
+}

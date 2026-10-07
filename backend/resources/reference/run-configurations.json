@@ -127,5 +127,94 @@
     "lastUsedAt": 0,
     "loras": [],
     "runner": "DriftRunner"
+  },
+  {
+    "id": "starter-mage-flow-turbo",
+    "label": "Mage-Flow Turbo",
+    "architectureId": "mage-flow-turbo",
+    "assignments": {
+      "diffusion": "mage-flow-turbo-bf16",
+      "vae": "mage-flow-vae-bf16",
+      "llm": "qwen3-vl-4b-instruct-ud-q4-k-xl"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "DriftRunner"
+  },
+  {
+    "id": "starter-mage-flow-edit-turbo",
+    "label": "Mage-Flow Edit Turbo",
+    "architectureId": "mage-flow-edit-turbo",
+    "assignments": {
+      "diffusion": "mage-flow-edit-turbo-bf16",
+      "vae": "mage-flow-vae-bf16",
+      "llm": "qwen3-vl-4b-instruct-ud-q4-k-xl",
+      "llm vision": "qwen3-vl-4b-instruct-mmproj-bf16"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "DriftRunner"
+  },
+  {
+    "id": "starter-nucleus-image",
+    "label": "Nucleus-Image",
+    "architectureId": "nucleus-image",
+    "assignments": {
+      "diffusion": "nucleus-image-bf16",
+      "vae": "qwen-image-vae",
+      "llm": "qwen3-vl-8b-instruct-ud-q4-k-xl"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "DriftRunner"
+  },
+  {
+    "id": "starter-llada-image-turbo",
+    "label": "LLaDA-Image Turbo",
+    "architectureId": "llada-image-turbo",
+    "assignments": {
+      "diffusion": "llada-image-turbo-bf16",
+      "vae": "flux2-vae",
+      "llm": "llada-image-turbo-llada2-bf16",
+      "tokenizer": "llada2-tokenizer",
+      "queryformer": "llada-image-turbo-queryformer",
+      "text projection": "llada-image-turbo-text-projection",
+      "sigvq": "llada-image-sigvq"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "DriftRunner"
+  },
+  {
+    "id": "starter-llada-image",
+    "label": "LLaDA-Image",
+    "architectureId": "llada-image",
+    "assignments": {
+      "diffusion": "llada-image-bf16",
+      "vae": "flux2-vae",
+      "llm": "llada-image-llada2-bf16",
+      "tokenizer": "llada2-tokenizer",
+      "queryformer": "llada-image-queryformer",
+      "text projection": "llada-image-text-projection",
+      "sigvq": "llada-image-sigvq"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "DriftRunner"
   }
 ]

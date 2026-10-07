@@ -323,8 +323,36 @@ trait Ops extends AutoCloseable {
     */
   def averageDown(x: Tensor, frames: Int, out: Tensor): Unit
 
-  /** `out[c, r] = x[r, c]`. */
+  /** `out[c, r] = x[r, c]`: F32, or F16 or BF16 as they are stored. */
   def transpose(x: Tensor, out: Tensor): Unit
+
+  /** A weighted scatter of rows: `out[ids[s]] += weights[s] × rows[s]` for
+    * every slot `s`, `rows` `[slots, D]`, `ids` I32 `[slots]`, `weights` F32
+    * `[slots]`, `out` `[tokens, D]`. A token may take any number of slots (a
+    * mixture of experts where the experts choose their tokens).
+    */
+  def scatterAddRows(
+      rows: Tensor,
+      ids: Tensor,
+      weights: Tensor,
+      out: Tensor
+  ): Unit
+
+  /** A depthwise 3×3 convolution, channels-last, zeros around the image: `x`
+    * and `out` `[H, W, C]`, `weight` F32 `[C, 9]` (each channel's own kernel,
+    * tap `ky × 3 + kx`), `bias` F32 `[C]`.
+    */
+  def depthwiseConv3x3(
+      x: Tensor,
+      weight: Tensor,
+      bias: Tensor,
+      out: Tensor
+  ): Unit
+
+  /** Each column's mean over the rows: `x` `[rows, C]`, `out` `[C]` (a global
+    * average pool of rows of pixels).
+    */
+  def columnMean(x: Tensor, out: Tensor): Unit
 
   /** Packed `patch × patch` patches (`[gridH × gridW, C × patch²]`, feature
     * `c × patch² + py × patch + px`) back to a channels-last image `[gridH ×
@@ -1155,8 +1183,57 @@ object Ops {
     (height, width, channels, outChannels)
   }
 
+  /** `depthwiseConv3x3`'s `(height, width, channels)`. */
+  def checkDepthwiseConv3x3(
+      x: Tensor,
+      weight: Tensor,
+      bias: Tensor,
+      out: Tensor
+  ): (Int, Int, Int) = {
+    requireF32("depthwiseConv3x3", x, weight, bias, out)
+    val Seq(height, width, channels) = x.shape.dimensions.map(_.toInt)
+    require(
+      out.shape == x.shape && weight.shape == Shape.of(channels, 9) &&
+        bias.shape == Shape.of(channels),
+      s"depthwiseConv3x3: ${x.shape} by ${weight.shape} and ${bias.shape} into ${out.shape}"
+    )
+    (height, width, channels)
+  }
+
+  /** `columnMean`'s `(rows, columns)`. */
+  def checkColumnMean(x: Tensor, out: Tensor): (Long, Int) = {
+    requireF32("columnMean", x, out)
+    val Seq(rows, columns) = x.shape.dimensions
+    require(
+      out.shape == Shape.of(columns),
+      s"columnMean: ${x.shape} into ${out.shape}"
+    )
+    (rows, columns.toInt)
+  }
+
+  /** `scatterAddRows`' `(slots, columns)`. */
+  def checkScatterAddRows(
+      rows: Tensor,
+      ids: Tensor,
+      weights: Tensor,
+      out: Tensor
+  ): (Long, Int) = {
+    requireF32("scatterAddRows", rows, weights, out)
+    val Seq(slots, columns) = rows.shape.dimensions
+    require(
+      ids.dtype == DType.I32 && ids.shape == Shape.of(slots) &&
+        weights.shape == Shape.of(slots) && out.shape.last == columns,
+      s"scatterAddRows: ${rows.shape} by ${ids.shape} and ${weights.shape} into ${out.shape}"
+    )
+    (slots, columns.toInt)
+  }
+
   def checkTranspose(x: Tensor, out: Tensor): Seq[Int] = {
-    requireF32("transpose", x, out)
+    require(
+      x.dtype == out.dtype &&
+        Seq(DType.F32, DType.F16, DType.BF16).contains(x.dtype),
+      s"transpose takes F32, F16 or BF16 into the same, not ${x.dtype} into ${out.dtype}"
+    )
     val Seq(rows, cols) = x.shape.dimensions.map(_.toInt)
     require(
       out.shape == Shape.of(cols, rows),

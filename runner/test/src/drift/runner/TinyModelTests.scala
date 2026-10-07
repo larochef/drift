@@ -464,6 +464,68 @@ object TinyModelTests extends TestSuite {
         assert(error < 2e-2) // BF16 weights
       } finally ops.close()
     }
+    test(
+      "Mage-Flow: double-stream blocks with a reference and the BF16 timestep"
+    ) {
+      val ops = new CpuOps
+      try {
+        val error = TinyMageFlowCase.velocityError(ops)
+        println(f"  worst velocity error ${error * 100}%.4f%% of the largest")
+        assert(error < 2e-3)
+      } finally ops.close()
+    }
+    test("LLaDA-Image: text to image and editing through its transformer") {
+      val ops = new CpuOps
+      try {
+        val (plain, editing) = TinyLladaImageCase.velocityErrors(ops)
+        println(
+          f"  worst velocity error ${plain * 100}%.4f%%, editing ${editing * 100}%.4f%% of the largest"
+        )
+        assert(plain < 2e-3 && editing < 2e-3)
+      } finally ops.close()
+    }
+    test(
+      "LLaDA-Image's text path: QueryFormer then LLaDA2 then the projection"
+    ) {
+      val ops = new CpuOps
+      try {
+        val (queries, projected) = TinyLladaImageCase.connectorErrors(ops)
+        val hidden = TinyLladaImageCase.backboneError(ops)
+        println(
+          f"  worst errors: queries ${queries * 100}%.4f%%, hidden state ${hidden * 100}%.4f%%, caption features ${projected * 100}%.4f%% of the largest"
+        )
+        assert(queries < 2e-3 && hidden < 2e-3 && projected < 2e-3)
+      } finally ops.close()
+    }
+    test("LLaDA-Image's SigVQ: an image to its codes and semantic features") {
+      val ops = new CpuOps
+      try {
+        val (same, error) = TinyLladaImageCase.sigvqError(ops)
+        println(
+          f"  codes as the official ones: $same, worst semantic error ${error * 100}%.4f%% of the largest"
+        )
+        assert(same && error < 2e-3)
+      } finally ops.close()
+    }
+    test("Nucleus-Image: text as keys and values and experts that choose") {
+      val ops = new CpuOps
+      try {
+        val error = TinyNucleusCase.velocityError(ops)
+        println(f"  worst velocity error ${error * 100}%.4f%% of the largest")
+        assert(error < 2e-3)
+      } finally ops.close()
+    }
+    test("The Mage-Flow VAE both ways (the official encoder and denoiser)") {
+      val ops = new CpuOps
+      try {
+        val (moments, decoded) = TinyMageFlowCase.vaeErrors(ops)
+        println(
+          f"  worst moments error ${moments * 100}%.4f%%, image error ${decoded * 100}%.4f%% of the largest"
+        )
+        // the decoder's 3×3 convolutions take BF16 patches
+        assert(moments < 2e-3 && decoded < 2e-2)
+      } finally ops.close()
+    }
     test("Gemma 2 as a text encoder: softcap, window, sandwich norms") {
       val ops = new CpuOps
       try {

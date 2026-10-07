@@ -11,5 +11,6 @@
   "010-qwen-image-21-reference-context.json",
   "011-starters-on-runner.json",
   "012-slots-per-runner.json",
-  "013-edit-models.json"
+  "013-edit-models.json",
+  "014-mage-flow-runner.json"
 ]

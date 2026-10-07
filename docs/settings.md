@@ -79,9 +79,9 @@ answers follow the exact maths more closely than llama.cpp's: the model's
 inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
 8-bit inputs as in the fork that made the format.
 
-- **Images: Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, HiDream O1 and
-  PiD; video: MiniMax H3, Wan 2.2 A14B and LTX 2.5.** A second runtime, **drift runner, images (gfx1151)**, runs Krea 2,
-  FLUX.2 [klein] 9B, FLUX.2 [dev], Qwen Image 2.1, HiDream O1, PiD 1.5,
+- **Images: Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, HiDream O1,
+  Mage-Flow, Nucleus-Image, LLaDA-Image and PiD; video: MiniMax H3, Wan 2.2 A14B and LTX 2.5.** A second runtime, **drift runner, images (gfx1151)**, runs Krea 2,
+  FLUX.2 [klein] 9B, FLUX.2 [dev], Qwen Image 2.1, HiDream O1, Mage-Flow, Nucleus-Image, LLaDA-Image, PiD 1.5,
   MiniMax H3, Wan 2.2 14B and LTX 2.5 configurations in
   place of sd-cpp: pick
   it in the launch control. It tells them apart by the checkpoint, and reads
@@ -114,6 +114,29 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     read by the text encoder and placed before the image being made. It
     ignores `--flow-shift`: the shift follows the image's size, as in the
     official pipeline.
+  - **Mage-Flow** (Turbo and Edit Turbo) does text to image, img2img with a
+    mask, and LoRAs; the Edit model edits with reference images when the
+    configuration has Qwen3-VL's vision checkpoint (its mmproj). A 1024²
+    image at 4 steps takes about 5 seconds and an edit with one reference
+    about 10, where sd-cpp takes two and a half minutes for the edit; 2048²
+    takes about 25 seconds. Each reference is read by the text encoder (its
+    longest side held to 384 px) and placed after the image being made at the
+    output's size, as in Microsoft's pipeline. The flow shift is 6 unless
+    `--flow-shift` says otherwise.
+  - **LLaDA-Image** (base and Turbo) runs on the drift runner only, from the
+    official files: text to image, editing with one reference image (sides
+    multiples of 32), and img2img with a mask. Turbo makes a 1024² image in
+    about 18 seconds and an edit in about 45; the base model takes 50 steps
+    at CFG 5, about 7 seconds a step. Each model has its own transformer,
+    text encoder, QueryFormer and text projection; the SigVQ encoder, which
+    reads the picture being edited, and the tokenizer are shared. Turbo's
+    flow shift of 3 comes with its stochastic steps, as its scheduler is
+    released: without it its edits come out gritty.
+  - **Nucleus-Image** runs on the drift runner only (sd-cpp does not know
+    it): text to image and img2img with a mask, from the official 34 GB
+    checkpoint in its seven shards, Qwen3-VL-8B and the Qwen Image VAE. It is
+    a base model: 50 steps at CFG 4, about 2 minutes 20 for a 1024² image.
+    It takes no LoRAs or reference images yet.
   - **HiDream O1** does text to image and img2img, from its one file and its
     `tokenizer.json`. The Dev checkpoint samples as HiDream's own code does
     (its distilled timesteps, fresh noise each step), which is why its

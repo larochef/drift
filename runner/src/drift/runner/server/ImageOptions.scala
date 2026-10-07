@@ -62,6 +62,14 @@ final case class ImageOptions(
       * ControlNet union.
       */
     controlNet: Option[Path],
+    /** LLaDA-Image's QueryFormer, text projection and SigVQ encoder in one file
+      * (`--embeddings-connectors`, sd-cpp's flag).
+      */
+    connectors: Option[Path],
+    /** LLaDA-Image's small models each in its own file, by name
+      * (`--llada-queryformer`, `--llada-text-projection`, `--llada-sigvq`).
+      */
+    lladaParts: Map[String, Path],
     /** Noise levels in place of the model's schedule (`--sigmas`, comma
       * separated), for the models that take them; none is the schedule.
       */
@@ -132,7 +140,9 @@ object ImageOptions {
             "--llm_vision" | "--audio-vae" | "--video-frames" |
             "--high-noise-diffusion-model" | "--t5xxl" | "--high-noise-steps" |
             "--high-noise-cfg-scale" | "--moe-boundary" | "--fps" |
-            "--control-net" | "--sigmas" =>
+            "--control-net" | "--sigmas" | "--embeddings-connectors" |
+            "--llada-queryformer" | "--llada-text-projection" |
+            "--llada-sigvq" =>
           value().foreach(v => values(canonical(flag)) = v)
         case other if NotYet.contains(other) =>
           problem = Some(s"$other is not supported yet: ${NotYet(other)}")
@@ -182,6 +192,14 @@ object ImageOptions {
         values.get("--moe-boundary").fold(0.875)(_.toDouble),
         values.get("--fps").map(_.toInt),
         values.get("--control-net").map(Paths.get(_)),
+        values.get("--embeddings-connectors").map(Paths.get(_)),
+        Seq("queryformer", "text_projection", "sigvq")
+          .flatMap(name =>
+            values
+              .get(s"--llada-${name.replace('_', '-')}")
+              .map(file => name -> Paths.get(file))
+          )
+          .toMap,
         values
           .get("--sigmas")
           .toSeq

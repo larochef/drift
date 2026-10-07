@@ -40,9 +40,8 @@ object HistoryService {
     case Moved(generations: List[Generation])
   }
 
-  /** Where the last move stands, for whatever asked for it to say so: `ids`
-    * are the entries asked for, `rewritten` counts what was derived from them
-    * too.
+  /** Where the last move stands, for whatever asked for it to say so: `ids` are
+    * the entries asked for, `rewritten` counts what was derived from them too.
     */
   enum MoveState {
     case Idle

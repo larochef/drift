@@ -22,12 +22,16 @@ private[postprocess] object TileWindow {
   case class FinishedTile(
       image: BufferedImage,
       note: Option[String],
-      kept: List[(String, BufferedImage)]
+      kept: List[(String, BufferedImage)],
+      /** What the finished picture's gallery entry should say about this tile,
+        * when it should say anything.
+        */
+      warning: Option[String]
   )
 
   /** A tile painted in as it came back: what a redraw with context does. */
   val keepReturned: FinishTile = (_, returned) =>
-    FinishedTile(returned, None, List.empty)
+    FinishedTile(returned, None, List.empty, None)
 
   /** What a tile's img_gen request is built from: the tile; the window the
     * model paints — the tile itself, or the tile with its context around it;

@@ -433,7 +433,13 @@ case class Derivation(
     /** Whether a redraw's tiles had each their own prompt and strength, read
       * off the picture by the assistant (`specs/52-auto-redraw.md`).
       */
-    planned: Option[Boolean] = None
+    planned: Option[Boolean] = None,
+    /** What the gallery says beside the entry about how it was made
+      * (`specs/39-seamless-edit.md`): an edit whose model changed more than
+      * half of what it was shown may have repainted the picture rather than
+      * edited it — the entry is kept, and says so.
+      */
+    warning: Option[String] = None
 )
 object Derivation {
   given Schema[Derivation] = Schema.derived

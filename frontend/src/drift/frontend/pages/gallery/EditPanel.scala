@@ -52,6 +52,7 @@ class EditPanel(
   private val stepsVar = Var("")
   private val seedVar = Var("")
   private val keepTilesVar = Var(false)
+  private val beyondSelectionVar = Var(true)
   private val advancedVar = Var(false)
   // The upscaler picked — the empty one is "tile by tile" — or nothing picked
   // yet: the first one installed.
@@ -103,7 +104,8 @@ class EditPanel(
       minimumWindowSide = area.minimumWindowSide,
       selectionMargin = area.selectionMargin,
       keepTiles = keepTilesVar.now(),
-      upscaleConfigurationId = upscalerNow.now().map(_.id)
+      upscaleConfigurationId = upscalerNow.now().map(_.id),
+      beyondSelection = beyondSelectionVar.now()
     )
 
   private def configurationSelect: HtmlElement =
@@ -186,9 +188,18 @@ class EditPanel(
     seedField(seedVar)
   )
 
-  /** What is left on disk when the job is done. */
+  /** What a selection keeps of the change, and what is left on disk when the
+    * job is done.
+    */
   private def optionsGroup: HtmlElement = group(
     "options",
+    checkField(
+      beyondSelectionVar,
+      "follow the change past the box",
+      "an edit carried up keeps every changed part that touches the box, " +
+        "as far as it goes — hair cut short is cut down to its ends, outside " +
+        "the box too. Unticked, nothing outside the box and its margin changes"
+    ),
     checkField(
       keepTilesVar,
       "keep the tiles",
@@ -205,7 +216,7 @@ class EditPanel(
         .combineWith(upscaler)
         .map((steps, carrier) =>
           carrier.fold(EditPanel.costOf(_, steps))(by =>
-            EditPanel.carriedCostOf(_, steps, by.label)
+            EditPanel.carriedCostOf(_, steps, by.label, area.selectionMargin)
           )
         )
     )
@@ -288,7 +299,12 @@ object EditPanel {
   /** The same line for an edit carried up: one pass of the model, at the size
     * the part is reduced to, then the upscaler over what changed.
     */
-  def carriedCostOf(plan: TilePlan, steps: String, upscaler: String): String = {
+  def carriedCostOf(
+      plan: TilePlan,
+      steps: String,
+      upscaler: String,
+      margin: Int
+  ): String = {
     val sampling = steps.trim.toIntOption match {
       case None        => "the configuration's steps"
       case Some(asked) => s"$asked steps"
@@ -305,10 +321,12 @@ object EditPanel {
       case Some(selection) =>
         // The window is the backend's to lay out against the picture's edges;
         // its side says what the pass costs.
-        val side = EditRequest.contextSide(selection)
+        val side = EditRequest.contextSide(selection, margin)
         val pass = EditRequest.passOf(side, side, 16)
         val carried =
-          if (pass.scale == 1) "at its own size"
+          if (pass.scale == 1)
+            s"at its own size, nothing to carry up — seen wider, and carried " +
+              s"up by $upscaler, if the change runs out of that window"
           else s"carried up ×${pass.scale} by $upscaler"
         s"selection ${selection.width}×${selection.height}, seen in a window " +
           s"about $side px wide · one pass, $sampling · $carried"

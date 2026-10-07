@@ -8,8 +8,8 @@ import com.raquo.laminar.api.L.*
 
 /** Moves gallery entries to a project (`specs/19`): a select showing the
   * project they are in, a button that moves them to the one picked, and what
-  * became of it — moving, moved where and with how many derived entries, or
-  * not moved.
+  * became of it — moving, moved where and with how many derived entries, or not
+  * moved.
   */
 class ProjectMover(
     projects: Signal[List[Project]],
@@ -70,7 +70,8 @@ class ProjectMover(
         )
       case (MoveState.Failed(ids), _) =>
         concerns(ids).map(
-          Option.when(_)(("has-text-danger", "✗ Not moved — see the message above"))
+          Option
+            .when(_)(("has-text-danger", "✗ Not moved — see the message above"))
         )
       case _ => Val(None)
     }
@@ -91,9 +92,9 @@ class ProjectMover(
     targets.map(_.map(_.id).toSet).distinct.changes --> (_ => picked.set(None)),
     select(
       cls := "select is-small",
-      disabled <-- targets.combineWith(moving).map((list, busy) =>
-        list.isEmpty || busy
-      ),
+      disabled <-- targets
+        .combineWith(moving)
+        .map((list, busy) => list.isEmpty || busy),
       // The choice is marked on its option rather than set on the select: the
       // projects arrive after the select is built, and a value naming an
       // option that is not there yet is dropped — the entry's own project

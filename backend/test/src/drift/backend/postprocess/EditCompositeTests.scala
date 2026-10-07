@@ -1,6 +1,6 @@
 package drift.backend.postprocess
 
-import drift.shared.Tiling
+import drift.shared.{ImageRegion, Tiling}
 import utest.*
 
 import java.awt.image.BufferedImage
@@ -87,6 +87,37 @@ object EditCompositeTests extends TestSuite {
       // The square is 1/16 of the tile; the means blur it, the mask is
       // grown and feathered — more than the square, far less than the tile.
       assert(result.changedShare > 0.05, result.changedShare < 0.3)
+    }
+
+    test("a selection keeps the changed parts that touch it, whole") {
+      // Two things changed: a bar that runs from inside the selection far out
+      // of it, and a square nowhere near it — further than holes are closed
+      // over, or the two would be one.
+      val side = 320
+      val source = BufferedImage(side, side, BufferedImage.TYPE_INT_RGB)
+      val model = BufferedImage(side, side, BufferedImage.TYPE_INT_RGB)
+      for {
+        y <- 0 until side
+        x <- 0 until side
+      } {
+        source.setRGB(x, y, rgb(60 + x / 4, 90 + y / 6, 120))
+        val bar = x >= 20 && x < 40 && y >= 10 && y < 150
+        val square = x >= 240 && x < 290 && y >= 240 && y < 290
+        model.setRGB(
+          x,
+          y,
+          if (bar || square) rgb(220, 30, 30) else source.getRGB(x, y)
+        )
+      }
+      val selection = ImageRegion(10, 10, 40, 30)
+      val result = EditComposite(source, model, Some(selection))
+      // the bar, down to its end, well outside the selection
+      assert(result.image.getRGB(30, 140) == model.getRGB(30, 140))
+      // the square does not touch the selection: the source's pixels
+      assert(result.image.getRGB(265, 265) == source.getRGB(265, 265))
+      // without a selection both are kept
+      val all = EditComposite(source, model)
+      assert(all.image.getRGB(265, 265) == model.getRGB(265, 265))
     }
 
     test("a new texture at nearly the same colour is kept whole") {
@@ -239,7 +270,7 @@ object EditCompositeTests extends TestSuite {
       // a 2k picture is halved, a 4k one quartered
       assert(passOf(2048, 3072, 16) == Pass(1024, 1536, 2))
       assert(passOf(4096, 6144, 16) == Pass(1024, 1536, 4))
-      assert(passOf(4096, 4096, 16) == Pass(1024, 1024, 4))
+      assert(passOf(4096, 4096, 16) == Pass(1536, 1536, 2))
       // an 8k one is brought within the pass and comes back ×4
       assert(passOf(8192, 8192, 16) == Pass(1536, 1536, 4))
     }

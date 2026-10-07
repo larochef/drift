@@ -143,7 +143,7 @@ final private[postprocess] class Edit(
               image.getWidth,
               image.getHeight,
               EditRequest
-                .contextSide(selection)
+                .contextSide(selection, request.selectionMargin)
                 .max(request.minimumWindowSide),
               request.selectionMargin,
               multiple = architecture.sizeMultiple
@@ -246,6 +246,14 @@ private[postprocess] object Edit {
     */
   val RepaintShare: Double = 0.5
 
+  /** What the edited entry says in the gallery when the model changed more than
+    * `RepaintShare` of what it was shown.
+    */
+  def repaintWarning(changedShare: Double): Option[String] =
+    Option.when(changedShare > RepaintShare)(
+      f"The model changed ${changedShare * 100}%.0f%% of what it was shown: it may have repainted the picture rather than edited it."
+    )
+
   /** A tile the model returned, composited over the crop it was given, with its
     * change mask and the composite kept beside it when tiles are kept.
     */
@@ -267,7 +275,8 @@ private[postprocess] object Edit {
       ),
       // The composite is the tile itself now; what is kept beside it is what
       // the model returned and the mask drift kept it by.
-      kept = List("edit" -> returned, "mask" -> result.mask)
+      kept = List("edit" -> returned, "mask" -> result.mask),
+      warning = repaintWarning(result.changedShare)
     )
   }
 }

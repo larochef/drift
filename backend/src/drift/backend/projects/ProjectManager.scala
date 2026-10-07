@@ -68,9 +68,9 @@ final class ProjectManager(storage: StorageService) {
     }
 
   /** The version of `projectId` a generation made elsewhere joins when it is
-    * moved there: the one already holding its recipe on its configuration,
-    * else a new one — twenty pictures of one recipe moved together are one
-    * version, not twenty.
+    * moved there: the one already holding its recipe on its configuration, else
+    * a new one — twenty pictures of one recipe moved together are one version,
+    * not twenty.
     */
   def adopt(
       projectId: String,

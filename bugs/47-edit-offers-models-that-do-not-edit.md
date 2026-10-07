@@ -1,7 +1,9 @@
 # Bug 47 — Edit offers models that do not edit, and says nothing when one repaints
 
-**Status:** open (found by François 2026-10-06, on his first use of the rebuilt Edit; nothing changed yet — the
-next generations for it are for the night of 2026-10-06)
+**Status:** fixed 2026-10-07 (found by François 2026-10-06 on his first use of the rebuilt Edit). The list:
+migration 13 takes the `edit` tag from `qwen-image-2.1` and `boogu-image-edit`. The silence: an edit whose model
+changed more than half of what it was shown says so on its gallery entry (`Derivation.warning`: "✎ edited ⚠"
+on the card, a Warning row in the details). Measured the night of 2026-10-06 — see the end of this file.
 **Severity:** high (the first model in his list for the job he wanted repaints the picture: every try looks like
 Edit not working)
 **Files:** `backend/resources/reference/architectures.json` (the `edit` tag),
@@ -57,3 +59,16 @@ shown, and drift pasted a repaint. The line of the log that says so is not shown
   upscaled again from the picture the upscale was made from. On his picture — 8k, upscaled from a 4k that was
   itself a full redraw — that is a re-upscale of the 4k window, if the line is not already in the 4k: to check
   on the first try.
+
+## Measured the night of 2026-10-06 (`~/dev/redraw-experiments/2026-10-06-edit`, FINDINGS.md)
+
+| architecture | on the 1k cases | a pass | kept `edit` |
+|---|---|---|---|
+| `flux.2-klein-9B` | edits (2026-10-05: 21 of 24) | 55–100 s | yes |
+| `flux.2-klein-4B` | not measured: no checkpoint here; the 9B's family | — | yes |
+| `flux.2-dev` (Q4_K_M, turbo LoRA, 8 steps) | edits: the sweater, 13.2 % changed | **520 s** | yes — slow, not wrong |
+| `mage-flow-edit-turbo` | edits once flash attention is off (bugs/51): 12.8 % changed, no shift | 163 s | yes |
+| `boogu-image-edit` (the full Edit checkpoint at the seeded 4 steps) | a blurred repaint, 39 % changed | 439 s | **no** |
+| `qwen-image-2.1` | RedQW21 repaints; the official weights redraw landscape pictures (2026-10-05) | 110 s | **no** |
+
+Flux.2 dev and Boogu were stopped after one case each, for their cost.

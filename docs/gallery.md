@@ -342,8 +342,10 @@ than in the form: they change nothing about the job.
   different under *change* — "make the bikini top red", "she wears a thin gold
   necklace" — and the model makes that change while the rest stays what it
   was. It needs a configuration on an architecture tagged **edit**, a model
-  that edits an image by instruction: Flux.2 Klein works; Krea 2 does not (it
-  draws a different picture), so it is not offered.
+  that edits an image by instruction: Flux.2 Klein is the one to use — a pass
+  takes about a minute; Mage-Flow Edit Turbo edits too, in two and a half, and
+  Flux.2 dev in nine. Models that redraw the picture instead — Krea 2, Qwen
+  Image 2.1 — are not offered.
 
   **Carried up by** says how the edit reaches the picture's size. With a
   SeedVR2 upscaler — the default when one is installed — the edit is made
@@ -369,13 +371,26 @@ than in the form: they change nothing about the job.
   is the source's own pixels, so its grain, tone and texture cannot drift;
   where it did, the change is brought to the source's colours and feathered in.
 
-  A box works as for a redraw — the same window, margin and grid — and the
-  button becomes **✨ Edit selection**; carried up, nothing changes beyond the
-  box and its margin, whatever the model did in the rest of the window. The job
-  log says how much changed; more than half is flagged, since a model that
-  repaints rather than edits lands there (a large edit can too). *keep the
-  tiles* keeps what the model was given, its raw edit, the change mask (white
-  where the edit was taken) and the composite.
+  Drag a box and the button becomes **✨ Edit selection**. The box says *what*
+  to edit: carried up, drift keeps every changed part that touches it, as far
+  as it goes — cut the hair short with a box on the head and the hair is gone
+  down to its ends, on the shoulders too — and leaves alone whatever else the
+  model changed around it. Untick *follow the change past the box* (Advanced →
+  options) and nothing changes beyond the box and its margin.
+
+  A box up to about 1400 px is edited at the picture's own size, with no
+  upscale at all: the sharpest result, and the quickest — a necklace on a 4k
+  picture takes a minute and a half. When the model changes nothing there (it
+  needs to see more of the picture to know what it is looking at), or when the
+  change runs out of what it was shown, drift makes the edit again through a
+  window twice as wide, up to twice, and carries that one up; the job log says
+  so, and each look costs another pass.
+
+  An edit whose model changed more than half of what it was shown may be a
+  repaint rather than an edit: the result is kept and marked **✎ edited ⚠** in
+  the gallery, with the share under *Warning* in its details. *keep the tiles*
+  keeps what the model was given, its raw edit, the change mask (white where
+  the edit was taken) and the composite.
 
   What Edit is not for: a defect to repair (eyes, a hand) — the model tends to
   re-grade the whole picture around it; set the repair up from **🤖 Read the

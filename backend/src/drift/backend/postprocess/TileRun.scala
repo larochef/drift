@@ -66,6 +66,8 @@ final private[postprocess] class TileRun(
   // otherwise average in the hours it spent paused.
   val runStarted = System.currentTimeMillis()
   var doneThisRun = 0
+  // What the tiles finished in this run had to say for the gallery entry.
+  var warnings = Vector.empty[String]
   // What becomes of each tile before it is painted in, when tiles run in
   // order: an edit's composite, or the tile as it came back.
   val finishing = finishTile.orElse(
@@ -444,6 +446,7 @@ final private[postprocess] class TileRun(
                             .toRight("the image cannot be decoded")
                             .map { returned =>
                               val done = finished(crop, returned)
+                              warnings = warnings ++ done.warning
                               done.note.foreach(note =>
                                 jobs.appendLog(
                                   job,
@@ -530,7 +533,19 @@ final private[postprocess] class TileRun(
           jobs.fail(job, reason)
         case Right(()) =>
           jobs.forgetPaused(job.id)
-          jobs.complete(job, src, outputFile, derivation)
+          jobs.complete(
+            job,
+            src,
+            outputFile,
+            derivation.copy(warning = warnings match {
+              case Vector()     => None
+              case Vector(only) => Some(only)
+              case several      =>
+                Some(
+                  s"On ${several.size} of ${tiles.size} tiles: ${several.head}"
+                )
+            })
+          )
       }
     } catch {
       case NonFatal(err) =>

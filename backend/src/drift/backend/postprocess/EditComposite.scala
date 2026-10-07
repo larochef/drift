@@ -1,5 +1,7 @@
 package drift.backend.postprocess
 
+import drift.shared.ImageRegion
+
 import java.awt.image.BufferedImage
 import scala.collection.mutable
 
@@ -23,7 +25,8 @@ import scala.collection.mutable
   *      an object is edited whole or not at all — and the mask is grown by 6 px
   *      and feathered by as much;
   *   4. composite — the source where the mask is 0, the matched edit where it
-  *      is 1.
+  *      is 1. With a selection (`keep`), only the changed parts that touch it
+  *      are kept, each as far as it goes.
   *
   * Measured the night of 2026-10-05
   * (`~/dev/redraw-experiments/2026-10-05-edit`, `ec.composite2`): the mask
@@ -61,7 +64,11 @@ private[postprocess] object EditComposite {
     * something and brought to the source's colours there; the source everywhere
     * else. Both images are the same size.
     */
-  def apply(source: BufferedImage, edited: BufferedImage): Result = {
+  def apply(
+      source: BufferedImage,
+      edited: BufferedImage,
+      keep: Option[ImageRegion] = None
+  ): Result = {
     val width = source.getWidth
     val height = source.getHeight
     val sourceChannels = channels(source)
@@ -104,8 +111,19 @@ private[postprocess] object EditComposite {
       height,
       CloseRadius
     )
+    // Of what changed, a selection keeps the parts that touch it, whole.
+    val wanted = keep.fold(whole) { region =>
+      val changed = whole.map(_ > 0.5f)
+      val seeds = Array.tabulate(changed.length) { index =>
+        val x = index % width
+        val y = index / width
+        changed(index) && x >= region.x && x < region.x + region.width &&
+        y >= region.y && y < region.y + region.height
+      }
+      reached(seeds, changed, width, height).map(if (_) 1f else 0f)
+    }
     val mask = gaussian(
-      grown(whole, width, height, MaskGrowth),
+      grown(wanted, width, height, MaskGrowth),
       width,
       height,
       MaskFeather

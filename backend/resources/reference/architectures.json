@@ -111,8 +111,7 @@
       "--mmap": ""
     },
     "tags": [
-      "image",
-      "edit"
+      "image"
     ],
     "promptingNotes": "An instruction editor: attach one reference image — it takes one for now — and say in plain words what to change (\"change 'flux.cpp' to 'boogu.cpp'\"), naming what must stay as it is. It inserts, replaces and removes objects, changes attributes, materials and backgrounds, and keeps the source subject and composition coherent. The reference is read by Qwen3-VL-8B, which is why this architecture also loads its vision projector. The seeded defaults are Edit Turbo's — 4 steps at CFG 1, so the negative prompt has no effect. The full Edit checkpoint wants 25 to 50 steps at CFG 2 to 5 (5 is the vendor's example). It renders up to 2K, and is most stable at 1K.",
     "sizeMultiple": 16,
@@ -563,7 +562,6 @@
       }
     ],
     "defaultParameters": {
-      "--diffusion-fa": "",
       "--cfg-scale": "1.0",
       "--steps": "4",
       "-H": "1024",
@@ -574,7 +572,7 @@
       "image",
       "edit"
     ],
-    "promptingNotes": "An instruction editor: attach one or more reference images and say in plain words what to change (\"change 'flux.cpp' to 'mage.cpp'\"), naming what must stay as it is. Each reference is read by Qwen3-VL-4B (longest edge capped at 384 px) and fed to the transformer at the output size, so keep the output's aspect ratio that of the reference. Turbo runs 4 steps at CFG 1, so the negative prompt has no effect. Width and height must be multiples of 16, 512 to 2048 per side.",
+    "promptingNotes": "An instruction editor: attach one or more reference images and say in plain words what to change (\"change 'flux.cpp' to 'mage.cpp'\"), naming what must stay as it is. Each reference is read by Qwen3-VL-4B (longest edge capped at 384 px) and fed to the transformer at the output size, so keep the output's aspect ratio that of the reference. Turbo runs 4 steps at CFG 1, so the negative prompt has no effect. It runs without flash attention: with it, on ROCm, sd-cpp draws squiggles all over the edit (bugs/51). Width and height must be multiples of 16, 512 to 2048 per side.",
     "sizeMultiple": 16,
     "modelKind": null,
     "runners": [
@@ -744,8 +742,7 @@
       "--mmap": ""
     },
     "tags": [
-      "image",
-      "edit"
+      "image"
     ],
     "promptingNotes": "Reads natural language through Qwen3-VL-8B: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes — it is especially strong at text, Chinese included. Unlike Qwen Image, it steers on real classifier-free guidance rather than an embedded guidance value: CFG 6 with euler is the vendor's example, and the negative prompt does have an effect. The same checkpoint edits: attach one or more reference images and say in plain words what to change (\"change 'qwen2.1.cpp' to 'sd.cpp'\"), naming what must stay as it is. Editing reads the references through the text encoder, so it needs the Qwen3-VL-8B vision projector in the optional slot; generating from a prompt alone does not.",
     "sizeMultiple": 32,

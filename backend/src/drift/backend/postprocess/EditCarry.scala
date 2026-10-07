@@ -48,6 +48,22 @@ final private[postprocess] class EditCarry(
       derivation: Derivation
   )
 
+  /** One pass of the edit model: the part of the picture it was shown (`seen`),
+    * that part as it is and reduced to the pass, how many times smaller the
+    * pass is (`by`), and what the composite kept of the edit.
+    */
+  private case class Passed(
+      seen: ImageRegion,
+      part: BufferedImage,
+      reduced: BufferedImage,
+      pass: EditRequest.Pass,
+      by: Double,
+      result: EditComposite.Result
+  )
+
+  /** The part of the picture the model was shown, edited, at its own size. */
+  private case class Carried(seen: ImageRegion, edited: BufferedImage)
+
   /** A server to ask, and how to let go of it. */
   private case class Server(
       port: Int,
@@ -62,6 +78,10 @@ final private[postprocess] class EditCarry(
     import work.*
     val outputFile = jobs.files.outputFileOf(job, src)
     var stopServer: () => Unit = () => ()
+    // What the gallery entry says of the result: the last pass's repaint, and
+    // a change the window cut.
+    var repainted = Option.empty[String]
+    var warnings = Vector.empty[String]
     def kept(name: String, picture: BufferedImage): Unit =
       if (request.keepTiles) {
         Files.createDirectories(jobs.files.tilesDirOf(job))
@@ -112,33 +132,48 @@ final private[postprocess] class EditCarry(
         )
     def cancelled: Either[String, Unit] =
       Either.cond(!jobs.isCancelled(job), (), "cancelled")
-    try {
+    // What a selection keeps of the change: every changed part that touches
+    // it, as far as it goes, or only what lies within it.
+    val following = region.filter(_ => request.beyondSelection)
+    // 1. The edit, once, where the model sees all of it: `seen` is the part of
+    // the picture it is shown.
+    def passOn(
+        seen: ImageRegion,
+        again: Option[String]
+    ): Either[String, Passed] = {
       val part = copyOf(
-        image.getSubimage(area.x, area.y, area.width, area.height)
+        image.getSubimage(seen.x, seen.y, seen.width, seen.height)
       )
-      val pass = EditRequest.passOf(area.width, area.height, sizeMultiple)
+      val pass = EditRequest.passOf(seen.width, seen.height, sizeMultiple)
       val reduced =
-        if (pass.width == area.width && pass.height == area.height) part
+        if (pass.width == seen.width && pass.height == seen.height) part
         else scaledCopy(part, pass.width, pass.height)
-      val by = area.width.toDouble / pass.width
-      jobs.startLog(
-        job,
-        launch,
-        notes = List(
-          region.fold(
-            s"source ${image.getWidth}x${image.getHeight}"
-          )(selection =>
-            s"selection ${selection.width}x${selection.height} at ${selection.x},${selection.y} of ${image.getWidth}x${image.getHeight}, edited through a ${area.width}x${area.height} window at ${area.x},${area.y}"
-          ) + s"; edited in one pass at ${pass.width}x${pass.height}" +
-            (if (pass.scale > 1)
-               s", what changed carried up ×${pass.scale} by '${upscaler.label}'"
-             else ", the picture's own size: nothing to carry up"),
-          s"instruction: ${request.instructions.trim}"
-        ) ++ TiledJobs.loraNote(loras.selections)
+      val by = seen.width.toDouble / pass.width
+      val carrying =
+        if (pass.scale > 1)
+          s", what changed carried up ×${pass.scale} by '${upscaler.label}'"
+        else ", the picture's own size: nothing to carry up"
+      again.fold(
+        jobs.startLog(
+          job,
+          launch,
+          notes = List(
+            region.fold(
+              s"source ${image.getWidth}x${image.getHeight}"
+            )(selection =>
+              s"selection ${selection.width}x${selection.height} at ${selection.x},${selection.y} of ${image.getWidth}x${image.getHeight}, edited through a ${seen.width}x${seen.height} window at ${seen.x},${seen.y}"
+            ) + s"; edited in one pass at ${pass.width}x${pass.height}$carrying",
+            s"instruction: ${request.instructions.trim}"
+          ) ++ TiledJobs.loraNote(loras.selections)
+        )
+      )(reason =>
+        jobs.appendLog(
+          job,
+          s"$reason: edited again through a ${seen.width}x${seen.height} window at ${seen.x},${seen.y}, in one pass at ${pass.width}x${pass.height}$carrying"
+        )
       )
       jobs.update(job.id)(_.copy(progress = Some(PostProcessProgress(0, 2))))
       kept("pass-input", reduced)
-      // 1. The edit, once, where the model sees all of it.
       val edit: Either[String, EditComposite.Result] = for {
         server <- serverOf(configuration.id, launch)
         capabilities <- NativeJobs.imageCapabilities(server.port)
@@ -175,7 +210,18 @@ final private[postprocess] class EditCarry(
         _ <- cancelled
       } yield {
         kept("pass-edit", returned)
-        val result = EditComposite(reduced, returned)
+        val result = EditComposite(
+          reduced,
+          returned,
+          following.map(selection =>
+            ImageRegion(
+              ((selection.x - seen.x) / by).toInt.max(0),
+              ((selection.y - seen.y) / by).toInt.max(0),
+              math.ceil(selection.width / by).toInt.max(1),
+              math.ceil(selection.height / by).toInt.max(1)
+            )
+          )
+        )
         kept("pass-mask", result.mask)
         kept("pass-composite", result.image)
         jobs.appendLog(
@@ -190,87 +236,159 @@ final private[postprocess] class EditCarry(
         )
         result
       }
-      val outcome: Either[String, BufferedImage] = edit.flatMap { result =>
-        EditCarry.changedBox(result.mask) match {
-          case None =>
-            Left(
-              "the model changed nothing the composite can tell from the source" +
-                (if (region.isEmpty)
-                   " — a change of a few pixels at the pass's size is not seen: draw a box around a small thing, and it is edited larger"
-                 else "")
+      edit.map(Passed(seen, part, reduced, pass, by, _))
+    }
+    // A selection is first shown to the model at the picture's own size when it
+    // fits one pass — nothing to carry up, every pixel kept is the picture's
+    // own. Two things send it back for a wider look, twice as much each time,
+    // up to the whole picture: the model changed nothing — handed a wrist and
+    // a watch it leaves the watch on, with the arm and the table around them
+    // it takes it off — or the change runs out of what it was shown — hair cut
+    // short that hangs below the window, which the model could not cut and the
+    // picture would keep from the window's edge down.
+    def wider(passed: Passed): Option[(ImageRegion, String)] =
+      region
+        .flatMap { selection =>
+          val nothing = EditCarry.changedBox(passed.result.mask).isEmpty
+          val cut = following.nonEmpty &&
+            EditCarry.cutBy(passed.result.mask, passed.seen, image)
+          Option
+            .when(nothing)("the model changed nothing")
+            .orElse(
+              Option.when(cut)(
+                "the change reaches the edge of what the model was shown"
+              )
             )
-          case Some(_) if pass.scale == 1 && reduced.eq(part) =>
-            // Edited at its own size: the composite is the edited part.
-            Right(result.image)
-          case Some(box) =>
-            // 2. What changed, back at the picture's size.
-            val small = result.image.getSubimage(
-              box.x,
-              box.y,
-              box.width,
-              box.height
-            )
-            val wide =
-              if (pass.scale == 1) Right(small)
-              else upscaled(job, small, pass.scale, serverOf, work)
-            wide.map { enlarged =>
-              // Where the box lies in the part to edit, at its own size.
-              val x = math.round(box.x * by).toInt.min(area.width - 1)
-              val y = math.round(box.y * by).toInt.min(area.height - 1)
-              val width =
-                math.round(box.width * by).toInt.min(area.width - x).max(1)
-              val height =
-                math.round(box.height * by).toInt.min(area.height - y).max(1)
-              val carried = EditComposite.carried(
-                copyOf(part.getSubimage(x, y, width, height)),
-                scaledCopy(enlarged, width, height),
-                scaledCopy(
-                  result.mask.getSubimage(box.x, box.y, box.width, box.height),
-                  width,
-                  height
+            .map(reason =>
+              (
+                Tiling.window(
+                  selection,
+                  image.getWidth,
+                  image.getHeight,
+                  2 * math.max(passed.seen.width, passed.seen.height),
+                  request.selectionMargin,
+                  multiple = sizeMultiple
                 ),
-                by
+                reason
               )
-              kept("carried-mask", carried.mask)
-              val edited = copyOf(part)
-              edited.setRGB(
-                x,
-                y,
-                width,
-                height,
-                carried.image.getRGB(0, 0, width, height, null, 0, width),
-                0,
-                width
-              )
-              edited
-            }
+            )
         }
-      }
-      outcome.flatMap { edited =>
-        jobs.update(job.id)(_.copy(progress = None))
-        // A selection bounds the change: what the model did beyond it, and
-        // beyond the margin the paste feathers over, is not kept.
-        val whole = region.fold {
-          val result = copyOf(image)
-          result.setRGB(
-            area.x,
-            area.y,
-            area.width,
-            area.height,
-            edited.getRGB(0, 0, area.width, area.height, null, 0, area.width),
-            0,
-            area.width
-          )
-          result
-        }(selection =>
-          TileBlending.paste(
-            image,
-            edited,
-            area,
-            selection,
-            reach = Some(request.selectionMargin)
+        .filter((seen, _) =>
+          seen.width > passed.seen.width || seen.height > passed.seen.height
+        )
+    def changed(passed: Passed): Boolean =
+      EditCarry.changedBox(passed.result.mask).nonEmpty
+    def settled(passed: Passed, looks: Int): Either[String, Passed] =
+      wider(passed)
+        .filter(_ => looks > 0)
+        .fold[Either[String, Passed]](Right(passed))((seen, reason) =>
+          passOn(seen, Some(reason)).flatMap(next =>
+            // A thing the model drew at the picture's size can be too fine to
+            // tell from the source once the window is reduced — a necklace's
+            // chain: the edit already made is the one to keep.
+            if (changed(passed) && !changed(next)) {
+              jobs.appendLog(
+                job,
+                "seen wider, nothing the composite can tell from the source: the edit made before is kept"
+              )
+              Right(passed)
+            } else settled(next, looks - 1)
           )
         )
+    try {
+      val passed =
+        passOn(area, None).flatMap(settled(_, EditCarry.WiderLooks))
+      val outcome: Either[String, Carried] = passed.flatMap {
+        case Passed(seen, part, reduced, pass, by, result) =>
+          repainted = Edit.repaintWarning(result.changedShare)
+          if (following.nonEmpty && EditCarry.cutBy(result.mask, seen, image))
+            warnings = warnings :+
+              "The change runs past what the model was shown: it stops at the edge of that window."
+          (EditCarry.changedBox(result.mask) match {
+            case None =>
+              Left(
+                "the model changed nothing the composite can tell from the source" +
+                  (if (region.isEmpty)
+                     " — a change of a few pixels at the pass's size is not seen: draw a box around a small thing, and it is edited larger"
+                   else "")
+              )
+            case Some(_) if pass.scale == 1 && reduced.eq(part) =>
+              // Edited at its own size: the composite is the edited part.
+              Right(result.image)
+            case Some(box) =>
+              // 2. What changed, back at the picture's size.
+              val small = result.image.getSubimage(
+                box.x,
+                box.y,
+                box.width,
+                box.height
+              )
+              val wide =
+                if (pass.scale == 1) Right(small)
+                else upscaled(job, small, pass.scale, serverOf, work)
+              wide.map { enlarged =>
+                // Where the box lies in the part to edit, at its own size.
+                val x = math.round(box.x * by).toInt.min(seen.width - 1)
+                val y = math.round(box.y * by).toInt.min(seen.height - 1)
+                val width =
+                  math.round(box.width * by).toInt.min(seen.width - x).max(1)
+                val height =
+                  math.round(box.height * by).toInt.min(seen.height - y).max(1)
+                val carried = EditComposite.carried(
+                  copyOf(part.getSubimage(x, y, width, height)),
+                  scaledCopy(enlarged, width, height),
+                  scaledCopy(
+                    result.mask
+                      .getSubimage(box.x, box.y, box.width, box.height),
+                    width,
+                    height
+                  ),
+                  by
+                )
+                kept("carried-mask", carried.mask)
+                val edited = copyOf(part)
+                edited.setRGB(
+                  x,
+                  y,
+                  width,
+                  height,
+                  carried.image.getRGB(0, 0, width, height, null, 0, width),
+                  0,
+                  width
+                )
+                edited
+              }
+          }).map(Carried(seen, _))
+      }
+      outcome.flatMap { case Carried(seen, edited) =>
+        jobs.update(job.id)(_.copy(progress = None))
+        // Outside what changed the edited part is the source's own pixels, so
+        // it goes back whole — unless the selection is to bound the change:
+        // then what the model did beyond it, and beyond the margin the paste
+        // feathers over, is not kept.
+        val whole = region
+          .filterNot(_ => request.beyondSelection)
+          .fold {
+            val result = copyOf(image)
+            result.setRGB(
+              seen.x,
+              seen.y,
+              seen.width,
+              seen.height,
+              edited.getRGB(0, 0, seen.width, seen.height, null, 0, seen.width),
+              0,
+              seen.width
+            )
+            result
+          }(selection =>
+            TileBlending.paste(
+              image,
+              edited,
+              seen,
+              selection,
+              reach = Some(request.selectionMargin)
+            )
+          )
         Either.cond(
           ImageIO.write(whole, "png", outputFile.toFile),
           (),
@@ -280,7 +398,17 @@ final private[postprocess] class EditCarry(
         case Left(reason) =>
           Files.deleteIfExists(outputFile)
           jobs.fail(job, reason)
-        case Right(()) => jobs.complete(job, src, outputFile, derivation)
+        case Right(()) =>
+          jobs.complete(
+            job,
+            src,
+            outputFile,
+            derivation.copy(warning =
+              Option(repainted.toVector ++ warnings)
+                .filter(_.nonEmpty)
+                .map(_.mkString(" "))
+            )
+          )
       }
     } catch {
       case NonFatal(err) =>
@@ -391,6 +519,40 @@ private[postprocess] object EditCarry {
     * beside the object it restores, in the pass's own pixels.
     */
   val BoxMargin: Int = 48
+
+  /** How many times a selection's edit is made again through a window twice as
+    * large: from one pass at the picture's size (1536) to 6144, which is a
+    * whole 4k picture, or most of an 8k one.
+    */
+  val WiderLooks: Int = 2
+
+  /** How much of a window's side, in the pass's pixels, a change must cover to
+    * count as running out of it: a stray strand of hair the model moved, a few
+    * pixels wide, does not send the edit back for a wider look.
+    */
+  val CutLength: Int = 48
+
+  /** Whether the change `mask` marks runs out of `seen`, the part of `image`
+    * the model was shown, on a side where the picture goes on: there the edit
+    * stops at the window's edge and the picture is as it was beyond it.
+    */
+  def cutBy(
+      mask: BufferedImage,
+      seen: ImageRegion,
+      image: BufferedImage
+  ): Boolean = {
+    val width = mask.getWidth
+    val height = mask.getHeight
+    def marked(x: Int, y: Int): Boolean = (mask.getRGB(x, y) & 0xff) > 127
+    def column(x: Int): Boolean =
+      (0 until height).count(marked(x, _)) >= CutLength
+    def row(y: Int): Boolean =
+      (0 until width).count(marked(_, y)) >= CutLength
+    (seen.x > 0 && column(0)) ||
+    (seen.x + seen.width < image.getWidth && column(width - 1)) ||
+    (seen.y > 0 && row(0)) ||
+    (seen.y + seen.height < image.getHeight && row(height - 1))
+  }
 
   /** The box of the pass that holds everything `mask` marks, grown by
     * `BoxMargin` and out to multiples of 16, kept inside the pass — none when

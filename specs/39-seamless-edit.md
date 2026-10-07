@@ -23,7 +23,8 @@ seam where a tile or a selection ends.
   1. the part to edit — the whole picture, or the window around the selection
      — is reduced to what the model takes in one pass: as it is up to 1536 px
      on its longest side, halved up to 3072, else brought within 1536
-     (`EditRequest.passOf`);
+     (`EditRequest.passOf`) — and then carried back ×2 with the last third
+     enlarged, up to 4096 px, ×4 beyond;
   2. the model edits it in a single job: the reduced part is its only
      `ref_images` entry, no `init_image`, the prompt is the edit template
      followed by the instruction;
@@ -61,15 +62,34 @@ seam where a tile or a selection ends.
      48 px are closed; the mask is grown by 6 px and feathered by as much;
   4. composite — the source where the mask is 0, the matched edit where it
      is 1.
-- **A selection bounds the change, not what the model sees.** Carried up, the
-  window around it is four times the selection's longest side, from 1536 to
-  3072 px (`EditRequest.contextSide`): an edit model acts on a picture, not on
-  a close-up, and the window costs one pass whatever its size. What comes back
-  is kept inside the selection and across its margin only — not out to the
-  window's edge.
-- The job log names the pass's size, the share of it the edit changed (flagged
-  above one half: a model that repaints lands there, and so does a large
-  honest edit), the shift put back, and the tiles the upscaler ran.
+- **A selection says what to edit, not where the edit stops.** Of what
+  changed, the parts that touch the selection are kept, each as far as it
+  goes (`EditRequest.beyondSelection`, *follow the change past the box*, on by
+  default): hair cut short is cut down to its ends, a top turned red is red to
+  its hem. Changed parts that do not touch it — whatever else the model did in
+  the window — are left as they were. Unticked, the change is kept inside the
+  selection and across its margin only.
+- **The window is as small as the edit allows.** A selection that fits one
+  pass with its margin is first seen through 1536 px of the picture at its own
+  size (`EditRequest.contextSide`): nothing is reduced, nothing carried up,
+  and what is kept is the picture's own pixels and the model's. A larger one
+  through four times its longest side, at most 3072. Then, at most twice
+  (`EditCarry.WiderLooks`), the window is doubled and the edit made again
+  when the first look was not enough: the model changed nothing — an edit
+  model acts on a picture, not on a close-up — or the change runs out of the
+  window over 48 px of its edge or more (`EditCarry.cutBy`), where the picture
+  would keep what the model could not see. A wider look that finds nothing
+  keeps the edit made before it.
+- The job log names each pass's size and why it was made again, the share of
+  it the edit changed, the shift put back, and the tiles the upscaler ran.
+- **A repaint is said on the picture.** Above one half changed
+  (`Edit.RepaintShare`) the gallery entry carries a warning
+  (`Derivation.warning`): "✎ edited ⚠" on its card, a *Warning* row in its
+  details — a model that repaints lands there, and so does a large honest
+  edit, so it is kept and flagged. The same for a change still cut by the
+  window after the last look.
+- **The models offered** are the architectures tagged `edit`, kept to those
+  measured to edit (`bugs/47`): Flux.2 Klein and dev, Mage-Flow Edit Turbo.
 - *Keep tiles* writes the pass as given, the model's raw edit, the mask, the
   composite and the mask it was carried through, in the job's tiles directory
   (27); tile by tile, each tile's input, raw edit, mask and composite.
@@ -83,7 +103,7 @@ seam where a tile or a selection ends.
 
 - `shared`: `EditRequest(runConfigurationId, instructions, templateId, steps,
   seed, runtimeId, tileSize, gridOffsetX/Y, region, minimumWindowSide,
-  selectionMargin, keepTiles, upscaleConfigurationId)`;
+  selectionMargin, keepTiles, upscaleConfigurationId, beyondSelection)`;
   `EditRequest.passOf(width, height, multiple)` → `Pass(width, height, scale)`,
   which the panel prices a job with; `POST /api/outputs/{date}/{file}/edit`.
 - `backend/.../postprocess/Edit`: checks the request, resolves the upscaler
@@ -166,6 +186,18 @@ with Flux.2 Klein 9B (SNOFS) on the drift runner, one seed unless said.
 - **A picture more than four times the pass** (an 8k one, whole) comes back
   ×4 and is enlarged the rest of the way: softer than its surroundings. A
   selection keeps the window small enough.
+- **What the model draws new is smoother than what is beside it.** Skin
+  uncovered by a haircut has half the fine texture of the skin next to it,
+  already in the model's pass; SeedVR2 keeps it so. Tried 2026-10-07: grain
+  matched to the surroundings before or after the way up (noise is not pores),
+  the box halved and carried ×4 (more texture, a harsher face), a masked
+  redraw at 0.25 and 0.4 (the best to the eye — freckles continue onto the new
+  skin — at two minutes a tile). Not built: a redraw of what changed, under
+  the edit's own mask, as a step after the edit.
+- **Loose strands** the edit removed stay in the air around a haircut: too thin
+  for the mask.
+- **A pass of 2048** would keep a 4096 px picture at ×2 without the stretch;
+  Klein fails there on the runner (`bugs/50`).
 - **PiD as the upscaler**, for a picture upscaled by PiD: its crackle on an
   edit model's grain is the open point, not the wiring.
 - **Several seeds**, and a choice among them before the upscale: the pass

@@ -168,9 +168,9 @@ final private[sdserver] class GenerationFiles(outputsRoot: Path) {
   def writeSidecar(generation: Generation): Unit =
     writeSidecar(generation, dateOf(generation.submittedAt))
 
-  /** The sidecar under a day that is given: a derived entry is filed beside
-    * its source, under the source's day, not the day it was made
-    * (`specs/15`) — rewriting one must put it back where it was read.
+  /** The sidecar under a day that is given: a derived entry is filed beside its
+    * source, under the source's day, not the day it was made (`specs/15`) —
+    * rewriting one must put it back where it was read.
     */
   def writeSidecar(generation: Generation, date: String): Unit =
     if (generation.scratch) ()

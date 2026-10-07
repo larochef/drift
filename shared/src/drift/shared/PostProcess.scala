@@ -504,7 +504,14 @@ case class EditRequest(
       * (`EditRequest.passOf`), and only what changed is brought back to the
       * picture's size by this upscaler. None runs the edit tile by tile.
       */
-    upscaleConfigurationId: Option[String] = None
+    upscaleConfigurationId: Option[String] = None,
+    /** What a selection keeps of an edit carried up: every changed part that
+      * touches it, as far as it goes — hair cut short is cut down to its ends,
+      * outside the box too — or, when false, only what lies within the
+      * selection and its margin, the rest of the picture untouched whatever the
+      * model did there.
+      */
+    beyondSelection: Boolean = true
 )
 object EditRequest {
   given JsonValueCodec[EditRequest] = JsonCodecMaker.make
@@ -515,28 +522,39 @@ object EditRequest {
     */
   val PassSide: Int = 1536
 
-  /** The least side of the window a carried edit sees around `selection`: four
-    * times its longest side, from `PassSide` to twice that. An edit model acts
-    * on a picture, not on a close-up — handed a wrist and a watch at the
-    * picture's own size it left the watch on; with the arm, the shirt and the
-    * table around them the same instruction is carried out — and the window
-    * costs one pass whatever its size.
+  /** The least side of the window a carried edit first sees around `selection`.
+    * A selection that fits one pass with its margin is seen through a window of
+    * `PassSide`: edited at the picture's own size, with nothing to carry up —
+    * what is kept is the picture's own pixels and the model's, no upscaler's
+    * texture between them. A larger one through four times its longest side, at
+    * most twice `PassSide`. The job looks wider when that was not enough
+    * (`EditCarry`).
     */
-  def contextSide(selection: ImageRegion): Int =
-    (4 * math.max(selection.width, selection.height))
-      .max(PassSide)
-      .min(2 * PassSide)
+  def contextSide(selection: ImageRegion, margin: Int): Int = {
+    val longest = math.max(selection.width, selection.height)
+    if (longest + 2 * margin <= PassSide) PassSide
+    else (4 * longest).max(PassSide).min(2 * PassSide)
+  }
 
   /** The single pass an edit carried up runs: the size the part to edit is
     * reduced to, and the scale the upscaler brings it back by.
     */
   case class Pass(width: Int, height: Int, scale: Int)
 
+  /** How far the upscaler's ×2 is stretched before ×4 is asked instead: a part
+    * up to this many times `PassSide` is edited at `PassSide`, upscaled ×2 and
+    * enlarged the rest of the way — a third at most. Measured 2026-10-07 on a
+    * 4096 px picture: a face edited at 1536 and brought back this way is a
+    * little soft, the same face edited at 1024 and upscaled ×4 is harsh — the
+    * upscaler redraws it from too little.
+    */
+  val StretchedBy: Double = 8.0 / 3
+
   /** The pass for a part of `width` × `height` px. As it is when it fits
-    * `PassSide`; else halved when that is enough, or brought within `PassSide`
-    * and upscaled ×4 — a part more than four times `PassSide` comes back
-    * smaller than it was and is enlarged the rest of the way. Sides are
-    * multiples of `multiple`, as the model and the upscaler take them.
+    * `PassSide`; halved when that is enough; else brought within `PassSide` and
+    * upscaled ×2 when the rest is a small stretch (`StretchedBy`), ×4 beyond —
+    * and what the upscaler leaves short or over is resized to the part. Sides
+    * are multiples of `multiple`, as the model and the upscaler take them.
     */
   def passOf(width: Int, height: Int, multiple: Int): Pass = {
     val longest = math.max(width, height)
@@ -546,8 +564,8 @@ object EditRequest {
     if (longest <= PassSide) Pass(side(width, 1), side(height, 1), 1)
     else if (longest <= 2 * PassSide) Pass(side(width, 2), side(height, 2), 2)
     else {
-      val by = math.max(4.0, longest.toDouble / PassSide)
-      Pass(side(width, by), side(height, by), 4)
+      val by = longest.toDouble / PassSide
+      Pass(side(width, by), side(height, by), if (by <= StretchedBy) 2 else 4)
     }
   }
 }

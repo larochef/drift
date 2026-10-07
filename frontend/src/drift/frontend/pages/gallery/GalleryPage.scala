@@ -463,9 +463,9 @@ class GalleryPage(
           ),
           ProjectMover(
             projectService.projects,
-            targets = loaded.combineWith(selection.signal).map(
-              (list, chosen) => list.filter(g => chosen(g.id))
-            ),
+            targets = loaded
+              .combineWith(selection.signal)
+              .map((list, chosen) => list.filter(g => chosen(g.id))),
             state = historyService.moveState,
             onMove = (chosen, projectId) =>
               historyService.push(Command.Move(chosen, projectId)),

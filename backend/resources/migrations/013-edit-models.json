@@ -1,0 +1,9 @@
+{
+  "version": 13,
+  "description": "bugs/47, bugs/51: Edit offers the models measured to edit — Qwen Image 2.1 and Boogu Image Edit lose the tag — and Mage-Flow Edit Turbo runs without flash attention, which drew squiggles over its edits",
+  "steps": [
+    { "collection": "architectures", "op": "reseed", "where": { "id": "qwen-image-2.1", "builtIn": true } },
+    { "collection": "architectures", "op": "reseed", "where": { "id": "boogu-image-edit", "builtIn": true } },
+    { "collection": "architectures", "op": "reseed", "where": { "id": "mage-flow-edit-turbo", "builtIn": true } }
+  ]
+}

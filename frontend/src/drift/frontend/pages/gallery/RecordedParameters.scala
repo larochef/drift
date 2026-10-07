@@ -124,6 +124,7 @@ object RecordedParameters {
 
   private def derivedRows(d: Derivation): List[(String, String)] =
     List("Operation" -> operationOf(d)) ++
+      d.warning.map("Warning" -> _) ++
       d.upscalerId.map("Upscaler" -> _) ++
       d.repeats.map(r => "Repeats" -> r.toString) ++
       d.fit.map("Fit" -> _) ++

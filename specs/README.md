@@ -50,7 +50,7 @@ in [`../docs/`](../docs/README.md).
 | [36](36-huggingface-examples.md) | Examples in the HuggingFace browser: image tiles, an Examples tab, the card's gallery | done |
 | [37](37-modelscope.md) | ModelScope: a model source, its browser (LoRAs by base model, covers), downloads | done |
 | [38](38-entity-migrations.md) | Entity migrations | done in code, not yet run live |
-| [39](39-seamless-edit.md) | Edit: change part of a picture by instruction, keep the rest — made once and carried up by SeedVR2 | done in code, run end to end on an isolated drift; not yet used |
+| [39](39-seamless-edit.md) | Edit: change part of a picture by instruction, keep the rest — made once and carried up by SeedVR2 | done in code, used by François 2026-10-06; follows the change past a selection, edits at the picture's own size first — run end to end on an isolated drift 2026-10-07 |
 | [40](40-pause-and-resume.md) | Pausing a tiled job, and resuming it after a restart | done in code, not yet run live |
 | [41](41-text-projects.md) | Text projects: a kept conversation with a raw chat model | done in code, not yet run live |
 | [42](42-drift-runner.md) | drift runner: own inference engine for Strix Halo (HIP kernels, Scala via FFM), chat first with MTP | partial — steps 1–9 done, 10–13 in part; step 14: MiniMax H3, Wan 2.2 A14B, LTX 2.5 (videos; H3 and LTX with their soundtracks) |
@@ -70,7 +70,7 @@ in [`../docs/`](../docs/README.md).
 ## What is left
 
 - `25` step 3: importance-matrix collection and per-architecture rules presets.
-- `39`: Edit on François's own pictures; an 8k picture whole; PiD as the upscaler.
+- `39`: a redraw of what changed, under the edit's mask, for the texture of what is new; an 8k picture whole; PiD as the upscaler; Mage-Flow Edit on the drift runner (sized).
 - `40`: a live pause, a drift restart and a resume on a long PiD job.
 - `30`: batch thumbnails reachable without scrolling, long prompts folded in
   the detail, importing images that are not in the gallery, post-process

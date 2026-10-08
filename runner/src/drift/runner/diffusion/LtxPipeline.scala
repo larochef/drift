@@ -65,20 +65,33 @@ final class LtxPipeline(
     ujson.read(LtxPipeline.rawTensor(textEncoder, "tokenizer_json")),
     s"$textEncoder (tokenizer_json)"
   )
+
+  /** A part's share of the load, in the log: which one a slow start waits on
+    * (`bugs/53`).
+    */
+  private def timed[A](part: String)(load: => A): A = {
+    val started = System.nanoTime()
+    val loaded = load
+    println(f"  $part: ${(System.nanoTime() - started) / 1e9}%.1f s")
+    loaded
+  }
+
   private val textSource = WeightSource.open(ops, textEncoder)
-  private val gemma = Gemma4Text(ops, textSource, "model.")
+  private val gemma =
+    timed("text encoder")(Gemma4Text(ops, textSource, "model."))
   private val features =
     new LtxTextFeatures(ops, textSource, gemma.layers + 1, gemma.hidden)
-  private val transformer = Ltx2.open(ops, diffusionModel)
+  private val transformer = timed("transformer")(Ltx2.open(ops, diffusionModel))
   private val (videoConnector, audioConnector) =
     transformer.connectors.getOrElse(
       throw new IllegalArgumentException(
         s"${diffusionModel.getFileName} has no text connectors"
       )
     )
-  private val decoder = LtxVideoVae.open(ops, vae)
+  private val decoder = timed("video VAE")(LtxVideoVae.open(ops, vae))
   private val loraFiles = new LoraFiles(ops)
-  private val audioDecoder = audioVae.map(LtxAudio.open(ops, _))
+  private val audioDecoder =
+    timed("audio VAE")(audioVae.map(LtxAudio.open(ops, _)))
   private val TextRows = 1024
   private val DistilledSigmas =
     Array(1.0f, 0.99375f, 0.9875f, 0.98125f, 0.975f, 0.909375f, 0.725f,
@@ -336,6 +349,7 @@ final class LtxPipeline(
       )
       val started = System.nanoTime()
       val images = mutable.ArrayBuffer.empty[BufferedImage]
+      Images.decoding(s"${latentFrames.size} latent frames")
       decoder.decode(
         latentFrames,
         rgb => images += Images.toImage(ops.toFloats(rgb), width, height)

@@ -275,6 +275,7 @@ final class WanPipeline(
       }
       val started = System.nanoTime()
       val images = mutable.ArrayBuffer.empty[BufferedImage]
+      Images.decoding(s"${latentImages.size} latent frames")
       decoder.decode(
         latentImages,
         rgb => images += Images.toImage(ops.toFloats(rgb), width, height)

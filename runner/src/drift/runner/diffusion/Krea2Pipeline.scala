@@ -173,6 +173,7 @@ final class Krea2Pipeline(
       )
       try {
         ops.unpackPatches(latents, gridHeight, 2, image)
+        Images.decoding("the image")
         val rgb = autoencoder.decode(image)
         try Images.toImage(ops.toFloats(rgb), request.width, request.height)
         finally ops.release(rgb)

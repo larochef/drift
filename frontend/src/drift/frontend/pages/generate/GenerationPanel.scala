@@ -48,6 +48,8 @@ class GenerationPanel(
       * is doing while it loads, and why it stopped when it did.
       */
     logService: LogService,
+    /** The machine's load and memory, shown under the bars. */
+    machine: Signal[Option[MachineStatus]],
     onStop: () => Unit,
     /** Stops the session and launches the configuration again; the form is
       * handed to the panel the new session gets.
@@ -574,7 +576,8 @@ class GenerationPanel(
             LogProgressView(
               sessionSignal.map(session =>
                 (session.flatMap(_.progress), session.flatMap(_.activity))
-              )
+              ),
+              machine
             ).element
           )
         case (Some(SessionStatus.Ready), false) =>
@@ -628,6 +631,7 @@ class GenerationPanel(
                       generation,
                       capabilities,
                       sessionSignal,
+                      machine,
                       service,
                       assistantService,
                       projectService,

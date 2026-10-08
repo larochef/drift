@@ -15,6 +15,12 @@ import javax.imageio.ImageIO
   */
 object VideoFiles {
 
+  /** Every frame is kept, whatever the soundtrack lasts: one that runs past the
+    * last frame is cut there, a shorter one ends in silence. ffmpeg's own
+    * `-shortest` cut the frames instead, and closed its input on a run that
+    * still had frames to write — the "Broken pipe" a restored clip failed on
+    * once its soundtrack was a second short (`bugs/54`).
+    */
   def webm(video: Video): Array[Byte] = {
     require(video.frames.nonEmpty, "a video without frames")
     val (width, height) =
@@ -24,7 +30,12 @@ object VideoFiles {
       val output = folder.resolve("video.webm")
       val soundtrack = video.soundtrack.map { track =>
         val wav = folder.resolve("soundtrack.wav")
-        Files.write(wav, wave(track.samples, track.channels, track.rate))
+        val whole = (video.frames.size.toLong * track.rate / video.fps *
+          track.channels).min(track.samples.length.toLong).toInt
+        Files.write(
+          wav,
+          wave(track.samples.take(whole), track.channels, track.rate)
+        )
         wav
       }
       val command =
@@ -49,9 +60,7 @@ object VideoFiles {
             "-pix_fmt",
             "yuv420p"
           ) ++
-          soundtrack.toSeq.flatMap(_ =>
-            Seq("-c:a", "libvorbis", "-shortest")
-          ) ++
+          soundtrack.toSeq.flatMap(_ => Seq("-c:a", "libvorbis")) ++
           Seq(output.toString)
       val log = folder.resolve("ffmpeg.log")
       val process =
@@ -67,24 +76,36 @@ object VideoFiles {
             )
         }
       val in = new BufferedOutputStream(process.getOutputStream, 1 << 20)
-      try {
-        val row = new Array[Byte](width * 3)
-        video.frames.foreach { frame =>
-          (0 until height).foreach { y =>
-            (0 until width).foreach { x =>
-              val rgb = frame.getRGB(x, y)
-              row(3 * x) = (rgb >> 16).toByte
-              row(3 * x + 1) = (rgb >> 8).toByte
-              row(3 * x + 2) = rgb.toByte
+      // An ffmpeg that stops reading says why in its log, not in the pipe's
+      // error: that one is kept for the report below.
+      val written =
+        try {
+          val row = new Array[Byte](width * 3)
+          video.frames.foreach { frame =>
+            (0 until height).foreach { y =>
+              (0 until width).foreach { x =>
+                val rgb = frame.getRGB(x, y)
+                row(3 * x) = (rgb >> 16).toByte
+                row(3 * x + 1) = (rgb >> 8).toByte
+                row(3 * x + 2) = rgb.toByte
+              }
+              in.write(row)
             }
-            in.write(row)
           }
+          in.close()
+          None
+        } catch {
+          case error: IOException =>
+            try in.close()
+            catch { case _: IOException => () }
+            Some(error)
         }
-      } finally in.close()
       val status = process.waitFor()
-      if (status != 0)
+      if (status != 0 || written.isDefined)
         throw new IllegalStateException(
-          s"ffmpeg failed ($status): ${Files.readString(log).trim}"
+          s"ffmpeg ${written.fold(s"failed ($status)")(error =>
+              s"stopped reading the frames (${error.getMessage}, status $status)"
+            )}: ${Files.readString(log).trim}"
         )
       Files.readAllBytes(output)
     } finally

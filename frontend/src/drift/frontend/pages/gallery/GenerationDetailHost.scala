@@ -37,6 +37,7 @@ class GenerationDetailHost(
       * so how large its tiles are.
       */
     runtimeService: RuntimeService,
+    machineService: MachineService,
     /** What each configuration still has to download: its launch is offered as
       * that download until the weights are on disk (`specs/46`).
       */
@@ -365,6 +366,7 @@ class GenerationDetailHost(
       editTemplates = assistantService.library.ofKind(PromptKind.Edit),
       liveSessions = liveSessions,
       jobs = postProcessService.visibleJobs,
+      machine = machineService.status,
       parent = pool
         .map(loaded =>
           generation.derivation.flatMap(d => loaded.find(_.id == d.parentId))

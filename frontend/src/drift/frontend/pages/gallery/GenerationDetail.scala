@@ -89,6 +89,7 @@ class GenerationDetail(
       */
     liveSessions: Signal[List[(String, String)]],
     jobs: Signal[List[PostProcessJob]],
+    machine: Signal[Option[MachineStatus]],
     /** The original this entry was made from, once the loaded generations hold
       * it.
       */
@@ -225,6 +226,7 @@ class GenerationDetail(
       editTemplates,
       liveSessions,
       jobs,
+      machine,
       prerequisites,
       assistants,
       picture.viewed,

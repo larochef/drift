@@ -59,6 +59,7 @@ class WorkspaceBody(
     historyService: HistoryService,
     runtimeService: RuntimeService,
     logService: LogService,
+    machineService: MachineService,
     prerequisites: LaunchPrerequisites,
     browsers: BrowserServices
 ) extends Component {
@@ -159,6 +160,7 @@ class WorkspaceBody(
       loraService = loraService,
       projectService = projectService,
       logService = logService,
+      machine = machineService.status,
       onStop =
         () => sessionService.push(SessionService.Command.Stop(sessionId)),
       onRestart =

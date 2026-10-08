@@ -24,6 +24,16 @@ opens the Sandbox on it.
   panel warn that memory is nearly full. Generations then crawl, because the
   weights are read back from disk over and over; stop one of the loaded
   models.
+- The **Machine** box at the bottom of the sidebar shows, on every page, the
+  last five minutes of the GPU's load and of the memory: a curve each, green
+  in the lower third, yellow in the middle, red at the top, with a line each
+  minute; point at a curve for the value at that moment. The memory curve
+  rises as memory fills, and counts what is really left (the loaded weights
+  are not free, unlike what `free` calls available). Under them, the memory
+  the GPU holds. The current figures also sit in one line under the bar of a
+  loading model, a generation or a post-processing job. When a run seems stuck, read that line: "GPU idle for
+  40 s" means it is not computing — it is reading from disk because memory is
+  full, or working on the processor.
 - Only one generation session runs at a time by default. Launching a
   configuration that already runs focuses it. **⏹ Stop** ends it; quitting drift
   stops every session too.

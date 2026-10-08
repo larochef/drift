@@ -14,6 +14,7 @@ import org.scalajs.dom.window
 class PostProcessJobList(
     image: Signal[Option[GenerationOutput]],
     jobs: Signal[List[PostProcessJob]],
+    machine: Signal[Option[MachineStatus]],
     onOpen: String => Unit,
     onCancel: String => Unit,
     /** Stops a tiled job after the tile in flight, keeping its tiles — or,
@@ -87,7 +88,8 @@ class PostProcessJobList(
               case Some(live) => (live.logProgress, live.activity)
               case None       => (job.logProgress, job.activity)
             }
-          )
+          ),
+          machine
         ).element,
         div(
           cls := "mt-1 buttons are-small",

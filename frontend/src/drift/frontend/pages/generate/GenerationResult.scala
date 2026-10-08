@@ -16,6 +16,7 @@ class GenerationResult(
     generation: Generation,
     capabilities: Option[SessionCapabilities],
     sessionSignal: Signal[Option[Session]],
+    machine: Signal[Option[MachineStatus]],
     service: GenerationService,
     assistantService: AssistantService,
     projectService: ProjectService,
@@ -194,7 +195,8 @@ class GenerationResult(
           LogProgressView(
             sessionSignal.map(session =>
               (session.flatMap(_.progress), session.flatMap(_.activity))
-            )
+            ),
+            machine
           ).element,
           GenerationCancel.stopButton(
             service,

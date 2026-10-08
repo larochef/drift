@@ -2209,3 +2209,112 @@ select.select:focus {
 .button.is-loading::after {
   border-color: transparent transparent hsl(35, 20%, 92%) hsl(35, 20%, 92%) !important;
 }
+
+/* The machine's corner of the sidebar (`MachinePanel`): a box of its own above
+   the downloads, so its graphs are not read as one more transfer. */
+.machine-panel {
+  margin: 0 0.5rem 0.75rem;
+  padding: 0.5rem;
+  max-width: 230px;
+  border: 1px solid hsl(25, 10%, 32%);
+  border-radius: 6px;
+  background-color: hsl(25, 16%, 15%);
+  font-size: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.machine-heading {
+  color: hsl(30, 12%, 65%);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.machine-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A figure over the last minutes (`MachineGraph`). The drawing is stretched to
+   the box, so every stroke keeps its own width whatever the stretch. */
+.machine-graph {
+  position: relative;
+  cursor: crosshair;
+}
+
+.machine-graph svg {
+  display: block;
+  width: 100%;
+  height: 38px;
+  overflow: visible;
+}
+
+.machine-graph line,
+.machine-graph path {
+  vector-effect: non-scaling-stroke;
+  fill: none;
+}
+
+.machine-graph .minute {
+  stroke: hsl(25, 12%, 30%);
+  stroke-width: 1;
+}
+
+.machine-graph .threshold {
+  stroke: hsl(30, 12%, 65%);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.5;
+}
+
+.machine-graph .curve {
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+/* The thirds' colours: low, middle, high. */
+.machine-zone-low { stop-color: hsl(85, 45%, 45%); }
+.machine-zone-middle { stop-color: hsl(42, 92%, 52%); }
+.machine-zone-high { stop-color: hsl(8, 62%, 52%); }
+.machine-fill-low { background-color: hsl(85, 45%, 45%); }
+.machine-fill-middle { background-color: hsl(42, 92%, 52%); }
+.machine-fill-high { background-color: hsl(8, 62%, 52%); }
+
+.machine-graph .cursor,
+.machine-graph .marker,
+.machine-graph .tip {
+  position: absolute;
+  pointer-events: none;
+}
+
+.machine-graph .cursor {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: hsl(30, 12%, 65%);
+}
+
+.machine-graph .marker {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid hsl(25, 20%, 11%);
+  transform: translate(-50%, -50%);
+}
+
+.machine-graph .tip {
+  bottom: 100%;
+  margin-bottom: 4px;
+  transform: translateX(-50%);
+  padding: 1px 6px;
+  border: 1px solid hsl(25, 10%, 32%);
+  border-radius: 4px;
+  background-color: hsl(25, 14%, 23%);
+  color: hsl(35, 20%, 92%);
+  white-space: nowrap;
+  z-index: 2;
+}

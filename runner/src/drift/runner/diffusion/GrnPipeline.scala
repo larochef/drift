@@ -161,6 +161,7 @@ final class GrnPipeline(
       }
       val latent =
         ops.fromFloats(Shape.of(gridHeight, gridWidth, channels), features)
+      Images.decoding("the image")
       val rgb =
         try pictures.decode(latent)
         finally ops.release(latent)

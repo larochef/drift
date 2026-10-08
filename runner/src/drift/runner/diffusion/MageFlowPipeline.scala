@@ -312,6 +312,7 @@ final class MageFlowPipeline(
         progress(i + 1 - first, steps)
       }
       inpainting.foreach(_.release())
+      Images.decoding("the image")
       val rgb = autoencoder.decode(x.view(grid.height, grid.width, channels))
       try Images.toImage(ops.toFloats(rgb), request.width, request.height)
       finally ops.release(rgb)

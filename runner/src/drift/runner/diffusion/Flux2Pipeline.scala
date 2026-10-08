@@ -229,6 +229,7 @@ final class Flux2Pipeline(
         progress(i + 1 - first, steps)
       }
       inpainting.foreach(_.release())
+      Images.decoding("the image")
       val rgb = autoencoder.decode(x, grid.height)
       try Images.toImage(ops.toFloats(rgb), request.width, request.height)
       finally ops.release(rgb)

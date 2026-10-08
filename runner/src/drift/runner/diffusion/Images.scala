@@ -16,6 +16,12 @@ object Images {
     (math.sqrt(-2 * math.log(u)) * math.cos(2 * math.Pi * v)).toFloat
   }
 
+  /** The log's line between the last step and the pixels: a decode prints
+    * nothing until it is done, minutes later for a long video.
+    */
+  def decoding(what: String): Unit =
+    println(s"sampling done, decoding $what (VAE)")
+
   /** RGB or RGBA (as `values` holds 3 or 4 per pixel) in [−1, 1],
     * channels-last, to 8 bits: `round((x + 1) / 2 × 255)`.
     */

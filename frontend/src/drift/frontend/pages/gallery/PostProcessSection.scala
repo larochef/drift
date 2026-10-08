@@ -34,6 +34,8 @@ class PostProcessSection(
     editTemplates: Signal[List[PromptTemplate]],
     liveSessions: Signal[List[(String, String)]],
     jobs: Signal[List[PostProcessJob]],
+    /** The machine's load and memory, shown under a running job's bar. */
+    machine: Signal[Option[MachineStatus]],
     /** What each configuration still has to download: a panel whose model
       * cannot start yet offers the download instead of its job.
       */
@@ -182,6 +184,7 @@ class PostProcessSection(
     PostProcessJobList(
       selectedOutput,
       jobs,
+      machine,
       onOpen,
       onCancelJob,
       onPauseJob,

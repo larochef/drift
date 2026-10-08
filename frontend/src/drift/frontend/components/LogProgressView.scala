@@ -24,7 +24,12 @@ import com.raquo.laminar.api.L.*
   */
 class LogProgressView(
     /** The bar in flight, and the last line that was not one. */
-    state: Signal[(Option[SessionProgress], Option[String])]
+    state: Signal[(Option[SessionProgress], Option[String])],
+    /** The machine while this runs: its line stays under the bar, and under the
+      * last log line when no bar is in flight — where a run that has gone quiet
+      * is watched.
+      */
+    machine: Signal[Option[MachineStatus]]
 ) extends Component {
 
   // Not in Laminar's default bundle, so defined here.
@@ -59,6 +64,7 @@ class LogProgressView(
         case (None, Some(activity)) =>
           p(cls := "is-size-7 text-secondary mt-2 text-break", activity)
         case _ => emptyNode
-      }
+      },
+    MachineLine(machine).element
   )
 }

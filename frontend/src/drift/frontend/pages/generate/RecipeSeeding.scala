@@ -91,10 +91,10 @@ class RecipeSeeding(
 
   /** Applies what the gallery asked for (`specs/12-gallery.md`), right after
     * the defaults seeded the form. A full reuse is honoured only for this very
-    * configuration; on another one the recorded request becomes a *task* —
-    * what was asked for (prompts, inputs, seed, size) as recorded, and how
-    * the model samples (steps, CFG, sampler, schedule) left to this
-    * configuration — which is how two models get compared on the same job.
+    * configuration; on another one the recorded request becomes a *task* — what
+    * was asked for (prompts, inputs, seed, size) as recorded, and how the model
+    * samples (steps, CFG, sampler, schedule) left to this configuration — which
+    * is how two models get compared on the same job.
     */
   def applyReuse(
       capabilities: SessionCapabilities,
@@ -218,11 +218,11 @@ class RecipeSeeding(
   /** The record's mode and every field the form shows, over that mode's
     * defaults. What belongs to a model comes along only onto the configuration
     * the record ran on (`ownModel`). Elsewhere the sampling fields keep this
-    * configuration's defaults: a turbo's 4 steps at CFG 1 make trash on a
-    * model that wants 30 at CFG 5 (François, 2026-10-07). And the LoRAs are
-    * left out and named, since a LoRA suits a model rather than a task —
-    * another architecture cannot load it, and a turbo LoRA is dead weight on a
-    * model that is turbo already (François, 2026-09-12).
+    * configuration's defaults: a turbo's 4 steps at CFG 1 make trash on a model
+    * that wants 30 at CFG 5 (François, 2026-10-07). And the LoRAs are left out
+    * and named, since a LoRA suits a model rather than a task — another
+    * architecture cannot load it, and a turbo LoRA is dead weight on a model
+    * that is turbo already (François, 2026-09-12).
     */
   private def seedFromRecord(
       capabilities: SessionCapabilities,

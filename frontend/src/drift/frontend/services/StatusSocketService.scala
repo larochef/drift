@@ -54,6 +54,7 @@ class StatusSocketService {
   val postProcessJobs: EventStream[List[PostProcessJob]] =
     topic(_.postProcessJobs)
   val conversions: EventStream[List[ConversionJob]] = topic(_.conversions)
+  val machine: EventStream[MachineStatus] = topic(_.machine)
 
   private var socket: Option[dom.WebSocket] = None
   private var mounted = false

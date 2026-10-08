@@ -28,6 +28,7 @@ class GalleryPage(
     postProcessService: PostProcessService,
     upscalerService: UpscalerService,
     runtimeService: RuntimeService,
+    machineService: MachineService,
     /** What each configuration still has to download before it can launch. */
     prerequisites: LaunchPrerequisites,
     /** The path past `/gallery`: the generation open in the detail view, and
@@ -679,6 +680,7 @@ class GalleryPage(
       postProcessService,
       upscalerService,
       runtimeService,
+      machineService,
       prerequisites,
       projectService.projects,
       launchingProject = None,

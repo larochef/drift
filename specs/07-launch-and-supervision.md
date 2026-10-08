@@ -49,6 +49,19 @@ life: spawn, readiness, crash detection, stop, and cleanup when drift exits.
   session carries `memoryWarning` naming the loaded configurations; the
   card and the generating panel show it (`MemoryWarningView`). Kept
   current every second, so it comes and goes with the memory. A warning only: nothing is refused or stopped.
+- Machine status: `MachineMonitor` reads the GPU's load and held memory (amdgpu's
+  `gpu_busy_percent`, `mem_info_vram_used` + `mem_info_gtt_used`; absent with another
+  driver) and `MemoryHeadroom` every 2 s on a watch of its own, page open or not, with how
+  long the GPU has stayed under 10 % in steps of 5 s, and keeps the last 5 minutes
+  (`MachineSample`). It crosses the status socket as the `machine` topic (`MachineStatus`,
+  history included). Shown in a box at the bottom of the sidebar on every page
+  (`MachinePanel`): two graphs of those 5 minutes (`MachineGraph`), the GPU's load and the
+  memory in use, the curve green in the lower third, yellow in the middle, red in the upper,
+  dashed lines at the thirds, a line each minute, the value and its age under the pointer;
+  then the memory on the GPU. And in one line under every log bar
+  (`MachineLine`, inside `LogProgressView`: a loading session, a generation, a
+  post-processing job). From 15 s idle the line says "GPU idle for N s"; idle or under the
+  memory threshold it takes the warning colour.
 - Logs: `~/.cache/drift/logs/<sessionId>.log`.
 - Sessions are runtime state held in memory, never persisted; a drift restart
   forgets them.

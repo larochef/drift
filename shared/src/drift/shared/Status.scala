@@ -31,7 +31,9 @@ case class StatusUpdate(
       */
     generations: Option[Map[String, List[Generation]]] = None,
     postProcessJobs: Option[List[PostProcessJob]] = None,
-    conversions: Option[List[ConversionJob]] = None
+    conversions: Option[List[ConversionJob]] = None,
+    /** Absent too where the machine's memory cannot be read. */
+    machine: Option[MachineStatus] = None
 )
 object StatusUpdate {
   // No discriminator, so the singleton enums inside (job states, session and

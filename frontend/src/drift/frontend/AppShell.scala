@@ -41,8 +41,8 @@ private class Sidebar extends Component {
 }
 
 private class Layout(
-    /** Pinned to the sidebar's bottom — the downloads panel. */
-    sidebarFooter: Component,
+    /** Pinned to the sidebar's bottom — the machine, then the downloads. */
+    sidebarFooter: Seq[Component],
     mods: Mod[HtmlElement]*
 ) extends Component {
   lazy val element: HtmlElement = {
@@ -53,7 +53,7 @@ private class Layout(
         div(
           cls := "sidebar-layout",
           Sidebar(),
-          div(styleAttr := "margin-top: auto;", sidebarFooter)
+          div(styleAttr := "margin-top: auto;", sidebarFooter.map(_.element))
         )
       ),
       div(
@@ -93,6 +93,7 @@ class AppShell(
     upscalerService: UpscalerService,
     conversionService: ConversionService,
     globalDownloadsService: GlobalDownloadsService,
+    machineService: MachineService,
     logService: LogService,
     statusSocketService: StatusSocketService,
     browsers: BrowserServices
@@ -100,7 +101,10 @@ class AppShell(
   lazy val element: HtmlElement =
     routes(
       Layout(
-        DownloadsPanel(globalDownloadsService),
+        Seq(
+          MachinePanel(machineService.status),
+          DownloadsPanel(globalDownloadsService)
+        ),
         // Above every page, because a socket this page cannot read takes the
         // whole app's live half with it, whichever page is open.
         StaleBundleNotice(statusSocketService).element,
@@ -122,6 +126,7 @@ class AppShell(
               postProcessService,
               upscalerService,
               runtimeService,
+              machineService,
               prerequisites,
               section
             ).element
@@ -145,6 +150,7 @@ class AppShell(
               upscalerService,
               runtimeService,
               logService,
+              machineService,
               prerequisites,
               section,
               browsers
@@ -166,6 +172,7 @@ class AppShell(
               historyService,
               runtimeService,
               logService,
+              machineService,
               prerequisites,
               section,
               browsers

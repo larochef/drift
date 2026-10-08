@@ -11,7 +11,7 @@ import drift.backend.projects.ProjectManager
 import drift.backend.routes.*
 import drift.backend.runtime.{RuntimeCatalog, RuntimeManager}
 import drift.backend.sdserver.*
-import drift.backend.session.SessionManager
+import drift.backend.session.{MachineMonitor, SessionManager}
 import drift.backend.storage.StorageService
 import drift.backend.upscale.UpscalerManager
 
@@ -208,6 +208,10 @@ import sttp.tapir.server.netty.sync.*
       modelScopeEndpoints(modelScopeApi) ++
       civitaiEndpoints(civitaiClient)
 
+  val machineMonitor =
+    MachineMonitor(() => sessionManager.settings.memoryHeadroomWarningPercent)
+  machineMonitor.watch(background)
+
   val statusSocket = statusEndpoint(
     sessionManager = sessionManager,
     downloadManager = downloadManager,
@@ -216,7 +220,8 @@ import sttp.tapir.server.netty.sync.*
     runtimeManager = runtimeManager,
     generationManager = generationManager,
     postProcessManager = postProcessManager,
-    conversionManager = conversionManager
+    conversionManager = conversionManager,
+    machineMonitor = machineMonitor
   )
 
   val askMinutes = AssistantProxy.AskTimeout.toMinutes.toInt

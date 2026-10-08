@@ -309,6 +309,7 @@ final class QwenImage21Pipeline(
         progress(i + 1 - first, steps)
       }
       inpainting.foreach(_.release())
+      Images.decoding("the image")
       val rgba =
         autoencoder.decode(x.view(gridHeight, gridWidth, channels))
       try Images.toImage(ops.toFloats(rgba), request.width, request.height)

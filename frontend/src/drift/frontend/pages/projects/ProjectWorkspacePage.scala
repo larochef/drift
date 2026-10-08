@@ -37,6 +37,7 @@ class ProjectWorkspacePage(
     upscalerService: UpscalerService,
     runtimeService: RuntimeService,
     logService: LogService,
+    machineService: MachineService,
     /** What each configuration still has to download: picking one offers the
       * download rather than a launch that cannot start.
       */
@@ -228,6 +229,7 @@ class ProjectWorkspacePage(
     historyService = historyService,
     runtimeService = runtimeService,
     logService = logService,
+    machineService = machineService,
     prerequisites = prerequisites,
     browsers = browsers
   )
@@ -351,6 +353,7 @@ class ProjectWorkspacePage(
       postProcessService,
       upscalerService,
       runtimeService,
+      machineService,
       prerequisites,
       projectService.projects,
       launchingProject = Some(projectId),

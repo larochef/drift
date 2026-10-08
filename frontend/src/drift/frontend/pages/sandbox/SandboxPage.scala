@@ -32,6 +32,7 @@ class SandboxPage(
     historyService: HistoryService,
     runtimeService: RuntimeService,
     logService: LogService,
+    machineService: MachineService,
     prerequisites: LaunchPrerequisites,
     /** The path after `/sandbox/`: its first segment names the kind. */
     section: Signal[List[String]],
@@ -230,6 +231,7 @@ class SandboxPage(
       historyService = historyService,
       runtimeService = runtimeService,
       logService = logService,
+      machineService = machineService,
       prerequisites = prerequisites,
       browsers = browsers
     ).element

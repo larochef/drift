@@ -186,6 +186,7 @@ final class NucleusPipeline(
       )
       try {
         ops.unpackPatches(x, gridHeight, 2, image)
+        Images.decoding("the image")
         val rgb = autoencoder.decode(image)
         try Images.toImage(ops.toFloats(rgb), request.width, request.height)
         finally ops.release(rgb)

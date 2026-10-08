@@ -6,7 +6,7 @@ import drift.backend.lora.LoraManager
 import drift.backend.postprocess.PostProcessManager
 import drift.backend.runtime.RuntimeManager
 import drift.backend.sdserver.GenerationManager
-import drift.backend.session.SessionManager
+import drift.backend.session.{MachineMonitor, SessionManager}
 import drift.backend.upscale.UpscalerManager
 import drift.shared.*
 
@@ -32,7 +32,8 @@ private case class StatusSnapshot(
     runtimeInstalls: List[RuntimeInstallJob],
     generations: Map[String, List[Generation]],
     postProcessJobs: List[PostProcessJob],
-    conversions: List[ConversionJob]
+    conversions: List[ConversionJob],
+    machine: Option[MachineStatus]
 )
 
 /** The status WebSocket at `GET /api/status` (`statusSocketPath` in the shared
@@ -42,7 +43,9 @@ private case class StatusSnapshot(
   * workers, the per-generation monitors, the session supervisor), so each
   * connection simply samples them twice a second and pushes the topics that
   * differ from what it last sent. Between changes nothing crosses the wire —
-  * the sampling loop is a handful of in-memory list copies.
+  * the sampling loop is a handful of in-memory list copies. The machine's
+  * figures are the exception: they come with their history, which moves at
+  * every reading, so they cross every couple of seconds (`MachineMonitor`).
   */
 def statusEndpoint(
     sessionManager: SessionManager,
@@ -52,7 +55,8 @@ def statusEndpoint(
     runtimeManager: RuntimeManager,
     generationManager: GenerationManager,
     postProcessManager: PostProcessManager,
-    conversionManager: ConversionManager
+    conversionManager: ConversionManager,
+    machineMonitor: MachineMonitor
 ): ServerEndpoint[OxStreams & WebSockets, Identity] = {
 
   def sample(): StatusSnapshot = StatusSnapshot(
@@ -63,7 +67,8 @@ def statusEndpoint(
     runtimeInstalls = runtimeManager.listInstalls,
     generations = generationManager.listBySession,
     postProcessJobs = postProcessManager.listJobs,
-    conversions = conversionManager.listJobs
+    conversions = conversionManager.listJobs,
+    machine = machineMonitor.status
   )
 
   /** Every topic, unconditionally — the connection's first message. A client
@@ -78,7 +83,8 @@ def statusEndpoint(
     runtimeInstalls = Some(current.runtimeInstalls),
     generations = Some(current.generations),
     postProcessJobs = Some(current.postProcessJobs),
-    conversions = Some(current.conversions)
+    conversions = Some(current.conversions),
+    machine = current.machine
   )
 
   /** Only what changed, or nothing. Generations diff per session, so one
@@ -102,7 +108,8 @@ def statusEndpoint(
         )
       ),
       postProcessJobs = changed(_.postProcessJobs),
-      conversions = changed(_.conversions)
+      conversions = changed(_.conversions),
+      machine = changed(_.machine).flatten
     )
     Some(update).filter(_ != StatusUpdate())
   }

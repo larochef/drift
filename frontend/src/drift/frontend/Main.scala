@@ -34,6 +34,7 @@ import org.scalajs.dom
   val upscalerService = UpscalerService(statusSocketService)
   val conversionService = ConversionService(statusSocketService)
   val globalDownloadsService = GlobalDownloadsService(statusSocketService)
+  val machineService = MachineService(statusSocketService)
   // One instance per service: only one route is mounted at a time, so the
   // browsers and the search page never contend for the same result state.
   val browsers = BrowserServices(
@@ -66,6 +67,7 @@ import org.scalajs.dom
       upscalerService,
       conversionService,
       globalDownloadsService,
+      machineService,
       LogService(),
       statusSocketService,
       browsers

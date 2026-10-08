@@ -637,6 +637,7 @@ final class MiniMaxH3Pipeline(
       )
       val started = System.nanoTime()
       val images = mutable.ArrayBuffer.empty[BufferedImage]
+      Images.decoding(s"$latentFrames latent frames")
       decoder.decode(
         latents,
         latentFrames,

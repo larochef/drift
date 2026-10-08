@@ -689,6 +689,58 @@
     "builtIn": true
   },
   {
+    "id": "mage-flow-bf16",
+    "familyId": "mage-flow-diffusion",
+    "label": "mage_flow_bf16",
+    "source": {
+      "type": "huggingface",
+      "repo": "Comfy-Org/Mage-Flow",
+      "filename": "diffusion_models/mage_flow_bf16.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "mage-flow-base-bf16",
+    "familyId": "mage-flow-diffusion",
+    "label": "mage_flow_base_bf16",
+    "source": {
+      "type": "huggingface",
+      "repo": "Comfy-Org/Mage-Flow",
+      "filename": "diffusion_models/mage_flow_base_bf16.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "mage-flow-edit-bf16",
+    "familyId": "mage-flow-edit-diffusion",
+    "label": "mage_flow_edit_bf16",
+    "source": {
+      "type": "huggingface",
+      "repo": "Comfy-Org/Mage-Flow",
+      "filename": "diffusion_models/mage_flow_edit_bf16.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
+    "id": "mage-flow-edit-base-bf16",
+    "familyId": "mage-flow-edit-diffusion",
+    "label": "mage_flow_edit_base_bf16",
+    "source": {
+      "type": "huggingface",
+      "repo": "Comfy-Org/Mage-Flow",
+      "filename": "diffusion_models/mage_flow_edit_base_bf16.safetensors"
+    },
+    "format": "safetensors",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
     "id": "mage-flow-turbo-bf16",
     "familyId": "mage-flow-turbo-diffusion",
     "label": "mage_flow_turbo_bf16",

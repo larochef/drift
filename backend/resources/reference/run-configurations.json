@@ -162,6 +162,39 @@
     "runner": "DriftRunner"
   },
   {
+    "id": "starter-mage-flow",
+    "label": "Mage-Flow",
+    "architectureId": "mage-flow",
+    "assignments": {
+      "diffusion": "mage-flow-bf16",
+      "vae": "mage-flow-vae-bf16",
+      "llm": "qwen3-vl-4b-instruct-ud-q4-k-xl"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "DriftRunner"
+  },
+  {
+    "id": "starter-mage-flow-edit",
+    "label": "Mage-Flow Edit",
+    "architectureId": "mage-flow-edit",
+    "assignments": {
+      "diffusion": "mage-flow-edit-bf16",
+      "vae": "mage-flow-vae-bf16",
+      "llm": "qwen3-vl-4b-instruct-ud-q4-k-xl",
+      "llm vision": "qwen3-vl-4b-instruct-mmproj-bf16"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "DriftRunner"
+  },
+  {
     "id": "starter-nucleus-image",
     "label": "Nucleus-Image",
     "architectureId": "nucleus-image",

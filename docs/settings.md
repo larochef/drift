@@ -114,7 +114,7 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     read by the text encoder and placed before the image being made. It
     ignores `--flow-shift`: the shift follows the image's size, as in the
     official pipeline.
-  - **Mage-Flow** (Turbo and Edit Turbo) does text to image, img2img with a
+  - **Mage-Flow** (the 20 and 30 step models and their 4 step Turbos) does text to image, img2img with a
     mask, and LoRAs; the Edit model edits with reference images when the
     configuration has Qwen3-VL's vision checkpoint (its mmproj). A 1024²
     image at 4 steps takes about 5 seconds and an edit with one reference

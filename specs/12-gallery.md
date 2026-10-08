@@ -35,8 +35,10 @@ in-memory state.
   original ↔ result toggle (15), and the post-processing section (15, 26, 27).
 - Reuse: **Full** into a live session of the same run configuration reproduces
   the recorded request field for field, seed included; **Task** anywhere else
-  carries prompt, negative prompt, input images, seed, size, frames and the
-  sampling fields the form shows over the target's defaults. When nothing is
+  carries prompt, negative prompt, input images, seed, size and frames over
+  the target's defaults; steps, CFG, guidance, sampler, scheduler, flow shift
+  and sigmas stay the target's own, as its LoRAs do — they belong to the
+  model, not the task. When nothing is
   live a picker launches any other configuration with the task.
 - Delete removes outputs, externalized inputs and the sidecar after a
   confirmation. A **Select** toggle puts the grid in selection mode: cards

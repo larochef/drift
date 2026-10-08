@@ -72,8 +72,9 @@ them.
   is of assistant origin.
 - **Seeding from a version is best effort**, through the gallery's reuse: on
   the same configuration field for field, LoRAs included; on another, the
-  prompts, size and seed carry over, LoRAs and model-specific numbers take
-  the target's defaults, and the notice names what was dropped. The seed is
+  prompts, size and seed carry over, LoRAs and the sampling fields (steps,
+  CFG, guidance, sampler, scheduler, flow shift, sigmas) take the target's
+  defaults, and the notice names what was dropped. The seed is
   rolled anew.
 - In an SFW project the LoRA picker starts with NSFW off; in an NSFW project
   on.

@@ -27,11 +27,15 @@ missing runtime or download is offered in place of the launch.
   - `starter-pid-flux2` — PiD 1.5, FLUX.2, 1024 → 4096 in 4 steps
   - `starter-qwen3.6-35b-a3b` — Qwen 3.6 35B-A3B, UD-Q4_K_XL MTP build with
     its vision projector (MTP and vision together need llama.cpp b9240+)
-  Six more are seeded on the drift runner itself, the only engine drift
+  Eight more are seeded on the drift runner itself, the only engine drift
   runs them on (Nucleus-Image, LLaDA-Image, GRN) or the one worth using (Mage-Flow:
   an edit in 10 s against sd-cpp's 150):
   - `starter-mage-flow-turbo`, `starter-mage-flow-edit-turbo` — Mage-Flow's
     BF16 checkpoints with Qwen3-VL-4B, the Edit one with the vision projector
+  - `starter-mage-flow`, `starter-mage-flow-edit` — the RL-aligned,
+    guided checkpoints (20 and 30 steps at CFG 5), on the `mage-flow` and
+    `mage-flow-edit` architectures; the Base checkpoints sit in the same
+    families
   - `starter-nucleus-image` — Nucleus-Image, the official BF16 shards
   - `starter-llada-image-turbo`, `starter-llada-image` — LLaDA-Image, each with
     its own transformer, LLaDA2 text encoder, QueryFormer and text projection,

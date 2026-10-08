@@ -91,9 +91,10 @@ class RecipeSeeding(
 
   /** Applies what the gallery asked for (`specs/12-gallery.md`), right after
     * the defaults seeded the form. A full reuse is honoured only for this very
-    * configuration; on another one the recorded request becomes a *task* — the
-    * form's fields as recorded over this configuration's own defaults — which
-    * is how two models get compared on the same job.
+    * configuration; on another one the recorded request becomes a *task* —
+    * what was asked for (prompts, inputs, seed, size) as recorded, and how
+    * the model samples (steps, CFG, sampler, schedule) left to this
+    * configuration — which is how two models get compared on the same job.
     */
   def applyReuse(
       capabilities: SessionCapabilities,
@@ -109,7 +110,7 @@ class RecipeSeeding(
       case Reuse.Full(generation)
           if generation.runConfigurationId == configurationId &&
             capabilities.supportedModes.contains(generation.kind) =>
-        seedFromRecord(capabilities, generation, withLoras = true)
+        seedFromRecord(capabilities, generation, ownModel = true)
         reusedImageBase.set(generation.imageParameters)
         reusedVideoBase.set(generation.videoParameters)
         reuseNoticeText.set(
@@ -122,7 +123,7 @@ class RecipeSeeding(
         applyReuse(capabilities, Reuse.Task(generation))
       case Reuse.Task(generation)
           if capabilities.supportedModes.contains(generation.kind) =>
-        seedFromRecord(capabilities, generation, withLoras = false)
+        seedFromRecord(capabilities, generation, ownModel = false)
         // The record's fields cleared the picker; this configuration's own
         // LoRAs go back in.
         applyConfigurationLoras()
@@ -131,11 +132,9 @@ class RecipeSeeding(
         reuseNoticeText.set(
           Some(
             s"Task of generation ${generation.id} on this configuration: " +
-              "prompt, images, seed, size and the sampling settings shown " +
-              "are as recorded; the LoRAs are this configuration's own, and " +
-              "anything the form " +
-              "does not show is this configuration's own default. Adjust " +
-              "steps and CFG if this model wants others."
+              "prompt, images, seed and size are as recorded; steps, CFG, " +
+              "sampler, schedule and LoRAs are this configuration's own, " +
+              "since the recorded ones were another model's."
           )
         )
       case Reuse.Task(generation) =>
@@ -210,33 +209,36 @@ class RecipeSeeding(
         if (version.runConfigurationId == configurationId)
           s"Form follows v${version.number}: its recipe, LoRAs included; the seed rolls anew."
         else
-          s"Form follows v${version.number} on another configuration: prompts, size and " +
-            "the sampling settings shown as recorded, this configuration's LoRAs and defaults for the rest."
+          s"Form follows v${version.number} on another configuration: its prompts and size; " +
+            "steps, CFG, sampler, schedule and LoRAs are this configuration's own."
       )
     )
   }
 
   /** The record's mode and every field the form shows, over that mode's
-    * defaults. LoRAs come along only onto the configuration the record ran on;
-    * elsewhere they are left out and named, since a LoRA suits a model rather
-    * than a task — another architecture cannot load it, and a turbo LoRA is
-    * dead weight on a model that is turbo already (François, 2026-09-12).
+    * defaults. What belongs to a model comes along only onto the configuration
+    * the record ran on (`ownModel`). Elsewhere the sampling fields keep this
+    * configuration's defaults: a turbo's 4 steps at CFG 1 make trash on a
+    * model that wants 30 at CFG 5 (François, 2026-10-07). And the LoRAs are
+    * left out and named, since a LoRA suits a model rather than a task —
+    * another architecture cannot load it, and a turbo LoRA is dead weight on a
+    * model that is turbo already (François, 2026-09-12).
     */
   private def seedFromRecord(
       capabilities: SessionCapabilities,
       generation: Generation,
-      withLoras: Boolean
+      ownModel: Boolean
   ): Unit = {
     mode.set(generation.kind)
     seedModeFields(capabilities, generation.kind)
     generation.imageParameters
-      .map(p => if (withLoras) p else p.copy(lora = List.empty))
-      .foreach(applyImageParameters(capabilities, _))
+      .map(p => if (ownModel) p else p.copy(lora = List.empty))
+      .foreach(applyImageParameters(capabilities, _, ownModel))
     generation.videoParameters
-      .map(p => if (withLoras) p else p.copy(lora = List.empty))
-      .foreach(applyVideoParameters(capabilities, _))
+      .map(p => if (ownModel) p else p.copy(lora = List.empty))
+      .foreach(applyVideoParameters(capabilities, _, ownModel))
     val leftOut =
-      if (withLoras) List.empty
+      if (ownModel) List.empty
       else
         generation.imageParameters.toList.flatMap(_.lora) ++
           generation.videoParameters.toList.flatMap(_.lora)
@@ -327,7 +329,8 @@ class RecipeSeeding(
 
   private def applyImageParameters(
       capabilities: SessionCapabilities,
-      p: ImageGenerationParameters
+      p: ImageGenerationParameters,
+      sampling: Boolean
   ): Unit = {
     promptVar.set(p.prompt)
     negativePromptVar.set(p.negativePrompt)
@@ -335,7 +338,7 @@ class RecipeSeeding(
     heightVar.set(p.height.toString)
     strengthVar.set(p.strength.toString)
     applySeed(p.seed)
-    applySampling(capabilities, p.sampleParams)
+    if (sampling) applySampling(capabilities, p.sampleParams)
     // No block recorded means the pass was off when the recipe ran, and
     // `seedModeFields` has just put the session's own default back in: without
     // clearing the box, turning hires or VAE tiling off would never survive
@@ -367,7 +370,8 @@ class RecipeSeeding(
 
   private def applyVideoParameters(
       capabilities: SessionCapabilities,
-      p: VideoGenerationParameters
+      p: VideoGenerationParameters,
+      sampling: Boolean
   ): Unit = {
     promptVar.set(p.prompt)
     negativePromptVar.set(p.negativePrompt)
@@ -377,8 +381,10 @@ class RecipeSeeding(
     videoFramesVar.set(p.videoFrames.toString)
     fpsVar.set(p.fps.toString)
     applySeed(p.seed)
-    applySampling(capabilities, p.sampleParams)
-    p.highNoiseSampleParams.foreach(applyHighNoise)
+    if (sampling) {
+      applySampling(capabilities, p.sampleParams)
+      p.highNoiseSampleParams.foreach(applyHighNoise)
+    }
     // As above: no block recorded means the tiling was off.
     p.vaeTilingParams match {
       case Some(tiling) => applyVaeTiling(tiling)

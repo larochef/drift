@@ -57,9 +57,9 @@ Click a tile to open it:
   configuration reproduces the request exactly, seed included. From an image
   of a batch it reproduces that image: its own seed, a batch of one.
 - On another configuration it carries the *task*: prompt, negative prompt,
-  input images, seed, size and the sampling fields the form shows, over the
-  target's own defaults. Recorded LoRAs are left out, since a LoRA suits a
-  model, not a task.
+  input images, seed and size, over the target's own defaults. Steps, CFG,
+  sampler, scheduler, flow shift and sigmas stay the target's, and recorded
+  LoRAs are left out: those suit a model, not a task.
 - With no session running, **▶ Launch … and reuse these parameters** launches
   a configuration with the task.
 

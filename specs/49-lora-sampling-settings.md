@@ -37,8 +37,10 @@ LoRAs', then what the user types.
   nothing is refused — a user may run a turbo LoRA at 30 steps and CFG 6 to
   see what happens. Under the picker the form says what each selected LoRA
   sets, and flags fewer steps than the LoRA's.
-- A reused generation or a project version lays down its own values, which
-  count as the user's: the LoRAs' settings do not replace them. **Apply the
+- A reused generation or a project version of the same configuration lays
+  down its own values, which count as the user's: the LoRAs' settings do not
+  replace them. From another configuration it brings no sampling values (12),
+  so the layers apply as on a fresh form. **Apply the
   LoRA settings** puts them over whatever the fields hold.
 - The request carries plain values: a generation's record is what ran, and
   reuse needs nothing new.

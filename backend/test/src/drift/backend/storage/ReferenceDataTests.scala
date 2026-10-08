@@ -22,6 +22,8 @@ object ReferenceDataTests extends TestSuite {
       assert(
         Set(
           "krea2",
+          "mage-flow",
+          "mage-flow-edit",
           "mage-flow-turbo",
           "mage-flow-edit-turbo",
           "nucleus-image",
@@ -33,6 +35,7 @@ object ReferenceDataTests extends TestSuite {
       assert(models.exists(_.id == "nucleus-image-bf16"))
       assert(starters.exists(_.id == "starter-llada-image-turbo"))
       assert(starters.exists(_.id == "starter-grn-2b"))
+      assert(starters.exists(_.id == "starter-mage-flow"))
       // a starter names an architecture and models that exist
       val known = models.map(_.id).toSet
       val broken = starters.filter(starter =>

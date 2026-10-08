@@ -6,6 +6,7 @@ import drift.runner.ops.*
 import drift.runner.state.KvCache
 import drift.runner.tensor.*
 
+import java.util.stream.IntStream
 import scala.collection.mutable
 
 /** LTX 2.5's text features (diffusers' `LTX2TextConnectors`, its LTX 2.3+
@@ -30,41 +31,95 @@ final class LtxTextFeatures(
   }
 
   private def projection(name: String): Projection = {
-    val stored = source(s"$name.weight")
-    val Seq(width, inputs) = stored.shape.dimensions.map(_.toInt)
+    val weight = s"$name.weight"
+    val Seq(width, inputs) = source.shape(weight).dimensions.map(_.toInt)
     require(
       inputs == states * hidden,
       s"$name takes $inputs, not $states × $hidden"
     )
-    val rowBytes = stored.dtype.byteSize(inputs.toLong).toInt
-    val element = rowBytes / inputs
-    val bytes = weights.hostBytes(s"$name.weight")
-    val regrouped = new Array[Byte](bytes.length)
-    var row = 0
-    while (row < width) {
-      val base = row.toLong * rowBytes
+    val plain =
+      Set(DType.F32, DType.F16, DType.BF16).contains(source.storedAs(weight))
+    Projection(
+      if (plain) regroupedBytes(weight, width, inputs)
+      else regroupedFloats(weight, width, inputs),
+      weights.floats(s"$name.bias", s"$name.bias", Shape.of(width)),
+      math.sqrt(width.toDouble / hidden).toFloat
+    )
+  }
+
+  /** `move(from, to)` for every value of `rows` rows: the one at `h × states +
+    * s` of its row goes to `s × hidden + h`. A row a task.
+    */
+  private def regroup(rows: Int, inputs: Int)(
+      move: (Int, Int) => Unit
+  ): Unit =
+    IntStream.range(0, rows).parallel().forEach { row =>
+      val base = row * inputs
       var h = 0
       while (h < hidden) {
         var s = 0
         while (s < states) {
-          System.arraycopy(
-            bytes,
-            (base + (h.toLong * states + s) * element).toInt,
-            regrouped,
-            (base + (s.toLong * hidden + h) * element).toInt,
-            element
-          )
+          move(base + h * states + s, base + s * hidden + h)
           s += 1
         }
         h += 1
       }
-      row += 1
     }
-    Projection(
-      weights.upload(stored.dtype, stored.shape, regrouped),
-      weights.floats(s"$name.bias", s"$name.bias", Shape.of(width)),
-      math.sqrt(width.toDouble / hidden).toFloat
-    )
+
+  /** A projection stored in a plain type, regrouped as it is stored. */
+  private def regroupedBytes(
+      weight: String,
+      width: Int,
+      inputs: Int
+  ): Tensor = {
+    val dtype = source.storedAs(weight)
+    val element = dtype.byteSize(1).toInt
+    val bytes = weights.hostBytes(weight)
+    val regrouped = new Array[Byte](bytes.length)
+    // a row's values are counted from the file's start: Long offsets
+    IntStream.range(0, width).parallel().forEach { row =>
+      val base = row.toLong * inputs * element
+      var h = 0
+      while (h < hidden) {
+        var s = 0
+        while (s < states) {
+          val from = (base + (h.toLong * states + s) * element).toInt
+          val to = (base + (s.toLong * hidden + h) * element).toInt
+          var byte = 0
+          while (byte < element) {
+            regrouped(to + byte) = bytes(from + byte)
+            byte += 1
+          }
+          s += 1
+        }
+        h += 1
+      }
+    }
+    weights.upload(dtype, Shape.of(width, inputs), regrouped)
+  }
+
+  /** A projection stored quantized (fp8, ComfyUI's int8): decoded on the host a
+    * few million values at a time, regrouped, and kept in BF16.
+    */
+  private def regroupedFloats(
+      weight: String,
+      width: Int,
+      inputs: Int
+  ): Tensor = {
+    val out = weights.keep(ops.allocate(DType.BF16, Shape.of(width, inputs)))
+    val chunk = math.max(1, (1 << 24) / inputs)
+    var row = 0
+    while (row < width) {
+      val count = math.min(chunk, width - row)
+      val values = source.hostRows(weight, row, count)
+      val regrouped = new Array[Float](values.length)
+      regroup(count, inputs)((from, to) => regrouped(to) = values(from))
+      val part = ops.fromFloats(Shape.of(count, inputs), regrouped)
+      try ops.convert(part, out.rows(row, count))
+      finally ops.release(part)
+      row += count
+    }
+    out
   }
 
   val video: Projection = projection(
@@ -143,7 +198,7 @@ final class LtxConnector(
   private def affine(name: String, outputs: Long) = {
     val made = Affine(
       s"$prefix.$name",
-      source(s"$prefix.$name.weight"),
+      source.linear(s"$prefix.$name.weight"),
       floats(s"$name.bias", outputs)
     )
     affines += made

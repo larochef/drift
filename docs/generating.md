@@ -139,7 +139,9 @@ Per model, on the drift runner:
   log, then the image or video. Wan 2.2 with two experts shows a bar per expert,
   marked "high noise" then "low noise"; a bar moves once a step is done, which
   takes minutes for a long or large video (the log gives the token count and
-  each expert's steps before the first one). A batch shows two bars: "Image 2
+  each expert's steps before the first one). After the last step an LTX 2.5
+  video shows a second bar, "decoding", while its frames are made from the
+  latents, which takes minutes for a long video. A batch shows two bars: "Image 2
   of 4" with the images already done, and under it the steps of the image
   being made. Submit several and a short list
   appears above the result with the jobs waiting behind the one on screen, each

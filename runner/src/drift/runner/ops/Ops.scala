@@ -4,6 +4,7 @@ import drift.runner.state.KvCache
 import drift.runner.tensor.*
 
 import java.nio.file.Path
+import scala.collection.concurrent.TrieMap
 
 /** The operations blocks and models are written against (`specs/42`). Two
   * backends implement them: `CpuOps`, the slow and obviously correct reference,
@@ -15,6 +16,20 @@ import java.nio.file.Path
   * the same tensor as an input for elementwise operations. Activations are F32;
   * weights may be any storage type.
   */
+/** What makes an int8 of a 4-bit code (`ComfyQuant`): the 16 levels, F32, and
+  * each row's relative scales, fp8 E4M3, one a `groupSize` columns.
+  */
+final case class ConvRotLevels(
+    codebook: Tensor,
+    relative: Tensor,
+    groupSize: Int
+)
+
+/** What a rotated linear's codes are decoded with: `scales` F32, one a row (or
+  * one for all, without `levels`), and a 4-bit linear's `levels`.
+  */
+final case class ConvRotParts(scales: Tensor, levels: Option[ConvRotLevels])
+
 trait Ops extends AutoCloseable {
 
   def name: String
@@ -95,8 +110,37 @@ trait Ops extends AutoCloseable {
   /** `out = kind(gate) × up`: SwiGLU with `Silu`, GeGLU with a GELU. */
   def gated(kind: Activation, gate: Tensor, up: Tensor, out: Tensor): Unit
 
-  /** Between F32 and F16 or BF16, rounding to nearest even; fp8 E4M3 to F32. */
+  /** Between F32 and F16 or BF16, rounding to nearest even; fp8 E4M3 to F32; a
+    * rotated linear (`rotated`) to the BF16 weight it holds.
+    */
   def convert(x: Tensor, out: Tensor): Unit
+
+  private val rotatedParts = TrieMap.empty[Long, ConvRotParts]
+
+  /** ComfyUI's rotated linear `[N, K]` left where the file holds it: `codes`,
+    * I8 `[N, K]`, or with `levels` the 4-bit codes `[N, K / 2]`, seen as the
+    * weight they make with `parts` (`ConvRot.Codes`, `ConvRot.Nibbles`).
+    * `linear` and `convert` decode it; `parts` are the caller's to release,
+    * after `forgetRotated`.
+    */
+  def rotated(codes: Tensor, parts: ConvRotParts): Tensor = {
+    val weight = Ops.checkRotated(codes, parts)
+    rotatedParts(Ops.address(weight)) = parts
+    weight
+  }
+
+  def forgetRotated(weight: Tensor): Unit = {
+    rotatedParts.remove(Ops.address(weight))
+    ()
+  }
+
+  protected def partsOf(weight: Tensor): ConvRotParts =
+    rotatedParts.getOrElse(
+      Ops.address(weight),
+      throw new IllegalArgumentException(
+        s"${weight.dtype} ${weight.shape}: codes this backend holds no scales for"
+      )
+    )
 
   /** RMS norm over the last dimension:
     * `out = x / sqrt(mean(x²) + epsilon) × (weight + weightOffset)`;
@@ -1445,8 +1489,58 @@ object Ops {
     DType.F32 -> DType.BF16,
     DType.F16 -> DType.F32,
     DType.BF16 -> DType.F32,
-    DType.F8E4M3 -> DType.F32
+    DType.F8E4M3 -> DType.F32,
+    ConvRot.Codes -> DType.BF16,
+    ConvRot.Nibbles -> DType.BF16
   )
+
+  /** Where a tensor's bytes start on the host: what tells two tensors over
+    * mapped files apart.
+    */
+  def address(tensor: Tensor): Long =
+    tensor.byteOffset + (tensor.storage match {
+      case Storage.Host(segment)       => segment.address()
+      case Storage.Registered(host, _) => host.address()
+      case Storage.Device(pointer, _)  => pointer.address()
+    })
+
+  /** Returns the weight `codes` are with `parts`. */
+  def checkRotated(codes: Tensor, parts: ConvRotParts): Tensor = {
+    require(
+      codes.dtype == DType.I8 && codes.shape.rank == 2,
+      s"rotated: ${codes.dtype} codes ${codes.shape}"
+    )
+    val n = codes.shape.dimensions(0)
+    val k = codes.shape.last * parts.levels.fold(1)(_ => 2)
+    require(k % ConvRot.Group == 0, s"rotated: rows of $k columns")
+    val scaleCount = parts.scales.shape.elementCount
+    require(
+      parts.scales.dtype == DType.F32 &&
+        (scaleCount == n || scaleCount == 1 && parts.levels.isEmpty),
+      s"rotated: $scaleCount ${parts.scales.dtype} scales for $n rows"
+    )
+    parts.levels.foreach { l =>
+      require(
+        l.groupSize > 0 && l.groupSize % 16 == 0 && k % l.groupSize == 0,
+        s"rotated: $k columns in groups of ${l.groupSize}"
+      )
+      require(
+        l.codebook.dtype == DType.F32 && l.codebook.shape.elementCount == 16,
+        s"rotated: a codebook ${l.codebook.dtype} ${l.codebook.shape}"
+      )
+      require(
+        l.relative.dtype == DType.F8E4M3 &&
+          l.relative.shape == Shape.of(n, k / l.groupSize),
+        s"rotated: relative scales ${l.relative.dtype} ${l.relative.shape}"
+      )
+    }
+    Tensor(
+      if (parts.levels.isEmpty) ConvRot.Codes else ConvRot.Nibbles,
+      Shape.of(n, k),
+      codes.storage,
+      codes.byteOffset
+    )
+  }
 
   def checkConvert(x: Tensor, out: Tensor): Unit = {
     requireSameShape("convert", x, out)

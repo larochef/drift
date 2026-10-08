@@ -51,24 +51,24 @@ final class Gemma4Text private (ops: Ops, source: WeightSource, prefix: String)
     val keysAreValues: Boolean =
       !source.has(s"$prefix${at("self_attn.v_proj.weight")}")
     val inputNorm: Tensor = floats(at("input_layernorm.weight"), hidden)
-    val q: Tensor = source(s"$prefix${at("self_attn.q_proj.weight")}")
-    val k: Tensor = source(s"$prefix${at("self_attn.k_proj.weight")}")
+    val q: Tensor = source.linear(s"$prefix${at("self_attn.q_proj.weight")}")
+    val k: Tensor = source.linear(s"$prefix${at("self_attn.k_proj.weight")}")
     val v: Option[Tensor] =
       Option.unless(keysAreValues)(
-        source(s"$prefix${at("self_attn.v_proj.weight")}")
+        source.linear(s"$prefix${at("self_attn.v_proj.weight")}")
       )
     val qNorm: Tensor = floats(at("self_attn.q_norm.weight"), head)
     val kNorm: Tensor = floats(at("self_attn.k_norm.weight"), head)
-    val o: Tensor = source(s"$prefix${at("self_attn.o_proj.weight")}")
+    val o: Tensor = source.linear(s"$prefix${at("self_attn.o_proj.weight")}")
     val postAttentionNorm: Tensor =
       floats(at("post_attention_layernorm.weight"), hidden)
     val preMlpNorm: Tensor =
       floats(at("pre_feedforward_layernorm.weight"), hidden)
     val postMlpNorm: Tensor =
       floats(at("post_feedforward_layernorm.weight"), hidden)
-    val gate: Tensor = source(s"$prefix${at("mlp.gate_proj.weight")}")
-    val up: Tensor = source(s"$prefix${at("mlp.up_proj.weight")}")
-    val down: Tensor = source(s"$prefix${at("mlp.down_proj.weight")}")
+    val gate: Tensor = source.linear(s"$prefix${at("mlp.gate_proj.weight")}")
+    val up: Tensor = source.linear(s"$prefix${at("mlp.up_proj.weight")}")
+    val down: Tensor = source.linear(s"$prefix${at("mlp.down_proj.weight")}")
     val scalar: Float = weights.hostFloats(s"$prefix${at("layer_scalar")}").head
   }
 

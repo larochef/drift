@@ -6,8 +6,8 @@ import com.raquo.laminar.api.L.*
 
 /** A figure of the machine over its last minutes: the curve takes the colour of
   * the third each value sits in (low, middle, high), two dashed lines mark
-  * where it changes, a thin line each minute and one at 0 and at the top. Under the pointer, the value
-  * at that moment and how long ago it was.
+  * where it changes, a thin line each minute and one at 0 and at the top. Under
+  * the pointer, the value at that moment and how long ago it was.
   */
 class MachineGraph(
     /** Told apart from the other graphs on the page (the colours' gradient). */

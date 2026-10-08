@@ -1,6 +1,6 @@
 package drift.backend.session
 
-import drift.shared.{BatchProgress, LogLine}
+import drift.shared.{BatchProgress, LogLine, ProgressKind, SessionProgress}
 
 import scala.concurrent.duration.DurationInt
 
@@ -76,6 +76,24 @@ object SessionLogTests extends TestSuite {
       )
       assert(log.batch == Some(BatchProgress(3, 4)))
       assert(log.batch.map(_.completed) == Some(2))
+    }
+
+    test("a video's decode has its own bar after the last step") {
+      val log = SessionLog()
+      log.append(
+        "  |==================================================| 8/8 - 7.90s/it"
+      )
+      assert(log.progress.map(_.kind) == Some(ProgressKind.Sampling))
+      log.append("sampling done, decoding 60 latent frames (VAE)")
+      assert(log.progress.isEmpty)
+      log.append(
+        "  |=================                                 | 34/100 - 1.87%/s"
+      )
+      assert(
+        log.progress == Some(
+          SessionProgress(ProgressKind.Decoding, 34, 100, "1.87%/s")
+        )
+      )
     }
 
     test("the job's closing line ends the batch, and so does the session") {

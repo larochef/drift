@@ -288,8 +288,19 @@ object TinyLtxCase {
             )
           )
           val decoded = scala.collection.mutable.ArrayBuffer.empty[Float]
-          try vae.decode(frames, rgb => decoded ++= ops.toFloats(rgb))
+          val progress = scala.collection.mutable.ArrayBuffer.empty[Double]
+          try
+            vae.decode(
+              frames,
+              rgb => decoded ++= ops.toFloats(rgb),
+              progress += _
+            )
           finally frames.foreach(ops.release)
+          // every convolution counted, and no more than was planned
+          assert(
+            progress == progress.sorted && math.abs(progress.last - 1) < 1e-9,
+            s"decode progress ends at ${progress.last}"
+          )
           assert(
             vae.frameCount(3) == 17 && decoded.size == 17 * 64 * 64 * 3,
             s"${decoded.size} values"

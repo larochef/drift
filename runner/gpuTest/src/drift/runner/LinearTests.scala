@@ -2,7 +2,14 @@ package drift.runner
 
 import utest.*
 
-import drift.runner.ops.{CpuOps, HipOps, MatVecInputs, Ops}
+import drift.runner.ops.{
+  ConvRotLevels,
+  ConvRotParts,
+  CpuOps,
+  HipOps,
+  MatVecInputs,
+  Ops
+}
 import drift.runner.tensor.{
   Comparison,
   DType,
@@ -176,6 +183,76 @@ object LinearTests extends TestSuite {
     ("BF16", DType.BF16, false)
   )
 
+  /** ComfyUI's rotated linears read in place (`Ops.rotated`), int8 and 4-bit:
+    * the GPU's decode is the `Cpu` backend's bit for bit, and the product the
+    * BF16 GEMM's at any row count.
+    */
+  private def checkRotated(fourBit: Boolean): Unit = {
+    val cpu = new CpuOps
+    val hip = new HipOps(Gpu.hip, MatVecInputs.Float)
+    try
+      Seq(
+        (1, 3, 256),
+        (5, 33, 768),
+        (40, 72, 2560),
+        (64, 300, 4096)
+      ).zipWithIndex
+        .foreach { case ((m, n, k), index) =>
+          val random = new java.util.Random(index)
+          val codes = new Array[Byte](if (fourBit) n * k / 2 else n * k)
+          random.nextBytes(codes)
+          val scales = Array.fill(n)(0.0005f + random.nextFloat() * 0.002f)
+          val codebook = Array.tabulate(16)(i => (i - 7.5f) / 7.6f)
+          // E4M3 relative scales of 64 to 240: some levels clamp at ±127
+          val relative = Array.fill(n * k / 16)(
+            ((13 + random.nextInt(2)) << 3 | random.nextInt(8)).toByte
+          )
+          val x = TestData.gaussian(200 + index, m * k)
+          def run(ops: Ops): (Array[Float], Array[Float]) = {
+            val stored =
+              if (fourBit) Shape.of(n, k / 2) else Shape.of(n, k)
+            val weight = ops.rotated(
+              ops.fromBytes(DType.I8, stored, codes),
+              ConvRotParts(
+                ops.fromFloats(Shape.of(n), scales),
+                Option.when(fourBit)(
+                  ConvRotLevels(
+                    ops.fromFloats(Shape.of(16), codebook),
+                    ops.fromBytes(DType.F8E4M3, Shape.of(n, k / 16), relative),
+                    16
+                  )
+                )
+              )
+            )
+            val bf16 = ops.allocate(DType.BF16, Shape.of(n, k))
+            val decoded = ops.allocate(DType.F32, Shape.of(n, k))
+            ops.convert(weight, bf16)
+            ops.convert(bf16, decoded)
+            val out = ops.allocate(DType.F32, Shape.of(m, n))
+            ops.linear(ops.fromFloats(Shape.of(m, k), x), weight, out)
+            (ops.toFloats(decoded), ops.toFloats(out))
+          }
+          val (expectedWeights, expected) = run(cpu)
+          val (weights, actual) = run(hip)
+          assert(weights.sameElements(expectedWeights))
+          val scale = expected.map(math.abs).max.toDouble
+          val bounds = productSums(expectedWeights, x, m, n, k)
+            .zip(expected)
+            .map((sum, y) => (sum * 2 + math.abs(y)) * math.pow(2, -8) * 1.01)
+          val worst = expected.indices.map { i =>
+            math.abs(actual(i) - expected(i)) / (bounds(i) + 1e-5 * scale)
+          }.max
+          println(
+            f"  rotated ${if (fourBit) "4-bit" else "int8"} [$m, $k]·[$n, $k]ᵀ: worst error at ${worst * 100}%.1f%% of its bound"
+          )
+          assert(worst <= 1.0)
+        }
+    finally {
+      hip.close()
+      cpu.close()
+    }
+  }
+
   /** The experts' products (`expertsLinear`, `expertsGatedLinear`) as the `Cpu`
     * backend computes them: rows shorter than a wave's chunk (several rows per
     * wave), a model's width, one x per token or per slot, and enough slots to
@@ -331,6 +408,10 @@ object LinearTests extends TestSuite {
       types.foreach((_, dtype, integer) =>
         check(dtype, integer, MatVecInputs.Int8)
       )
+    }
+    test("rotated linears, int8 and 4-bit, read in place") {
+      checkRotated(fourBit = false)
+      checkRotated(fourBit = true)
     }
     test("float inputs") {
       types.foreach((_, dtype, integer) =>

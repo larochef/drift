@@ -61,11 +61,6 @@ final class LtxPipeline(
 
   def alignedFrames(frames: Int): Int = math.max(frames - 1, 8) / 8 * 8 + 1
 
-  private val tokenizer: Tokenizer = TokenizerJson.read(
-    ujson.read(LtxPipeline.rawTensor(textEncoder, "tokenizer_json")),
-    s"$textEncoder (tokenizer_json)"
-  )
-
   /** A part's share of the load, in the log: which one a slow start waits on
     * (`bugs/53`).
     */
@@ -76,11 +71,20 @@ final class LtxPipeline(
     loaded
   }
 
-  private val textSource = WeightSource.open(ops, textEncoder)
+  private val tokenizer: Tokenizer = timed("tokenizer")(
+    TokenizerJson.read(
+      ujson.read(LtxPipeline.rawTensor(textEncoder, "tokenizer_json")),
+      s"$textEncoder (tokenizer_json)"
+    )
+  )
+
+  private val textSource =
+    timed("text encoder's file")(WeightSource.open(ops, textEncoder))
   private val gemma =
     timed("text encoder")(Gemma4Text(ops, textSource, "model."))
-  private val features =
+  private val features = timed("text features")(
     new LtxTextFeatures(ops, textSource, gemma.layers + 1, gemma.hidden)
+  )
   private val transformer = timed("transformer")(Ltx2.open(ops, diffusionModel))
   private val (videoConnector, audioConnector) =
     transformer.connectors.getOrElse(
@@ -352,7 +356,8 @@ final class LtxPipeline(
       Images.decoding(s"${latentFrames.size} latent frames")
       decoder.decode(
         latentFrames,
-        rgb => images += Images.toImage(ops.toFloats(rgb), width, height)
+        rgb => images += Images.toImage(ops.toFloats(rgb), width, height),
+        Images.decodeBar()
       )
       println(
         f"decoded ${images.size} frames in ${(System.nanoTime() - started) / 1e9}%.1f s"

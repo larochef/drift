@@ -172,7 +172,7 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
   /** A linear layer at `site` (its name in the file, a LoRA's target). */
   final private case class Affine(site: String, weight: Tensor, bias: Tensor)
   private def linearLayer(prefix: String, outputs: Long) = {
-    val weight = source(s"$prefix.weight")
+    val weight = source.linear(s"$prefix.weight")
     siteWeights(prefix) = weight
     Affine(
       prefix,

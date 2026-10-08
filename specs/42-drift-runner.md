@@ -2348,9 +2348,8 @@ on the old tool.
     - **Done 2026-10-01: ComfyUI's int8 and 4-bit checkpoints** (`formats/
       ComfyQuant`, `WeightSource`; REDGraft LTX 2.5, 17 GB, `mixed:w4a8+int8`).
       A linear's `comfy_quant` marker names how its weight is stored, and two
-      layouts are decoded on the CPU to the BF16 weight the model was
-      quantized from, the first time it is asked for (the whole model: 42 s to
-      load against 21 s of failing before):
+      layouts are decoded to the BF16 weight the model was quantized from, the
+      first time it is asked for:
       - `int8_tensorwise`: I8 `[out, in]` times `weight_scale`, one a row.
       - `asym_w4a8_int8`: two 4-bit codes a byte (`[out, in / 2]`, the even
         column in the low nibble — read as a plain weight, that was "x rows of
@@ -2367,6 +2366,18 @@ on the old tool.
         one a REDGraft layer decodes to the official BF16 layer (cosine 1.00,
         an int8 and a 4-bit one), with the Sylvester matrix or the −1 on the
         diagonal to noise. Any other group size is refused.
+      - **Read in place** (`bugs/53`, 2026-10-08; `tensor/ConvRot`,
+        `kernels/convrot.hip`, `Ops.rotated`). A rotated weight stays where
+        the file holds it — the int8 codes, or the 4-bit ones two a byte — and
+        the backend is given its scales beside. Each product decodes it to
+        BF16 into the GEMM's scratch buffer, as GGUF weights are dequantized:
+        sixteen threads a group of 256 columns, each rotating sixteen values in
+        registers twice around one exchange, bit for bit what the CPU decodes.
+        Nothing is copied or allocated: the model takes its file's size.
+        `ComfyQuantStorage` (`-Ddrift.comfyQuant`) also decodes at load, on
+        the GPU (`gpu`) or on the CPU (`cpu`, the reference, and what a weight
+        not rotated still takes). LoRAs, applied beside the weight at run
+        time, do not see the difference.
       - Fixtures from numpy (`fixtures/comfy_quant.py`, the converter's own
         `dequantize_rotated` and the explicit 256 × 256 matrix).
       - **Live:** 512², 41 frames, 8 steps: 3.8 s a step, 39 s, a clean video

@@ -170,8 +170,45 @@ final class LtxVideoVae private (ops: Ops, source: WeightSource)
           }
         }
       finally ops.release(part)
+      counted(h.toDouble * w * pixelCost(slices))
       out
     }
+
+  /** What a convolution costs a pixel, measured on gfx1151 (`bugs/52`): its
+    * product, and gathering its inputs, which is as much as a product over a
+    * thousand outputs — most of the time where the channels are few and the
+    * frames large.
+    */
+  private def pixelCost(slices: Seq[Convolution]): Double =
+    slices
+      .map(slice =>
+        slice.weight.shape.last.toDouble * (slice.outChannels + 1000)
+      )
+      .sum
+
+  /** Told what each frame's convolution cost (`pixelCost` times its pixels):
+    * what `decode` counts its progress in.
+    */
+  private var counted: Double => Unit = _ => ()
+
+  /** What decoding `frames` latent frames of `height × width` costs, in
+    * `counted`'s unit: every convolution `decode` runs.
+    */
+  private def decodeCost(frames: Int, height: Long, width: Long): Double = {
+    var (t, h, w) = (frames.toLong, height, width)
+    def cost(slices: Seq[Convolution]) =
+      t.toDouble * h * w * pixelCost(slices)
+    var total = cost(input)
+    stages.foreach {
+      case Stage.Residual(blocks) =>
+        blocks.foreach((first, second) => total += cost(first) + cost(second))
+      case Stage.Up(slices, time, space, _) =>
+        total += cost(slices)
+        if (time) t = 2 * t - 1
+        if (space) { h *= 2; w *= 2 }
+    }
+    total + cost(output)
+  }
 
   private def release(frames: Seq[Tensor]): Unit = frames.foreach(ops.release)
 
@@ -198,9 +235,23 @@ final class LtxVideoVae private (ops: Ops, source: WeightSource)
 
   /** Decodes normalized `latents` (`[h, w, channels]` per latent frame) into
     * frames `[32h, 32w, 3]` in [−1, 1] (unclamped): `8 (T − 1) + 1` of them,
-    * handed to `emit` in order and released after.
+    * handed to `emit` in order and released after. `progress` is told the
+    * fraction of the convolutions done, frame by frame.
     */
-  def decode(latents: Seq[Tensor], emit: Tensor => Unit): Unit = {
+  def decode(
+      latents: Seq[Tensor],
+      emit: Tensor => Unit,
+      progress: Double => Unit
+  ): Unit = {
+    val (height, width, _) = sizes(latents.head)
+    val total = decodeCost(latents.size, height, width)
+    var done = 0.0
+    counted = cost => { done += cost; progress(done / total) }
+    try decoded(latents, emit)
+    finally counted = _ => ()
+  }
+
+  private def decoded(latents: Seq[Tensor], emit: Tensor => Unit): Unit = {
     val shift = weights.floats(mean)
     val scale = weights.floats(std.map(_ - 1f))
     var frames = latents.map { latent =>

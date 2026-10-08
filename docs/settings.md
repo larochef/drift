@@ -194,8 +194,9 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     two seconds; without it they are silent. It reads `--fps` (the frame
     rate is part of what the model sees). ComfyUI's mixed int8 and 4-bit
     checkpoints (the "W4A8" and "INT8 ConvRot" files on Civitai) load too:
-    they are decoded to full weights at startup, so they save disk and
-    download time, not memory.
+    they are read as they are stored, so they take no more memory than
+    their file, and are decoded layer by layer as the model runs, for a
+    fraction of a second a step.
   - **None** does masks, hires fix or VAE tiling yet; the runner says so
     when a request asks for them.
   - **Images differ from sd-cpp's** for the same seed: the runner follows

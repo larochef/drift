@@ -62,8 +62,14 @@ object ImageMain {
         println(s"device: ${hip.deviceName} (${hip.rocmRoot})")
         val ops = new HipOps(hip, MatVecInputs.Float)
         val started = System.nanoTime()
+        val upscaler = SeedVr2Pipeline.holds(ops, options.diffusionModel)
+        val video =
+          !upscaler && VideoPipeline.holds(ops, options.diffusionModel)
+        println(
+          f"  model recognized: ${(System.nanoTime() - started) / 1e9}%.1f s"
+        )
         val pipeline: ImagePipeline | VideoPipeline | SeedVr2Pipeline =
-          if (SeedVr2Pipeline.holds(ops, options.diffusionModel))
+          if (upscaler)
             new SeedVr2Pipeline(
               ops,
               options.diffusionModel,
@@ -71,7 +77,7 @@ object ImageMain {
                 throw new IllegalArgumentException("SeedVR2 needs its --vae")
               )
             )
-          else if (VideoPipeline.holds(ops, options.diffusionModel))
+          else if (video)
             VideoPipeline.open(
               ops,
               options.diffusionModel,

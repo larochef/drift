@@ -29,11 +29,12 @@ object LogLine {
   * steps at seconds per iteration.
   */
 enum ProgressKind derives CanEqual {
-  case Loading, Sampling
+  case Loading, Sampling, Decoding
 
   def label: String = this match {
     case Loading  => "loading weights"
     case Sampling => "sampling"
+    case Decoding => "decoding"
   }
 }
 object ProgressKind {
@@ -87,7 +88,11 @@ object BatchProgress {
   *   |###                        | 15/298 - 16.95GB/s
   *   |============>              | 1/4 - 6.77s/it
   *   |=====>                     | 3/20 - 1.42it/s
+  *   |=========                  | 34/100 - 1.87%/s
   * }}}
+  *
+  * The last is the drift runner's, for a video's VAE decode after the last
+  * step: hundredths of the decode, at so many a second.
   *
   * A session prints **many** of these, not one: a load is several bars (one per
   * checkpoint), generation adds a sampling bar, and more tensors load lazily
@@ -112,7 +117,7 @@ object LogProgress {
     * leaves the narrative behind, which [[parseWithRest]] hands back.
     */
   private val Bar =
-    """\|\s*(\d+)\s*/\s*(\d+)\s+-\s+([\d.]+\s*(?:s/it|it/s|[KMGTP]?B/s))""".r
+    """\|\s*(\d+)\s*/\s*(\d+)\s+-\s+([\d.]+\s*(?:s/it|it/s|[KMGTP]?B/s|%/s))""".r
 
   /** The escape codes out, so a line can be displayed and matched. */
   def clean(text: String): String = Ansi.replaceAllIn(text, "").trim
@@ -145,6 +150,8 @@ object LogProgress {
             Some((SessionProgress(ProgressKind.Sampling, d, t, detail), rest))
           // The transfer rate is formatted adaptively too (MB/s, then GB/s),
           // which is why the unit is matched by suffix rather than in full.
+          else if (detail.endsWith("%/s"))
+            Some((SessionProgress(ProgressKind.Decoding, d, t, detail), rest))
           else if (detail.endsWith("B/s"))
             Some((SessionProgress(ProgressKind.Loading, d, t, detail), rest))
           else None

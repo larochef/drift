@@ -22,6 +22,27 @@ object Images {
   def decoding(what: String): Unit =
     println(s"sampling done, decoding $what (VAE)")
 
+  /** A long decode's bar, drawn as the steps' are: it takes the fraction done
+    * and prints each new hundredth, at so many a second (`%/s`, which drift
+    * reads as a decode — `LogProgress`).
+    */
+  def decodeBar(): Double => Unit = {
+    val started = System.nanoTime()
+    var last = -1
+    fraction => {
+      val percent = math.min(100, math.max(0, (fraction * 100).toInt))
+      if (percent > last) {
+        last = percent
+        val seconds = (System.nanoTime() - started) / 1e9
+        val rate = if (seconds > 0) percent / seconds else 0.0
+        val filled = percent / 2
+        println(
+          f"  |${"=" * filled}${" " * (50 - filled)}| $percent/100 - $rate%.2f%%/s"
+        )
+      }
+    }
+  }
+
   /** RGB or RGBA (as `values` holds 3 or 4 per pixel) in [−1, 1],
     * channels-last, to 8 bits: `round((x + 1) / 2 × 255)`.
     */

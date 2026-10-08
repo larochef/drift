@@ -171,6 +171,48 @@ final class HipBlas(hip: HipRuntime) extends AutoCloseable {
     } finally arena.close()
   }
 
+  /** `c[m, n] = a[m, k] · b[n, k]ᵀ` on int8 operands, the sums in I32: what a
+    * product on quantized weights and activations would run (`bugs/53`).
+    */
+  def gemmInt8(
+      a: MemorySegment,
+      b: MemorySegment,
+      c: MemorySegment,
+      m: Int,
+      n: Int,
+      k: Int
+  ): Unit = {
+    val arena = Arena.ofConfined()
+    try {
+      val one = arena.allocateFrom(JAVA_INT, 1)
+      val zero = arena.allocateFrom(JAVA_INT, 0)
+      check(
+        "hipblasGemmEx",
+        (hipblasGemmEx.invokeExact(
+          handle,
+          OperationTranspose,
+          OperationNone,
+          n,
+          m,
+          k,
+          one,
+          b,
+          RealI8,
+          k,
+          a,
+          RealI8,
+          k,
+          zero,
+          c,
+          RealI32,
+          n,
+          Compute32I,
+          GemmDefault
+        ): Int)
+      )
+    } finally arena.close()
+  }
+
   def close(): Unit =
     check("hipblasDestroy", (hipblasDestroy.invokeExact(handle): Int))
 }
@@ -181,6 +223,9 @@ object HipBlas {
   val RealF32 = 0 // HIP_R_32F
   val RealF16 = 2 // HIP_R_16F
   val RealBF16 = 14 // HIP_R_16BF
+  val RealI8 = 3 // HIP_R_8I
+  val RealI32 = 10 // HIP_R_32I
   val Compute32F = 2 // HIPBLAS_COMPUTE_32F
+  val Compute32I = 9 // HIPBLAS_COMPUTE_32I
   val GemmDefault = 160 // HIPBLAS_GEMM_DEFAULT
 }

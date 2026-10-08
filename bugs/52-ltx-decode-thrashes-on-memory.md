@@ -59,14 +59,25 @@ printing `hipMemGetInfo` after the load, after the last step and at each decode 
 
 ## Fixes, by what they buy
 
-1. **Say what is happening** (first half done 2026-10-08, not compiled: `Images.decoding` prints `sampling done,
-   decoding … (VAE)` before every pipeline's decode): progress from `decode` (stage and frames) into the log, so the bar moves after the
-   last step.
+1. **Say what is happening** — done 2026-10-08 for LTX 2.5: `Images.decoding` prints `sampling done,
+   decoding … (VAE)` before every pipeline's decode, then `LtxVideoVae.decode` reports the share of its
+   convolutions done, frame by frame, and `Images.decodeBar` prints it as a bar in hundredths (`34/100 -
+   1.87%/s`), which drift shows as "decoding" (`ProgressKind.Decoding`). Each convolution is weighted by what it
+   costs a pixel as measured (its product, plus gathering its inputs, worth a thousand outputs): on a 97-frame
+   clip the bar is straight, a tenth every 1.2 to 1.4 s. Not seen in a browser; Wan's and MiniMax H3's decodes
+   have the line but no bar yet.
 2. **Stop holding the quantized file**: once a `ComfyQuant` / FP8 tensor is decoded to BF16, its file pages are
    dead weight. The file cannot simply be unregistered (0.9 GB of it is read in place): either copy those few
    tensors to the GPU too and unregister, or register only the ranges read in place. Frees nothing by itself,
    but those 15 GB can then be reclaimed without stopping the GPU.
-3. **Let Gemma go between the prompt and the decode**: unregister (or `madvise` away) the text encoder once the
+   **Measured 2026-10-08 (`bugs/53`):** kept packed (`-Ddrift.comfyQuant=packed`), the weights are 20.9 GB
+   instead of 41.1 for 0.6 s a forward pass, and a 257-frame decode took 33 s against 53 s (one run each).
+   **2026-10-08, night:** the rotated weights are now read in place (`bugs/53`), which is this fix for them:
+   no decoded copy beside the file. Written, to be compiled and measured.
+3. **Not now (François, 2026-10-08):** he prefers every component kept in memory, so that the next generation
+   does not reload Gemma, if reading the weights in place is enough. Kept as a note for machines short of
+   memory: load each part only while it is needed.
+   **Let Gemma go between the prompt and the decode**: unregister (or `madvise` away) the text encoder once the
    prompt is encoded, register it again for the next prompt (page-cache speed when memory allows).
 4. **Decode in a window of frames** instead of all frames per stage: the 3 × 3 × 3 convolutions need one frame
    of context each side, so a stage can stream; peak memory then no longer grows with the length of the video.

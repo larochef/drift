@@ -31,6 +31,7 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
   private val normKernels = new KernelModule(hip, "norm")
   private val ropeKernels = new KernelModule(hip, "rope")
   private val matvecKernels = new KernelModule(hip, "matvec")
+  private val convRotKernels = new KernelModule(hip, "convrot")
 
   /** hipBLAS, opened by the first GEMM. */
   private var blasHandle = Option.empty[HipBlas]
@@ -60,7 +61,9 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
     RocmFp4.Fast -> true,
     DType.F32 -> false,
     DType.F16 -> false,
-    DType.BF16 -> false
+    DType.BF16 -> false,
+    ConvRot.Codes -> false,
+    ConvRot.Nibbles -> false
   )
 
   /** Up to this many rows of x, one matrix-vector pass serves them all. */
@@ -553,12 +556,51 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
 
   def convert(x: Tensor, out: Tensor): Unit = {
     Ops.checkConvert(x, out)
+    if (ConvRot.stored(x.dtype))
+      return dequantizeRotated(x, pointer(out))
     convertAt(
       pointer(x),
       pointer(out),
       x.shape.elementCount,
       conversionCodes(x.dtype -> out.dtype)
     )
+  }
+
+  /** A rotated linear (`rotated`), read where the file holds it, to BF16 at
+    * `to`.
+    */
+  private def dequantizeRotated(weight: Tensor, to: MemorySegment): Unit = {
+    val parts = partsOf(weight)
+    val blocks = weight.shape.elementCount / ConvRot.Group
+    val grid = math.min((blocks + 15) / 16, 1L << 16)
+    val shape = Seq(I64(blocks), I32(weight.shape.last.toInt))
+    parts.levels match {
+      case None =>
+        launch(
+          kernel(convRotKernels, "convrot_dequantize_bf16_i8"),
+          grid,
+          ConvRot.Group,
+          (Seq(
+            Pointer(pointer(weight)),
+            Pointer(pointer(parts.scales)),
+            I32(parts.scales.shape.elementCount.toInt),
+            Pointer(to)
+          ) ++ shape)*
+        )
+      case Some(levels) =>
+        launch(
+          kernel(convRotKernels, "convrot_dequantize_bf16_w4a8"),
+          grid,
+          ConvRot.Group,
+          (Seq(
+            Pointer(pointer(weight)),
+            Pointer(pointer(levels.codebook)),
+            Pointer(pointer(levels.relative)),
+            Pointer(pointer(parts.scales)),
+            Pointer(to)
+          ) ++ shape :+ I32(levels.groupSize))*
+        )
+    }
   }
 
   private def convertAt(
@@ -1403,10 +1445,11 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
     }
     require(k <= Int.MaxValue && m * k <= Int.MaxValue, s"linear over [$m, $k]")
     // BF16 rows not in whole blocks of 32 (the matrix-vector kernels' unit)
-    // go to hipBLAS at any row count
+    // go to hipBLAS at any row count, and so do rotated ones, which have no
+    // matrix-vector kernels
     val gemmOnly = m >= GemmMinimumRows || weights.forall(
       _.dtype == DType.BF16
-    ) && k % 32 != 0
+    ) && k % 32 != 0 || weights.exists(w => ConvRot.stored(w.dtype))
     if (!gemmOnly)
       weights.foreach(weight =>
         require(
@@ -1700,7 +1743,11 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
       n: Int,
       k: Int
   ): Unit = {
-    val wide = wideProducts && weight.dtype != DType.F16
+    // rotated weights were BF16 before they were quantized
+    val wide =
+      (wideProducts || ConvRot.stored(
+        weight.dtype
+      )) && weight.dtype != DType.F16
     val weightBytes = 2L * n * k
     val xHalf = scratch(0, weightBytes + 2L * m * k + 2L * m * n)
     val outHalf = offset(xHalf, 2L * m * k + weightBytes)
@@ -1716,6 +1763,10 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
           n.toLong * k,
           conversionCodes(DType.F32 -> (if (wide) DType.BF16 else DType.F16))
         )
+        target
+      } else if (ConvRot.stored(weight.dtype)) {
+        val target = offset(xHalf, 2L * m * k)
+        dequantizeRotated(weight, target)
         target
       } else {
         val target = offset(xHalf, 2L * m * k)

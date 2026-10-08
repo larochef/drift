@@ -3,7 +3,19 @@ package drift.runner
 import utest.*
 
 import drift.runner.formats.{ComfyQuant, FormatException}
-import drift.runner.tensor.{Comparison, Shape, Tolerance}
+import drift.runner.models.{ComfyQuantStorage, WeightSource}
+import drift.runner.ops.CpuOps
+import drift.runner.tensor.{
+  Comparison,
+  ConvRot,
+  DType,
+  Shape,
+  Storage,
+  Tensor,
+  Tolerance
+}
+
+import java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED
 
 object ComfyQuantTests extends TestSuite {
 
@@ -36,6 +48,55 @@ object ComfyQuantTests extends TestSuite {
             }
         }
       }
+    }
+    test("rotated weights left in the file are the decoded ones, bit for bit") {
+      val ops = new CpuOps
+      def bits(tensor: Tensor): Seq[Short] = {
+        val bf16 =
+          if (tensor.dtype == DType.BF16) tensor
+          else {
+            val decoded = ops.allocate(DType.BF16, tensor.shape)
+            ops.convert(tensor, decoded)
+            decoded
+          }
+        val Storage.Host(segment) = bf16.storage: @unchecked
+        segment
+          .asSlice(bf16.byteOffset, bf16.byteSize)
+          .toArray(JAVA_SHORT_UNALIGNED)
+          .toSeq
+      }
+      def opened[A](storage: ComfyQuantStorage)(body: WeightSource => A): A = {
+        val source = WeightSource
+          .open(ops, Fixtures.path("comfy_quant.safetensors"), storage)
+        try body(source)
+        finally source.close()
+      }
+      try
+        opened(ComfyQuantStorage.Decoded) { decoded =>
+          val names = decoded.names.filter(_.endsWith(".weight")).toSeq
+          opened(ComfyQuantStorage.InPlace) { inPlace =>
+            assert(names.exists(inPlace.linear(_).dtype == ConvRot.Codes))
+            assert(names.exists(inPlace.linear(_).dtype == ConvRot.Nibbles))
+            names.foreach { name =>
+              assert(bits(inPlace.linear(name)) == bits(decoded(name)))
+              // asked as anything but a linear, a weight comes decoded
+              assert(inPlace(name).dtype == DType.BF16)
+              assert(bits(inPlace(name)) == bits(decoded(name)))
+              val rows = decoded.shape(name).dimensions.head.toInt
+              assert(
+                inPlace.hostRows(name, 0, rows).map(CpuOps.toBfloat16).toSeq ==
+                  bits(decoded(name))
+              )
+            }
+          }
+          opened(ComfyQuantStorage.DecodedOnGpu) { onGpu =>
+            names.foreach { name =>
+              assert(onGpu(name).dtype == DType.BF16)
+              assert(bits(onGpu(name)) == bits(decoded(name)))
+            }
+          }
+        }
+      finally ops.close()
     }
     test("the rotation is its own inverse") {
       val random = new java.util.Random(3)

@@ -18,7 +18,9 @@ raw tail on demand.
 - Every session card and the generation panel show a progress bar sourced
   from the log: "loading weights 15/298 · 16.95GB/s" while tensors load,
   "sampling 2/4 (50%) · 6.80s/it" during a generation, with the pass name
-  when a model runs several ("sampling (high noise) 5/20"). No bar in flight
+  when a model runs several ("sampling (high noise) 5/20"), "decoding 34/100
+  (34%) · 1.87%/s" while the drift runner decodes an LTX 2.5 video after its
+  last step (`ProgressKind.Decoding`, read from the `%/s`). No bar in flight
   → the last non-progress line is shown instead, sd-cpp's
   `[INFO   ] file.cpp:123 - ` prefix stripped.
 - A batch shows two bars in the generation panel: "Image 2 of 4" over a bar of

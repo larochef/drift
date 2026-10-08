@@ -29,14 +29,36 @@ object ComfyQuant {
   /** A weight to decode: `shape` is the decoded one, `rows(first, count)` its
     * values for those rows.
     */
-  final class Weight(val shape: Shape, decode: (Long, Int) => Array[Float]) {
+  final class Weight(
+      val shape: Shape,
+      /** The parts a backend decodes the weight from where the file holds it,
+        * when it is rotated.
+        */
+      val stored: Option[Stored],
+      decode: (Long, Int) => Array[Float]
+  ) {
     def rows(first: Long, count: Int): Array[Float] = decode(first, count)
   }
 
-  /** The only rotation checked against the official weights: 256 columns, the
-    * Kronecker fourth power of the 4 × 4 regular Hadamard matrix.
+  /** A rotated weight where the file holds it, for `Ops.rotated`: the codes,
+    * the scales (one a row, or one for all), and a 4-bit weight's levels.
     */
-  private val RotationGroup = 256
+  final class Stored(
+      val codes: StoredTensor,
+      val scales: () => Array[Float],
+      val levels: Option[Levels]
+  )
+
+  /** What makes an int8 of a 4-bit code: the codebook and the relative scales,
+    * one a `groupSize` columns.
+    */
+  final class Levels(
+      val codebook: () => Array[Float],
+      val relative: StoredTensor,
+      val groupSize: Int
+  )
+
+  private val RotationGroup = ConvRot.Group
 
   /** The weights of `file` to decode, by their stored names. */
   def weights(file: TensorSource): Map[String, Weight] =
@@ -138,6 +160,7 @@ object ComfyQuant {
     }
     new Weight(
       weight.shape,
+      rotation.map(_ => new Stored(weight, () => scales, None)),
       (first, count) => {
         val bytes = weight.bytes
           .asSlice(first * columns, count.toLong * columns)
@@ -192,6 +215,16 @@ object ComfyQuant {
       )
     new Weight(
       Shape.of(rows, columns.toLong),
+      Option.when(
+        rotation.nonEmpty && relative.dtype == DType.F8E4M3 &&
+          groupSize % 16 == 0
+      )(
+        new Stored(
+          weight,
+          () => channel,
+          Some(new Levels(() => codebook, relative, groupSize))
+        )
+      ),
       (first, count) => {
         val bytes = weight.bytes
           .asSlice(first * packed, count.toLong * packed)
@@ -226,41 +259,10 @@ object ComfyQuant {
     )
   }
 
-  /** `length` values from `from`, every `group` of them times the normalized
-    * regular Hadamard matrix of that size: the Kronecker power of `[[1, 1, 1,
-    * −1], [1, 1, −1, 1], [1, −1, 1, 1], [−1, 1, 1, 1]] / 2`, one factor a
-    * base-4 digit of the column.
-    */
   private[runner] def unrotate(
       values: Array[Float],
       from: Int,
       length: Int,
       group: Int
-  ): Unit = {
-    var start = from
-    while (start < from + length) {
-      var stride = 1
-      while (stride < group) {
-        var block = start
-        while (block < start + group) {
-          var i = block
-          while (i < block + stride) {
-            val a = values(i)
-            val b = values(i + stride)
-            val c = values(i + 2 * stride)
-            val d = values(i + 3 * stride)
-            val half = (a + b + c + d) * 0.5f
-            values(i) = half - d
-            values(i + stride) = half - c
-            values(i + 2 * stride) = half - b
-            values(i + 3 * stride) = half - a
-            i += 1
-          }
-          block += 4 * stride
-        }
-        stride *= 4
-      }
-      start += group
-    }
-  }
+  ): Unit = ConvRot.rotate(values, from, length, group)
 }

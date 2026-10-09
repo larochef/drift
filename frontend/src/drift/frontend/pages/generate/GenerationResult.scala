@@ -190,6 +190,8 @@ class GenerationResult(
           // under it: with this generation queued behind a batch, both are the
           // running job's, and both stay.
           BatchProgressView(sessionSignal.map(_.flatMap(_.batch))).element,
+          // A video's stages around the bar of the one in flight.
+          StageProgressView(sessionSignal.map(_.flatMap(_.stage))).element,
           // The step count comes from the log, which spec 08 anticipated and
           // spec 13 delivered; without a match the bar stays indeterminate.
           LogProgressView(

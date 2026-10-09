@@ -1,6 +1,12 @@
 package drift.backend.session
 
-import drift.shared.{BatchProgress, LogLine, ProgressKind, SessionProgress}
+import drift.shared.{
+  BatchProgress,
+  LogLine,
+  ProgressKind,
+  SessionProgress,
+  StageProgress
+}
 
 import scala.concurrent.duration.DurationInt
 
@@ -94,6 +100,49 @@ object SessionLogTests extends TestSuite {
           SessionProgress(ProgressKind.Decoding, 34, 100, "1.87%/s")
         )
       )
+    }
+
+    test("the runner's inputs being read, and a long step redrawn within") {
+      val log = SessionLog()
+      log.append("reading 1 references: 239 × 768 × 768 (VAE)")
+      log.append(
+        "  |==========                                        | 48/240 - 0.61tiles/s"
+      )
+      assert(
+        log.progress == Some(
+          SessionProgress(ProgressKind.Preparing, 48, 240, "0.61tiles/s")
+        )
+      )
+      log.append("sampling using Euler method")
+      log.append(
+        "  |=====================                             | 3.42/8 - 58.80s/it"
+      )
+      assert(
+        log.progress == Some(
+          SessionProgress(ProgressKind.Sampling, 3, 8, "58.80s/it", 0.42)
+        )
+      )
+      assert(log.progress.map(_.percent) == Some(43))
+      // 4.58 steps at 58.8 s
+      assert(
+        log.progress.flatMap(_.remaining) ==
+          Some("about 4 min left for this step")
+      )
+    }
+
+    test("a video's stages, from its opening line to its closing one") {
+      val log = SessionLog()
+      log.append("generating 56 frames of 512 × 512 (seed 42)")
+      assert(log.stage.isEmpty)
+      log.append("stage 1/5: reading the prompt")
+      log.append("stage 2/5: sampling")
+      log.append(
+        "  |======                                            | 1/8 - 12.40s/it"
+      )
+      assert(log.stage == Some(StageProgress(2, 5, "sampling")))
+      assert(log.stage.map(_.completed) == Some(1))
+      log.append("generate_video completed in 140.20s")
+      assert(log.stage.isEmpty)
     }
 
     test("the job's closing line ends the batch, and so does the session") {

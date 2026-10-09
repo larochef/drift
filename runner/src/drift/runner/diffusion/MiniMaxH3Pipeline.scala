@@ -91,6 +91,18 @@ final class MiniMaxH3Pipeline(
   override def makesSoundtrack: Boolean = true
   override def decodesSoundtrack: Boolean = audioDecoder.isDefined
 
+  def stages(request: VideoRequest): Seq[String] =
+    Option.when(request.references.nonEmpty)("reading the references").toSeq ++
+      Seq("reading the prompt") ++
+      Option.when(readsInputs(request))("reading the inputs") ++
+      Seq("sampling", "decoding the video") ++
+      Option.when(audioDecoder.isDefined)("decoding the sound")
+
+  /** Whether `request` has keyframes, guides or a control to encode. */
+  private def readsInputs(request: VideoRequest) =
+    request.initImage.isDefined || request.endImage.isDefined ||
+      request.guides.nonEmpty || request.control.isDefined
+
   def alignedFrames(frames: Int): Int = {
     var aligned = math.max(frames, 5)
     while (aligned % 17 != 5) aligned += 1
@@ -313,29 +325,43 @@ final class MiniMaxH3Pipeline(
       MiniMaxH3References.normalized(_, frames, fps, MiniMaxH3Audio.SampleRate)
     )
     val pieces = MiniMaxH3References.pieces(normalized, sizing, fps)
-    val visual = normalized
-      .flatMap {
-        case MiniMaxH3Normalized.Image(image)  => Seq(Seq(image))
-        case MiniMaxH3Normalized.Clip(clip, _) =>
-          Seq(clip.take(MiniMaxH3References.encodedFrames(clip.size)))
-        case MiniMaxH3Normalized.Sound(_) => Nil
-      }
-      .map { clip =>
-        val (width, height) = (clip.head.getWidth, clip.head.getHeight)
-        val values = videoEncoder.encode(
-          clip.map(Images.pixels(_)),
-          height,
-          width,
-          Posterior.Sample(KeyframeSeed)
+    val clips = normalized.flatMap {
+      case MiniMaxH3Normalized.Image(image)  => Seq(Seq(image))
+      case MiniMaxH3Normalized.Clip(clip, _) =>
+        Seq(clip.take(MiniMaxH3References.encodedFrames(clip.size)))
+      case MiniMaxH3Normalized.Sound(_) => Nil
+    }
+    // a clip's encoding lasts minutes: its tiles are counted
+    println(
+      s"reading ${request.references.size} references: ${clips.map(clip => s"${clip.size} × ${clip.head.getWidth} × ${clip.head.getHeight}").mkString(", ")} (VAE)"
+    )
+    videoEncoder.onTile = Images.countBar(
+      clips
+        .map(clip =>
+          videoEncoder.tiles(clip.size, clip.head.getHeight, clip.head.getWidth)
         )
-        val (h, w) = (height / LatentScale, width / LatentScale)
-        MiniMaxH3Conditions.Latents(
-          values,
-          values.length / (h * w * videoEncoder.latentChannels),
-          h,
-          w
-        )
-      }
+        .sum,
+      "tiles/s"
+    )
+    val visual =
+      try
+        clips.map { clip =>
+          val (width, height) = (clip.head.getWidth, clip.head.getHeight)
+          val values = videoEncoder.encode(
+            clip.map(Images.pixels(_)),
+            height,
+            width,
+            Posterior.Sample(KeyframeSeed)
+          )
+          val (h, w) = (height / LatentScale, width / LatentScale)
+          MiniMaxH3Conditions.Latents(
+            values,
+            values.length / (h * w * videoEncoder.latentChannels),
+            h,
+            w
+          )
+        }
+      finally videoEncoder.onTile = () => ()
     val sounds = normalized.map(
       _.soundtrack.map(channels => soundLatents(channels).flatten.toArray)
     )
@@ -413,6 +439,7 @@ final class MiniMaxH3Pipeline(
       request.control.isEmpty || takesControl,
       "a control video needs MiniMax H3's Fun ControlNet union (--control-net)"
     )
+    if (request.references.nonEmpty) stage("reading the references")
     val referenced =
       Option.when(request.references.nonEmpty)(references(request, frames))
     // the references transformer is guidance-distilled: diffusers runs one pass
@@ -424,6 +451,7 @@ final class MiniMaxH3Pipeline(
     val held = mutable.ArrayBuffer.empty[Tensor]
     def keep(tensor: Tensor) = { held += tensor; tensor }
     try {
+      stage("reading the prompt")
       val (conditional, visionRows) =
         text(
           request.prompt,
@@ -441,6 +469,7 @@ final class MiniMaxH3Pipeline(
       keep(conditional)
       val unconditional =
         Option.when(guided)(keep(text(request.negativePrompt, Nil)._1))
+      if (readsInputs(request)) stage("reading the inputs")
       val keyframeLatents = keyframeImages.map { (image, _) =>
         MiniMaxH3Conditions.Latents(
           videoEncoder.encode(
@@ -573,8 +602,15 @@ final class MiniMaxH3Pipeline(
           sigmas(request.steps, request.shift),
           sigmas(request.steps, AudioShift)
         )
+      stage("sampling")
       progress(0, request.steps)
+      // a step's passes, block by block
+      val passes = if (unconditional.isDefined) 2 else 1
+      var pass = 0
+      transformer.onBlock = (done, of) =>
+        withinStep((pass + done.toDouble / of) / passes)
       (0 until request.steps).foreach { i =>
+        pass = 0
         val (videoTime, audioTime) = (1 - videoSigmas(i), 1 - audioSigmas(i))
         // ComfyUI's window: σ_end ≤ σ ≤ σ_start
         val controlled = control.collect {
@@ -603,6 +639,7 @@ final class MiniMaxH3Pipeline(
           uncond <- unconditional
           (v, a) <- others
         } {
+          pass = 1
           transformer.velocity(
             laid(uncond, Nil),
             uncond,
@@ -647,16 +684,27 @@ final class MiniMaxH3Pipeline(
         latentWidth,
         channels
       )
+      stage("decoding the video")
       val started = System.nanoTime()
       val images = mutable.ArrayBuffer.empty[BufferedImage]
       Images.decoding(s"$latentFrames latent frames")
-      decoder.decode(
-        latents,
-        latentFrames,
-        latentHeight,
-        latentWidth,
-        rgb => images += Images.toImage(rgb.map(_ * 2 - 1), width, height)
-      )
+      // the decode's bar, a tile at a time
+      val tiles = decoder.tiles(latentFrames, latentHeight, latentWidth)
+      val bar = Images.decodeBar()
+      var decoded = 0
+      decoder.onTile = () => {
+        decoded += 1
+        bar(decoded.toDouble / tiles)
+      }
+      try
+        decoder.decode(
+          latents,
+          latentFrames,
+          latentHeight,
+          latentWidth,
+          rgb => images += Images.toImage(rgb.map(_ * 2 - 1), width, height)
+        )
+      finally decoder.onTile = () => ()
       println(
         f"decoded ${images.size} frames in ${(System.nanoTime() - started) / 1e9}%.1f s"
       )
@@ -665,13 +713,17 @@ final class MiniMaxH3Pipeline(
         fps,
         audioDecoder.map(soundtrack(audio, _))
       )
-    } finally held.foreach(ops.release)
+    } finally {
+      transformer.onBlock = (_, _) => ()
+      held.foreach(ops.release)
+    }
   }
 
   /** The stereo soundtrack of the audio rows (`[2L, width]`, channel-major):
     * each channel decoded alone, interleaved.
     */
   private def soundtrack(audio: Tensor, audioDecoder: MiniMaxH3Audio) = {
+    stage("decoding the sound")
     val started = System.nanoTime()
     val rows = ops.toFloats(audio)
     val channels = MiniMaxH3Layout.AudioChannels

@@ -142,7 +142,7 @@ object ImageMain {
               )
           case _: SeedVr2Pipeline => ()
         }
-        new ImageServer(options, pipeline).start()
+        new ImageServer(options, pipeline, ops).start()
         println(s"listening on http://${options.host}:${options.port}")
     }
   }

@@ -36,7 +36,10 @@ only** — in a project, beside the picker, with **Stop session**.
   A reply comes in as plain text and is formatted (headings, lists, code,
   tables) once it is finished.
   Ctrl+Enter sends. **Stop** cuts a reply short.
-- The model's thinking is folded away under "thinking…"; open it if you want.
+- While the model thinks, the last lines of its thinking show as they come,
+  under "thinking…"; once the reply begins they fold away under "thinking" —
+  open it for the whole of it (it stays open while the reply streams). Its
+  Markdown is formatted as it comes, and so is the reply's.
 - Under each reply: how many tokens it read and wrote, and how fast.
 - The **context meter** shows how full the model's memory is. Past 75 % it
   warns you; at 100 % sending is refused until you compact or restart.

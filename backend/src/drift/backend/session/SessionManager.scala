@@ -95,7 +95,8 @@ final class SessionManager(
         session.copy(
           progress = log.flatMap(_.progress),
           activity = log.flatMap(_.activity),
-          batch = log.flatMap(_.batch)
+          batch = log.flatMap(_.batch),
+          stage = log.flatMap(_.stage)
         )
       }
       .toList

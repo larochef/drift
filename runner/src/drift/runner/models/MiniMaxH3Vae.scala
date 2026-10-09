@@ -403,6 +403,24 @@ final class MiniMaxH3Vae private (
     result
   }
 
+  /** Called as each tile of a clip is decoded: a long decode's progress. */
+  var onTile: () => Unit = () => ()
+
+  /** How many tiles decoding `frames` latent frames of `height` ×
+    * `widthLatents` takes: the calls `onTile` gets.
+    */
+  def tiles(frames: Int, height: Int, widthLatents: Int): Int = {
+    // the chunks `decode` cuts: 5 latent frames each, after 3 dropped tokens
+    val tokens = frames + 3
+    val chunks = (tokens + (5 - tokens % 5) % 5) / 5 - 1
+    chunks *
+      VaeTiles.split(height * Patch, tilePixels, tileOverlap, Patch)._1.size *
+      VaeTiles
+        .split(widthLatents * Patch, tilePixels, tileOverlap, Patch)
+        ._1
+        .size
+  }
+
   /** One temporal clip (`[frames, h, w, C]` normalized latents), spatially
     * tiled and blended (diffusers' `_decode_clip` and `_stitch_tiles`): `[4 ×
     * frames, 16h, 16w, 3]` in the decoder's space.
@@ -433,7 +451,9 @@ final class MiniMaxH3Vae private (
           ((t * th + y) * tw) * latentChannels,
           tw * latentChannels
         )
-        decodeTile(tile, frames, th, tw)
+        val decoded = decodeTile(tile, frames, th, tw)
+        onTile()
+        decoded
       }
     }
     VaeTiles.stitchAsDiffusers(

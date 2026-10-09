@@ -131,7 +131,15 @@ final class WanPipeline(
       (shift * base / (1 + (shift - 1) * base)).toFloat
     }
 
+  // two experts sample one after the other: a stage each
+  def stages(request: VideoRequest): Seq[String] =
+    Seq("reading the prompt and the inputs") ++
+      (if (high.isDefined) Seq("sampling (high noise)", "sampling (low noise)")
+       else Seq("sampling")) ++
+      Seq("decoding the video")
+
   def generate(request: VideoRequest, progress: (Int, Int) => Unit): Video = {
+    stage("reading the prompt and the inputs")
     def rounded(side: Int) =
       (side + sizeMultiple - 1) / sizeMultiple * sizeMultiple
     val (width, height) = (rounded(request.width), rounded(request.height))
@@ -213,9 +221,14 @@ final class WanPipeline(
         val highNoise = i < switch
         // a bar per expert, each announced as sd-cpp announces its passes and
         // started empty
-        if (high.isEmpty) { if (i == 0) progress(0, total) }
-        else if (i == 0 || i == switch) {
+        if (high.isEmpty) {
+          if (i == 0) {
+            stage("sampling")
+            progress(0, total)
+          }
+        } else if (i == 0 || i == switch) {
           val pass = if (highNoise) "high" else "low"
+          stage(s"sampling ($pass noise)")
           println(s"sampling($pass noise) using Euler method")
           progress(0, if (highNoise) switch else total - switch)
         }
@@ -273,12 +286,19 @@ final class WanPipeline(
         )
         image
       }
+      stage("decoding the video")
       val started = System.nanoTime()
       val images = mutable.ArrayBuffer.empty[BufferedImage]
       Images.decoding(s"${latentImages.size} latent frames")
+      // the decode's bar, a frame at a time: 1 + 4 (T − 1) of them
+      val frameCount = 1 + 4 * (latentImages.size - 1)
+      val bar = Images.decodeBar()
       decoder.decode(
         latentImages,
-        rgb => images += Images.toImage(ops.toFloats(rgb), width, height)
+        rgb => {
+          images += Images.toImage(ops.toFloats(rgb), width, height)
+          bar(images.size.toDouble / frameCount)
+        }
       )
       println(
         f"decoded ${images.size} frames in ${(System.nanoTime() - started) / 1e9}%.1f s"

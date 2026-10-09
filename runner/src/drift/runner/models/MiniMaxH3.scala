@@ -505,6 +505,11 @@ final class MiniMaxH3 private (
   val config: MiniMaxH3Config = MiniMaxH3Config.of(source)
   private val c = config
 
+  /** Called as each block of a pass ends, with how many are done of how many: a
+    * long step's progress.
+    */
+  var onBlock: (Int, Int) => Unit = (_, _) => ()
+
   /** The transformer this checkpoint is: keyframes or references. */
   val partition: MiniMaxH3Partition = MiniMaxH3Partition.of(path, source)
   final private case class Affine(weight: Tensor, bias: Tensor)
@@ -1446,6 +1451,7 @@ final class MiniMaxH3 private (
               w
             )
         }
+        onBlock(i + 1, blocks.size)
       }
       // the final norm, shift and scale per timestep, then each head
       val last = ops.allocate(DType.F32, Shape.of(timesteps.size.toLong, 2 * f))

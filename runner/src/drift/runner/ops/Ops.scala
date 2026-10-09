@@ -321,6 +321,12 @@ trait Ops extends AutoCloseable {
     */
   @volatile var wideProducts: Boolean = false
 
+  /** Called as the backend is given each piece of work (a kernel launched): a
+    * step's are counted to say how far a later one has got. The server's to set
+    * around a generation.
+    */
+  var onWork: () => Unit = () => ()
+
   /** A channels-last image `[H, W, C]` as rows of patch-ordered pixels
     * `[L × patch², C]`: row `l × patch² + py × patch + px` is pixel `(hs ×
     * patch + py, ws × patch + px)` of patch `l = hs × W / patch + ws`.

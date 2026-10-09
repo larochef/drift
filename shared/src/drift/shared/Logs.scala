@@ -24,17 +24,20 @@ object LogLine {
   given JsonValueCodec[List[LogLine]] = JsonCodecMaker.make
 }
 
-/** Which of sd-cpp's two progress bars this is. They are told apart by their
-  * unit and nothing else: tensors are counted at a transfer rate, sampling
-  * steps at seconds per iteration.
+/** Which progress bar this is. They are told apart by their unit and nothing
+  * else: tensors are counted at a transfer rate, sampling steps at seconds per
+  * iteration, a decode in hundredths a second, and the inputs the drift runner
+  * reads before the first step (a reference clip through the VAE) in tiles a
+  * second.
   */
 enum ProgressKind derives CanEqual {
-  case Loading, Sampling, Decoding
+  case Loading, Preparing, Sampling, Decoding
 
   def label: String = this match {
-    case Loading  => "loading weights"
-    case Sampling => "sampling"
-    case Decoding => "decoding"
+    case Loading   => "loading weights"
+    case Preparing => "reading the inputs"
+    case Sampling  => "sampling"
+    case Decoding  => "decoding"
   }
 }
 object ProgressKind {
@@ -51,6 +54,10 @@ case class SessionProgress(
     done: Int,
     total: Int,
     detail: String,
+    /** The fraction done of the step under way, when the engine says: the drift
+      * runner redraws a long step's bar as `3.42/8`.
+      */
+    within: Double = 0.0,
     /** Which pass this bar belongs to, when the model runs more than one -
       * "high noise" for wan 2.2's first expert. Two identical 20-step bars back
       * to back are otherwise indistinguishable (François, 2026-09-09).
@@ -58,9 +65,34 @@ case class SessionProgress(
     note: Option[String] = None
 ) {
   def percent: Int =
-    if (total <= 0) 0 else ((done.toDouble / total) * 100).round.toInt.min(100)
+    if (total <= 0) 0
+    else (((done + within) / total) * 100).round.toInt.min(100)
+
+  /** The seconds this bar still needs at the rate it shows, when it shows one
+    * that says (a transfer rate does not: its total is counted in tensors).
+    */
+  def remainingSeconds: Option[Double] = {
+    val left = total - done - within
+    SessionProgress.Rate.findFirstMatchIn(detail).flatMap { found =>
+      found.group(1).toDoubleOption.filter(_ > 0).map { rate =>
+        if (found.group(2) == "s/it") left * rate else left / rate
+      }
+    }
+  }
+
+  /** `remainingSeconds` as the bar's caption says it: "about 4 min left for
+    * this step" — the bar's own, not the generation's.
+    */
+  def remaining: Option[String] = remainingSeconds.map { seconds =>
+    val time =
+      if (seconds < 90) s"${math.max(1, seconds.round)} s"
+      else s"${(seconds / 60).round} min"
+    s"about $time left for this step"
+  }
 }
 object SessionProgress {
+  private val Rate = """([\d.]+)\s*(s/it|it/s|tiles/s|%/s)""".r
+
   given Schema[SessionProgress] = Schema.derived
 }
 
@@ -75,6 +107,21 @@ case class BatchProgress(image: Int, total: Int) {
 }
 object BatchProgress {
   given Schema[BatchProgress] = Schema.derived
+}
+
+/** Which stage of a video's generation a session is on: `stage` of `total`,
+  * counted from 1, and its `name` ("reading the references", "sampling",
+  * "decoding the video"). The bar in flight ([[SessionProgress]]) is that
+  * stage's; this is the generation around it, as [[BatchProgress]] is the batch
+  * around an image.
+  */
+case class StageProgress(stage: Int, total: Int, name: String) {
+
+  /** The stages finished before the one in flight. */
+  def completed: Int = (stage - 1).max(0)
+}
+object StageProgress {
+  given Schema[StageProgress] = Schema.derived
 }
 
 /** Reads sd-cpp's progress bars, which it redraws in place with a carriage
@@ -117,7 +164,7 @@ object LogProgress {
     * leaves the narrative behind, which [[parseWithRest]] hands back.
     */
   private val Bar =
-    """\|\s*(\d+)\s*/\s*(\d+)\s+-\s+([\d.]+\s*(?:s/it|it/s|[KMGTP]?B/s|%/s))""".r
+    """\|\s*(\d+)(\.\d+)?\s*/\s*(\d+)\s+-\s+([\d.]+\s*(?:s/it|it/s|tiles/s|[KMGTP]?B/s|%/s))""".r
 
   /** The escape codes out, so a line can be displayed and matched. */
   def clean(text: String): String = Ansi.replaceAllIn(text, "").trim
@@ -136,8 +183,10 @@ object LogProgress {
   def parseWithRest(text: String): Option[(SessionProgress, String)] =
     Bar.findFirstMatchIn(clean(text)).flatMap { found =>
       val done = found.group(1).toIntOption
-      val total = found.group(2).toIntOption
-      val detail = found.group(3)
+      val within =
+        Option(found.group(2)).flatMap(_.toDoubleOption).getOrElse(0.0)
+      val total = found.group(3).toIntOption
+      val detail = found.group(4)
       val rest = clean(text).substring(found.end).trim
       (done, total) match {
         case (Some(d), Some(t)) if t > 0 && d >= 0 =>
@@ -147,9 +196,16 @@ object LogProgress {
           // about half the updates of a fast sampler, which looks like a bar
           // that sticks and then jumps.
           if (detail.endsWith("s/it") || detail.endsWith("it/s"))
-            Some((SessionProgress(ProgressKind.Sampling, d, t, detail), rest))
+            Some(
+              (
+                SessionProgress(ProgressKind.Sampling, d, t, detail, within),
+                rest
+              )
+            )
           // The transfer rate is formatted adaptively too (MB/s, then GB/s),
           // which is why the unit is matched by suffix rather than in full.
+          else if (detail.endsWith("tiles/s"))
+            Some((SessionProgress(ProgressKind.Preparing, d, t, detail), rest))
           else if (detail.endsWith("%/s"))
             Some((SessionProgress(ProgressKind.Decoding, d, t, detail), rest))
           else if (detail.endsWith("B/s"))
@@ -194,6 +250,32 @@ object LogProgress {
         case _ => None
       }
     }
+
+  /** The line that opens each stage of a video, as the drift runner writes it:
+    * `stage 2/5: sampling`.
+    */
+  private val Stage = """^stage\s+(\d+)\s*/\s*(\d+):\s*(.+)$""".r
+
+  def stageOf(text: String): Option[StageProgress] =
+    Stage.findFirstMatchIn(clean(text)).flatMap { found =>
+      (found.group(1).toIntOption, found.group(2).toIntOption) match {
+        case (Some(stage), Some(total)) if stage >= 1 && stage <= total =>
+          Some(StageProgress(stage, total, found.group(3).trim))
+        case _ => None
+      }
+    }
+
+  /** Whether a line opens or closes a job: its stages are over with it, or not
+    * begun.
+    */
+  def endsStages(text: String): Boolean = {
+    val line = clean(text)
+    line.startsWith("generating ") || line.contains(
+      "generate_video completed"
+    ) ||
+    line.contains("generate_image completed") ||
+    line.contains("generation failed") || line.contains("generation cancelled")
+  }
 
   /** Whether a line closes an `img_gen` job - sd-cpp's own closing line, which
     * the drift runner prints in the same shape. The batch is over with it.

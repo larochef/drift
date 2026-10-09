@@ -47,7 +47,7 @@ class LogProgressView(
             cls := "mt-2",
             progressTag(
               cls := "progress is-small is-info mb-1",
-              progressValueAttr := progress.done.toString,
+              progressValueAttr := (progress.done + progress.within).toString,
               maxAttr := progress.total.toString
             ),
             p(
@@ -58,7 +58,8 @@ class LogProgressView(
               s"${progress.kind.label}" +
                 progress.note.map(note => s" ($note)").getOrElse("") +
                 s" ${progress.done}/${progress.total}" +
-                s" (${progress.percent}%) - ${progress.detail}"
+                s" (${progress.percent}%) - ${progress.detail}" +
+                progress.remaining.map(left => s" - $left").getOrElse("")
             )
           )
         case (None, Some(activity)) =>

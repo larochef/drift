@@ -265,6 +265,19 @@ final class MiniMaxH3VideoEncoder private (
     }
   }
 
+  /** Called as each tile of a clip is encoded: a long clip's progress. */
+  var onTile: () => Unit = () => ()
+
+  /** How many tiles encoding `frames` frames of `width` × `height` takes: the
+    * calls `onTile` gets.
+    */
+  def tiles(frames: Int, height: Int, width: Int): Int = {
+    val clips =
+      if (frames == 1) 1 else (frames + ClipLength - 1) / ClipLength
+    clips * VaeTiles.split(height, tilePixels, tileOverlap, 16)._1.size *
+      VaeTiles.split(width, tilePixels, tileOverlap, 16)._1.size
+  }
+
   /** One clip (`frames` of `[height, width, 3]` in [−1, 1]) spatially tiled and
     * stitched: moments `[frames', height / 16, width / 16, 2C]`.
     */
@@ -279,7 +292,7 @@ final class MiniMaxH3VideoEncoder private (
       VaeTiles.split(width, tilePixels, tileOverlap, 16)
     val tiles = rowStarts.map { top =>
       columnStarts.map { left =>
-        encodeTile(frames.map { pixels =>
+        val encoded = encodeTile(frames.map { pixels =>
           val tile = new Array[Float](tileHeight * tileWidth * 3)
           (0 until tileHeight).foreach(y =>
             System.arraycopy(
@@ -303,6 +316,8 @@ final class MiniMaxH3VideoEncoder private (
           finally ops.release(uploaded)
           normalized
         })
+        onTile()
+        encoded
       }
     }
     val latentFrames =

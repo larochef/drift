@@ -133,7 +133,16 @@ final class LtxPipeline(
       }
     }
 
+  def stages(request: VideoRequest): Seq[String] =
+    Seq(
+      "reading the prompt and the inputs",
+      "sampling",
+      "decoding the video"
+    ) ++
+      Option.when(audioDecoder.isDefined)("decoding the sound")
+
   def generate(request: VideoRequest, progress: (Int, Int) => Unit): Video = {
+    stage("reading the prompt and the inputs")
     def rounded(side: Int) =
       (side + sizeMultiple - 1) / sizeMultiple * sizeMultiple
     val (width, height) = (rounded(request.width), rounded(request.height))
@@ -240,6 +249,7 @@ final class LtxPipeline(
         )
       val schedule = sigmas(request.steps, layout.videoTokens)
       val steps = schedule.length - 1
+      stage("sampling")
       progress(0, steps)
       (0 until steps).foreach { i =>
         val timestep = schedule(i) * 1000
@@ -351,6 +361,7 @@ final class LtxPipeline(
           .rows(t.toLong * perFrame, perFrame)
           .view(layout.height, layout.width, c.videoChannels)
       )
+      stage("decoding the video")
       val started = System.nanoTime()
       val images = mutable.ArrayBuffer.empty[BufferedImage]
       Images.decoding(s"${latentFrames.size} latent frames")
@@ -363,6 +374,7 @@ final class LtxPipeline(
         f"decoded ${images.size} frames in ${(System.nanoTime() - started) / 1e9}%.1f s"
       )
       val soundtrack = audioDecoder.map { audioDecoder =>
+        stage("decoding the sound")
         val started = System.nanoTime()
         val samples = audioDecoder.decode(ops.toFloats(audio))
         println(

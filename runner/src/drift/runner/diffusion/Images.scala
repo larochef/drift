@@ -43,6 +43,29 @@ object Images {
     }
   }
 
+  /** A bar over `total` things counted one a call, at so many a second in
+    * `unit` (`tiles/s`, which drift reads as the inputs being read —
+    * `LogProgress`): the empty bar at once, then a line a call.
+    */
+  def countBar(total: Int, unit: String): () => Unit = {
+    val started = System.nanoTime()
+    var done = 0
+    def draw(): Unit = {
+      val seconds = (System.nanoTime() - started) / 1e9
+      val rate = if (seconds > 0) done / seconds else 0.0
+      val filled = if (total > 0) 50 * done / total else 50
+      println(
+        f"  |${"=" * filled}${" " * (50 - filled)}| $done/$total - $rate%.2f$unit"
+      )
+    }
+    if (total > 0) draw()
+    () =>
+      if (done < total) {
+        done += 1
+        draw()
+      }
+  }
+
   /** RGB or RGBA (as `values` holds 3 or 4 per pixel) in [−1, 1],
     * channels-last, to 8 bits: `round((x + 1) / 2 × 255)`.
     */

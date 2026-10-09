@@ -2533,6 +2533,24 @@ on the old tool.
         optional **llm vision** slot (`--llm_vision`, as Qwen Image 2.1's);
         without either the request is refused, naming the slot. Live with the
         heretic Q4_K_M and its mmproj F16: clean.
+      - **Progress** (2026-10-09, uncompiled): reading the references draws
+        a bar counted in the VAE's tiles (`tiles/s`, drift's "reading the
+        inputs"); a step that lasts redraws the step bar within itself, block
+        by block (`3.42/8`, at the rate the step is heading for during the
+        first); drift shows the time left for the step at the bar's rate.
+        The video decodes draw a bar as LTX 2.5's does (`%/s`): H3's a tile
+        at a time, Wan's a frame at a time.
+        Every other model, pictures included, moves within a step too, from its
+        second step on: the server counts the kernels a whole step launched
+        (`Ops.onWork`) and redraws at the fraction of them the step under way
+        has launched, a second apart.
+        Every video pipeline (H3, Wan, LTX) announces its stages (`stage 2/5:
+        sampling` — the references, the prompt, the inputs, sampling, the two
+        decodes, the file — each model its own list: Wan's two experts are
+        two sampling stages, a model without sound has no sound stage), which
+        drift shows as "Step 2 of 5: sampling" over
+        the stage's own bar, as it does a batch's images. Images keep their
+        step bar alone.
       - **Left:** ComfyUI's `"match"` sizing of references (diffusers' canvas
         sizing makes a clip reference cost more rows than the video itself);
         the 5–15 s duration check.

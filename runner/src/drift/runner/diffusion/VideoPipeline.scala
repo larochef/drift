@@ -192,6 +192,21 @@ trait VideoPipeline extends AutoCloseable {
   /** The frames a request of `frames` gets: the next count the model takes. */
   def alignedFrames(frames: Int): Int
 
+  /** The stages generating `request` goes through, in order, as `stage`
+    * announces them: drift's bar over the whole generation.
+    */
+  def stages(request: VideoRequest): Seq[String]
+
+  /** Announces a stage of `stages` as it starts: the server's to set around
+    * `generate`.
+    */
+  var stage: String => Unit = _ => ()
+
+  /** Told the fraction done of the step under way, by a pipeline whose steps
+    * can last minutes: the server's to set around `generate`.
+    */
+  var withinStep: Double => Unit = _ => ()
+
   /** The video of `request`; `progress(0, steps)` before the first step (of
     * each pass), `progress(step, steps)` after each.
     */

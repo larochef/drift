@@ -27,7 +27,8 @@ import com.sun.net.httpserver.{HttpExchange, HttpServer}
   */
 final class ImageServer(
     options: ImageOptions,
-    pipeline: ImagePipeline | VideoPipeline | SeedVr2Pipeline
+    pipeline: ImagePipeline | VideoPipeline | SeedVr2Pipeline,
+    ops: drift.runner.ops.Ops
 ) {
 
   /** One job of `kind`: `run` makes its result document. */
@@ -865,21 +866,79 @@ final class ImageServer(
     * pass starts with, which says the sampling has begun (and how many steps it
     * is) while the first step, minutes long on a large video, is under way.
     */
-  private def stepPrinter(): (Int, Int) => Unit = {
-    var last = System.nanoTime()
-    (step, steps) =>
+  private def stepPrinter(): (Int, Int) => Unit = (new StepBar).step
+
+  /** A video's last stage, after the pipeline's own. */
+  private val VideoFileStage = "writing the file"
+
+  /** A pass's bar: a line a step, and while a step lasts, the same line redrawn
+    * with the fraction of it done (`3.42/8`, at the last step's rate, or during
+    * the first step at the rate it is heading for). The fraction is the
+    * pipeline's own when it tells one (`within`), else the work the backend was
+    * given since the step began over what the last whole step took (`work`):
+    * any model's, from its second step on.
+    */
+  final private class StepBar {
+    private var last = System.nanoTime()
+    private var drawn = last
+    private var at = (0, 0)
+    private var rate = 0.0
+    // the backend's work since the step began, and the last whole step's
+    private var worked = 0L
+    private var perStep = 0L
+    private var told = false
+    private var shown = 0.0
+
+    def step(step: Int, steps: Int): Unit = {
       // Between two steps is where a generation can be left: every pipeline
       // reports them here, and none holds a kernel across the call.
       if (generating.exists(_.cancelRequested)) throw new JobCancelled
       if (steps > 0) {
         val now = System.nanoTime()
         val filled = 50 * step / steps
-        val seconds = if (step == 0) 0.0 else (now - last) / 1e9
+        rate = if (step == 0) 0.0 else (now - last) / 1e9
         println(
-          f"  |${"=" * filled}${" " * (50 - filled)}| $step/$steps - $seconds%.2fs/it"
+          f"  |${"=" * filled}${" " * (50 - filled)}| $step/$steps - $rate%.2fs/it"
         )
         last = now
+        drawn = now
+        at = (step, steps)
+        if (step > 0) perStep = worked
+        worked = 0
+        shown = 0.0
       }
+    }
+
+    /** The fraction done of the step under way, as the pipeline tells it. */
+    def within(fraction: Double): Unit = {
+      told = true
+      draw(fraction)
+    }
+
+    /** A piece of work given to the backend (`Ops.onWork`). */
+    def work(): Unit = {
+      worked += 1
+      if (!told && perStep > 0 && (worked & 15) == 0)
+        draw(math.min(0.99, worked.toDouble / perStep))
+    }
+
+    /** Redraws the bar at `fraction` of the step under way, a second apart. */
+    private def draw(fraction: Double): Unit = {
+      val (step, steps) = at
+      val now = System.nanoTime()
+      if (
+        step < steps && fraction > shown && fraction < 1 && now - drawn >= 1e9
+      ) {
+        shown = fraction
+        val done = step + fraction
+        val filled = (50 * done / steps).toInt
+        val seconds = if (rate > 0) rate else (now - last) / 1e9 / fraction
+        println(
+          f"  |${"=" * filled}${" " * (50 - filled)}| $done%.2f/$steps - $seconds%.2fs/it"
+        )
+        drawn = now
+      }
+    }
   }
 
   /** An `img_gen` job's result: `count` images of `request`, seeds in sequence.
@@ -894,7 +953,11 @@ final class ImageServer(
     val pngs = (0 until count).map { index =>
       val seeded = request.copy(seed = request.seed + index)
       println(s"generating image ${index + 1}/$count (seed ${seeded.seed})")
-      val image = pipeline.generate(seeded, stepPrinter())
+      val bar = new StepBar
+      ops.onWork = bar.work
+      val image =
+        try pipeline.generate(seeded, bar.step)
+        finally ops.onWork = () => ()
       val png = new ByteArrayOutputStream()
       ImageIO.write(image, "png", png)
       png.toByteArray
@@ -922,8 +985,29 @@ final class ImageServer(
     println(
       s"generating ${pipeline.alignedFrames(request.frames)} frames of ${request.width} × ${request.height} (seed ${request.seed})"
     )
-    val video = pipeline.generate(request, stepPrinter())
+    val startedAt = System.nanoTime()
+    // the pipeline's stages and the file's, each announced as it starts
+    val stages = pipeline.stages(request) :+ VideoFileStage
+    val enter = (name: String) => {
+      val index = stages.indexOf(name)
+      if (index >= 0) println(s"stage ${index + 1}/${stages.size}: $name")
+    }
+    val bar = new StepBar
+    pipeline.stage = enter
+    pipeline.withinStep = bar.within
+    ops.onWork = bar.work
+    val video =
+      try pipeline.generate(request, bar.step)
+      finally {
+        pipeline.stage = _ => ()
+        pipeline.withinStep = _ => ()
+        ops.onWork = () => ()
+      }
+    enter(VideoFileStage)
     val webm = VideoFiles.webm(video)
+    println(
+      f"generate_video completed in ${(System.nanoTime() - startedAt) / 1e9}%.2fs"
+    )
     ujson.Obj(
       "output_format" -> "webm",
       "mime_type" -> "video/webm",

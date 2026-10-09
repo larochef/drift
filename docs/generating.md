@@ -152,7 +152,15 @@ Per model, on the drift runner:
   video shows a second bar, "decoding", while its frames are made from the
   latents, which takes minutes for a long video. A batch shows two bars: "Image 2
   of 4" with the images already done, and under it the steps of the image
-  being made. Submit several and a short list
+  being made. A video on the drift runner shows two bars as well: "Step 2 of
+  5: sampling" over the whole generation (reading the references, the prompt
+  and the inputs, sampling, decoding, writing the file), and under it that
+  step's own bar with the time it still needs ("about 4 min left for this
+  step"). On the drift runner a sampling step that lasts more than a second
+  moves the bar while it runs, for pictures and videos alike — from the second
+  step on (the first one measures how much work a step is; MiniMax H3 moves
+  from the first).
+  Submit several and a short list
   appears above the result with the jobs waiting behind the one on screen, each
   with its own **⏹**, so a queue can be trimmed without touching the rest — jobs
   queued from another project included, since they hold yours up just the same.

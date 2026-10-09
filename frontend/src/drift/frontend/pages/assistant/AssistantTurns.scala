@@ -68,15 +68,13 @@ class AssistantTurns(
               else emptyNode
             )
           ),
+          ReplyText(signal.map(_.text), signal.map(_.streaming)).element,
           child <-- signal.map(turn =>
-            div(
-              ReplyText(turn.text, turn.streaming).element,
-              turn.error match {
-                case Some(error) =>
-                  p(cls := "has-text-danger is-size-7", error)
-                case None => emptyNode
-              }
-            )
+            turn.error match {
+              case Some(error) =>
+                p(cls := "has-text-danger is-size-7", error)
+              case None => emptyNode
+            }
           )
         )
       case _ =>
@@ -89,19 +87,11 @@ class AssistantTurns(
               if (turn.streaming) span(cls := "ml-2", "…") else emptyNode
             )
           ),
+          // One element for the turn's life: it keeps what the user opened.
+          ThinkingView(signal).element,
+          ReplyText(signal.map(_.text), signal.map(_.streaming)).element,
           child <-- signal.map { turn =>
             div(
-              if (turn.reasoning.nonEmpty)
-                detailsTag(
-                  cls := "mb-2",
-                  summaryTag(
-                    cls := "text-secondary is-size-7",
-                    s"thinking… (${turn.reasoning.length} characters)"
-                  ),
-                  pre(cls := "assistant-text is-size-7", turn.reasoning)
-                )
-              else emptyNode,
-              ReplyText(turn.text, turn.streaming).element,
               turn.error match {
                 case Some(error) =>
                   div(

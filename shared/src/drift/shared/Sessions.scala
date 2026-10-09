@@ -75,6 +75,11 @@ case class Session(
       * job.
       */
     batch: Option[BatchProgress] = None,
+    /** Which stage of a video the session is on, read out of its log like
+      * `progress`, which is then that stage's bar. `None` outside a video job,
+      * and on an engine that announces no stages.
+      */
+    stage: Option[StageProgress] = None,
     /** Said while the loaded models leave almost no memory
       * (`specs/07-launch-and-supervision.md`), on every ready session: they
       * share the memory.

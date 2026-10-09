@@ -28,6 +28,7 @@ final class SessionLog(capacity: Int = SessionLog.DefaultCapacity) {
   @volatile private var lastActivity: Option[String] = None
   @volatile private var samplingPass: Option[String] = None
   @volatile private var currentBatch: Option[BatchProgress] = None
+  @volatile private var currentStage: Option[StageProgress] = None
 
   private val subscribers = ConcurrentHashMap[Long, Channel[LogLine]]()
   // Once closed, a new follower is told at once that nothing more is coming.
@@ -49,6 +50,10 @@ final class SessionLog(capacity: Int = SessionLog.DefaultCapacity) {
     * only the job's closing line clears it.
     */
   def batch: Option[BatchProgress] = currentBatch
+
+  /** Which stage of a video the log has got to, if the engine announces them.
+    */
+  def stage: Option[StageProgress] = currentStage
 
   /** The most recent line that read like a failure - what a failed session
     * shows instead of making the user scroll a thousand lines.
@@ -86,6 +91,10 @@ final class SessionLog(capacity: Int = SessionLog.DefaultCapacity) {
             .batchOf(cleaned)
             .foreach(position => currentBatch = Some(position))
           if (LogProgress.endsBatch(cleaned)) currentBatch = None
+          if (LogProgress.endsStages(cleaned)) currentStage = None
+          LogProgress
+            .stageOf(cleaned)
+            .foreach(position => currentStage = Some(position))
           // A narrative line means the bar it followed is finished with.
           currentProgress = None
           if (LogProgress.looksLikeError(cleaned)) lastError = Some(cleaned)
@@ -127,6 +136,7 @@ final class SessionLog(capacity: Int = SessionLog.DefaultCapacity) {
     subscribers.keys.asScala.toList.foreach(unsubscribe)
     currentProgress = None
     currentBatch = None
+    currentStage = None
   }
 }
 

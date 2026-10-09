@@ -29,7 +29,12 @@ on the Models page and the project workspace ([`19`](19-projects-and-prompt-vers
   model's controls.
 - **Turns**, composer on top, newest first: the reply being written appears
   right under the input. User turns show their images and text; assistant
-  turns stream, reasoning folded into "thinking… (n characters)". Under a
+  turns stream, reasoning folded into "thinking (n characters)" — while the
+  model still thinks, its last lines (about eight) show under it as they come;
+  the block keeps the state the user gave it through the stream, and its
+  Markdown is rendered as it grows (the backend's renderer, asked again every
+  700 ms while the text changes); the reply's is rendered the same way as it
+  streams. Under a
   finished reply: prefill and generation as "n tokens in s (tok/s)".
 - **Proposal card** on a reply ending with the fenced blocks: **Apply to
   form** in a workspace, **Apply to generation form** in free play (hands the

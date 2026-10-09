@@ -421,6 +421,7 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
   ): Unit = {
     require(grid <= Int.MaxValue, s"${function.name} over $grid workgroups")
     deviceWrites += 1
+    onWork()
     if (grid > 0)
       hip.launch(
         function,
@@ -439,6 +440,7 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
       arguments: KernelArgument*
   ): Unit = {
     deviceWrites += 1
+    onWork()
     hip.launch(
       function,
       grid,

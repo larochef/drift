@@ -62,9 +62,11 @@ import scala.collection.mutable
   *     audio latents, one stereo channel after the other, by the audio VAE
   *     (BigVGAN) into 32 kHz when it is given (else the video is silent).
   * A request's frames round up to the `17n + 5` the VAE decodes, its sides up
-  * to multiples of 32; the model runs at 24 fps. The keyframes checkpoint
-  * (`fl2va`) takes no references, the references one (`ref2va`) none of the
-  * keyframes and guides.
+  * to multiples of 32; the model runs at 24 fps. The request says which way a
+  * checkpoint runs — with references, or with keyframes, guides or text alone —
+  * since the two released transformers share every name and shape and the
+  * community's merges are run both ways; a released file run the other way than
+  * it was trained is warned of. References go with no keyframe or guide.
   */
 final class MiniMaxH3Pipeline(
     ops: Ops,
@@ -73,16 +75,17 @@ final class MiniMaxH3Pipeline(
     textEncoder: Path,
     tokenizerFile: Path,
     audioVae: Option[Path],
-    controlNet: Option[Path]
+    controlNet: Option[Path],
+    vision: Option[Path]
 ) extends VideoPipeline {
 
   def family: String = "MiniMax H3"
   def fps: Int = 24
   def sizeMultiple: Int = 32
-  override def takesInitImage: Boolean = keyframes
-  override def takesEndImage: Boolean = keyframes
-  override def takesGuides: Boolean = keyframes
-  override def takesReferences: Boolean = !keyframes
+  override def takesInitImage: Boolean = true
+  override def takesEndImage: Boolean = true
+  override def takesGuides: Boolean = true
+  override def takesReferences: Boolean = true
   override def takesControl: Boolean = transformer.controlWidth.isDefined
   override def takesLoras: Boolean = true
   override def makesSoundtrack: Boolean = true
@@ -132,7 +135,10 @@ final class MiniMaxH3Pipeline(
     opened
   }
   private def tower = towerOpened.getOrElse {
-    val opened = QwenVision.fromWeights(ops, textEncoder, "visual.")
+    // an mmproj when one is given, else the tower the text encoder carries
+    val opened = vision.fold(
+      QwenVision.fromWeights(ops, textEncoder, "visual.")
+    )(QwenVision.open(ops, _))
     towerOpened = Some(opened)
     opened
   }
@@ -388,25 +394,31 @@ final class MiniMaxH3Pipeline(
       .foreach(problem => println(s"[WARN] LoRA left unapplied: $problem"))
     val keyframeImages = request.initImage.map(_ -> 0).toSeq ++
       request.endImage.map(_ -> (frames - 1)).toSeq
-    if (keyframes)
-      require(
-        request.references.isEmpty,
-        "MiniMax H3's keyframes transformer (fl2va) takes no references: load the references one (ref2va)"
-      )
-    else
-      require(
+    require(
+      request.references.isEmpty ||
         keyframeImages.isEmpty && request.guides.isEmpty,
-        "MiniMax H3's references transformer (ref2va) takes no keyframes or guides: load the keyframes one (fl2va)"
+      "MiniMax H3 takes references or keyframes and guides, not both in a video"
+    )
+    if (keyframes && request.references.nonEmpty)
+      println(
+        "[WARN] this checkpoint is MiniMax H3's keyframes transformer (fl2va): references are what " +
+          "the references one (ref2va) was trained for"
+      )
+    else if (!keyframes && request.references.isEmpty)
+      println(
+        "[WARN] this checkpoint is, or is merged from, MiniMax H3's references transformer (ref2va): " +
+          "run here without references, as the keyframes one (fl2va) is"
       )
     require(
       request.control.isEmpty || takesControl,
       "a control video needs MiniMax H3's Fun ControlNet union (--control-net)"
     )
-    val referenced = Option.when(!keyframes)(references(request, frames))
+    val referenced =
+      Option.when(request.references.nonEmpty)(references(request, frames))
     // the references transformer is guidance-distilled: diffusers runs one pass
     if (referenced.isDefined && request.cfgScale != 1f)
       println(
-        s"[WARN] MiniMax H3's references transformer runs no negative prompt: CFG ${request.cfgScale} taken as 1"
+        s"[WARN] MiniMax H3 runs no negative prompt with references: CFG ${request.cfgScale} taken as 1"
       )
     val guided = request.cfgScale != 1f && referenced.isEmpty
     val held = mutable.ArrayBuffer.empty[Tensor]

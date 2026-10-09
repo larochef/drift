@@ -1307,6 +1307,19 @@
     "builtIn": true
   },
   {
+    "id": "qwen3-vl-32b-instruct-mmproj-f16",
+    "familyId": "qwen3-vl-32b-mmproj",
+    "label": "Qwen3-VL-32B-Instruct mmproj F16",
+    "source": {
+      "type": "huggingface",
+      "repo": "unsloth/Qwen3-VL-32B-Instruct-GGUF",
+      "filename": "mmproj-F16.gguf"
+    },
+    "format": "gguf",
+    "parameters": {},
+    "builtIn": true
+  },
+  {
     "id": "qwen3-vl-8b-instruct-mmproj-f16",
     "familyId": "qwen3-vl-8b-instruct-mmproj",
     "label": "Qwen3-VL-8B-Instruct mmproj F16",

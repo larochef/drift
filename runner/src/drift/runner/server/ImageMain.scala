@@ -88,7 +88,8 @@ object ImageMain {
               options.tokenizer,
               options.fps,
               options.audioVae,
-              options.controlNet
+              options.controlNet,
+              options.llmVision
             )
           else if (options.controlNet.isDefined)
             throw new IllegalArgumentException(

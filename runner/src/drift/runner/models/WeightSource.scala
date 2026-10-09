@@ -14,17 +14,16 @@ import scala.collection.mutable
   * never copies; closing unmaps them. `copied` weights are the exception, and
   * so are fp8 E4M3 safetensors weights, dequantized to BF16 (times their scale
   * tensor, ComfyUI's scaled fp8) the first time they are asked for, and
-  * ComfyUI's int8 and 4-bit linears (`ComfyQuant`), decoded to BF16 likewise or
-  * kept undecoded (`ComfyQuantStorage`). Every tensor goes by the name the
-  * loaders read (`WeightNames`), whatever prefix or naming the file stores it
-  * under.
+  * ComfyUI's int8 and 4-bit linears (`ComfyQuant`), left undecoded where the
+  * file holds them (`Ops.rotated`: a linear, an embedding and a conversion read
+  * them, whole or by rows) or decoded to BF16 likewise (`ComfyQuantStorage`).
+  * Every tensor goes by the name the loaders read (`WeightNames`), whatever
+  * prefix or naming the file stores it under.
   */
 final class WeightSource private (
     stored: Map[String, StoredTensor],
     /** A stored tensor as the backend reads it. */
     load: StoredTensor => Tensor,
-    /** A stored linear's weight as `Ops.linear` reads it. */
-    loadLinear: StoredTensor => Tensor,
     /** Rows of a stored matrix, decoded on the host. */
     rowsOf: (StoredTensor, Long, Int) => Array[Float],
     /** A stored tensor's shape as the backend reads it. */
@@ -50,14 +49,6 @@ final class WeightSource private (
       name,
       throw new NoSuchElementException(s"the weights have no tensor $name")
     )
-
-  /** A linear layer's weight `[N, K]`, for `Ops.linear` and `Ops.linears`
-    * alone: left where the file holds it when the backend decodes it there
-    * (ComfyUI's rotated linears, `ComfyQuantStorage.InPlace`), else as `apply`
-    * gives it. Nothing else reads such a weight: an embedding table, or a
-    * weight transformed at load, is asked with `apply`.
-    */
-  def linear(name: String): Tensor = loadLinear(named(name))
 
   /** Rows of a matrix as floats on the host, whatever stores them: for weights
     * transformed at load.
@@ -137,7 +128,6 @@ object WeightSource {
       new WeightSource(
         renamed(file.tensors),
         _.tensor(mapped.storage),
-        _.tensor(mapped.storage),
         plainRows(_, _, _),
         _.shape,
         () => mapped.close(),
@@ -191,23 +181,34 @@ object WeightSource {
         val (mapped, scale) = placed(tensor.name)
         quantized.get(tensor.name) match {
           case Some(weight) =>
-            dequantized.getOrElseUpdate(
-              tensor.name,
-              weight.stored
-                .filter(_ => comfyQuant != ComfyQuantStorage.Decoded)
-                .fold(toBf16(ops, weight)) { stored =>
-                  val (codes, parts) =
+            weight.stored
+              .filter(_ => comfyQuant == ComfyQuantStorage.InPlace)
+              .fold(
+                dequantized.getOrElseUpdate(
+                  tensor.name,
+                  weight.stored
+                    .filter(_ => comfyQuant != ComfyQuantStorage.Decoded)
+                    .fold(toBf16(ops, weight)) { stored =>
+                      val (codes, parts) =
+                        rotatedInPlace(ops, stored, mapped.storage)
+                      try {
+                        val out = ops.allocate(DType.BF16, weight.shape)
+                        ops.convert(codes, out)
+                        out
+                      } finally {
+                        ops.forgetRotated(codes)
+                        parts.foreach(ops.release)
+                      }
+                    }
+                )
+              )(stored =>
+                rotated
+                  .getOrElseUpdate(
+                    tensor.name,
                     rotatedInPlace(ops, stored, mapped.storage)
-                  try {
-                    val out = ops.allocate(DType.BF16, weight.shape)
-                    ops.convert(codes, out)
-                    out
-                  } finally {
-                    ops.forgetRotated(codes)
-                    parts.foreach(ops.release)
-                  }
-                }
-            )
+                  )
+                  ._1
+              )
           case None =>
             val inPlace = tensor.tensor(mapped.storage)
             if (tensor.dtype != DType.F8E4M3) inPlace
@@ -221,19 +222,6 @@ object WeightSource {
       new WeightSource(
         stored.view.mapValues(_._1).toMap,
         load,
-        tensor =>
-          quantized
-            .get(tensor.name)
-            .flatMap(_.stored)
-            .filter(_ => comfyQuant == ComfyQuantStorage.InPlace)
-            .fold(load(tensor))(stored =>
-              rotated
-                .getOrElseUpdate(
-                  tensor.name,
-                  rotatedInPlace(ops, stored, placed(tensor.name)._1.storage)
-                )
-                ._1
-            ),
         (tensor, first, count) =>
           quantized.get(tensor.name) match {
             case Some(weight) => weight.rows(first, count)
@@ -277,7 +265,6 @@ object WeightSource {
         )
       new WeightSource(
         renamed(file.tensors),
-        copy,
         copy,
         plainRows(_, _, _),
         _.shape,

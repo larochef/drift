@@ -184,8 +184,9 @@ object LinearTests extends TestSuite {
   )
 
   /** ComfyUI's rotated linears read in place (`Ops.rotated`), int8 and 4-bit:
-    * the GPU's decode is the `Cpu` backend's bit for bit, and the product the
-    * BF16 GEMM's at any row count.
+    * the GPU's decode is the `Cpu` backend's bit for bit, rows of a weight
+    * (`Tensor.rows`) decode as the whole's do, an embedding gathers them, and
+    * the product is the BF16 GEMM's at any row count.
     */
   private def checkRotated(fourBit: Boolean): Unit = {
     val cpu = new CpuOps
@@ -228,6 +229,34 @@ object LinearTests extends TestSuite {
             val decoded = ops.allocate(DType.F32, Shape.of(n, k))
             ops.convert(weight, bf16)
             ops.convert(bf16, decoded)
+            val all = ops.toFloats(decoded)
+            Seq(0 -> math.max(n / 2, 1), n / 3 -> (n - n / 3)).foreach {
+              (from, count) =>
+                val half = ops.allocate(DType.BF16, Shape.of(count, k))
+                val floats = ops.allocate(DType.F32, Shape.of(count, k))
+                ops.convert(weight.rows(from, count), half)
+                ops.convert(half, floats)
+                assert(
+                  ops
+                    .toFloats(floats)
+                    .sameElements(all.slice(from * k, (from + count) * k))
+                )
+            }
+            // and an embedding gathers its rows
+            val ids = Array(n - 1, 0, n / 2, n - 1)
+            val gathered = ops.allocate(DType.F32, Shape.of(ids.length, k))
+            ops.embedding(
+              weight,
+              ops.fromInts(Shape.of(ids.length), ids),
+              gathered
+            )
+            assert(
+              ops
+                .toFloats(gathered)
+                .sameElements(
+                  ids.flatMap(id => all.slice(id * k, (id + 1) * k))
+                )
+            )
             val out = ops.allocate(DType.F32, Shape.of(m, n))
             ops.linear(ops.fromFloats(Shape.of(m, k), x), weight, out)
             (ops.toFloats(decoded), ops.toFloats(out))

@@ -234,7 +234,8 @@ object VideoPipeline {
       tokenizer: Option[Path],
       fps: Option[Int],
       audioVae: Option[Path],
-      controlNet: Option[Path]
+      controlNet: Option[Path],
+      vision: Option[Path]
   ): VideoPipeline = {
     def needed(file: Option[Path], flag: String, what: String) =
       file.getOrElse(
@@ -260,7 +261,8 @@ object VideoPipeline {
           ),
           needed(tokenizer, "--tokenizer", "Qwen3's tokenizer.json"),
           audioVae,
-          controlNet
+          controlNet,
+          vision
         )
       case Some(Family.Wan) =>
         new WanPipeline(

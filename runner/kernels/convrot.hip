@@ -3,7 +3,8 @@
 #include <stdint.h>
 
 // ConvRot's rotated linears (ConvRot.scala), decoded to BF16 for the GEMM path
-// from the codes where the file holds them: nothing is copied.
+// from the codes where the file holds them, or rows of one gathered as F32:
+// nothing is copied.
 
 #define GROUP 256
 
@@ -42,7 +43,9 @@ __device__ inline float fp8_e4m3(unsigned char code) {
 // sixteen values 16 apart that the group's threads left (the factors 16 and
 // 64 apart) and writes them. PREPARE declares what a thread's sixteen values
 // share, from `element`, the first of them; VALUE(i) is value i, scaled.
-#define DEQUANTIZE(PREPARE, VALUE)                                                           \
+// FIRST(block) is where the codes of out's group `block` start in W, STORE what
+// out holds of a value.
+#define DEQUANTIZE(PREPARE, VALUE, FIRST, STORE)                                                         \
   __shared__ float shared[16 * GROUP];                                                       \
   const int group = threadIdx.x / 16, slot = threadIdx.x % 16;                               \
   for (long long first = (long long)blockIdx.x * 16; first < blocks;                         \
@@ -50,7 +53,7 @@ __device__ inline float fp8_e4m3(unsigned char code) {
     const long long block = first + group;                                                   \
     float v[16];                                                                             \
     if (block < blocks) {                                                                    \
-      const long long element = block * GROUP + slot * 16;                                   \
+      const long long element = FIRST(block) + slot * 16;                                    \
       PREPARE                                                                                \
       _Pragma("unroll") for (int i = 0; i < 16; ++i) v[i] = VALUE(i);                        \
       ROTATE16(v)                                                                            \
@@ -61,10 +64,17 @@ __device__ inline float fp8_e4m3(unsigned char code) {
       _Pragma("unroll") for (int i = 0; i < 16; ++i) v[i] = shared[group * GROUP + i * 16 + slot]; \
       ROTATE16(v)                                                                            \
       _Pragma("unroll") for (int i = 0; i < 16; ++i)                                         \
-        out[block * GROUP + i * 16 + slot] = __float2bfloat16(v[i]);                         \
+        out[block * GROUP + i * 16 + slot] = STORE(v[i]);                                    \
     }                                                                                        \
     __syncthreads();                                                                         \
   }
+
+// Every group of W in its place, as BF16.
+#define IN_PLACE(block) ((block) * GROUP)
+#define AS_BF16(value) __float2bfloat16(value)
+// The groups of rows ids[i], as the BF16 W holds, in F32.
+#define GATHERED(block) ((long long)ids[(block) / (cols / GROUP)] * cols + (block) % (cols / GROUP) * GROUP)
+#define BF16_AS_F32(value) __bfloat162float(__float2bfloat16(value))
 
 // int8_tensorwise: codes [blocks × 256 / cols][cols] as stored, at any
 // alignment, times one scale a row or one for all.
@@ -74,7 +84,13 @@ __device__ inline float fp8_e4m3(unsigned char code) {
 extern "C" __global__ void __launch_bounds__(GROUP)
     convrot_dequantize_bf16_i8(const int8_t* codes, const float* scales, int scale_count,
                                __hip_bfloat16* out, long long blocks, int cols) {
-  DEQUANTIZE(I8_PREPARE, I8_VALUE)
+  DEQUANTIZE(I8_PREPARE, I8_VALUE, IN_PLACE, AS_BF16)
+}
+
+extern "C" __global__ void __launch_bounds__(GROUP)
+    convrot_gather_f32_i8(const int8_t* codes, const float* scales, int scale_count, const int* ids,
+                          float* out, long long blocks, int cols) {
+  DEQUANTIZE(I8_PREPARE, I8_VALUE, GATHERED, BF16_AS_F32)
 }
 
 // asym_w4a8_int8: two 4-bit codes a byte (the even column in the low nibble),
@@ -94,5 +110,12 @@ extern "C" __global__ void __launch_bounds__(GROUP)
     convrot_dequantize_bf16_w4a8(const uint8_t* codes, const float* codebook, const uint8_t* relative,
                                  const float* channel, __hip_bfloat16* out, long long blocks, int cols,
                                  int group_size) {
-  DEQUANTIZE(W4A8_PREPARE, W4A8_VALUE)
+  DEQUANTIZE(W4A8_PREPARE, W4A8_VALUE, IN_PLACE, AS_BF16)
+}
+
+extern "C" __global__ void __launch_bounds__(GROUP)
+    convrot_gather_f32_w4a8(const uint8_t* codes, const float* codebook, const uint8_t* relative,
+                            const float* channel, const int* ids, float* out, long long blocks, int cols,
+                            int group_size) {
+  DEQUANTIZE(W4A8_PREPARE, W4A8_VALUE, GATHERED, BF16_AS_F32)
 }

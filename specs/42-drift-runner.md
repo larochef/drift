@@ -2461,7 +2461,15 @@ on the old tool.
         soundtrack, held clean.
       - **Partitions.** fl2va and ref2va share every name and shape and carry
         no metadata; told apart by the file name, else by
-        `final_layer.norm.weight`'s first values.
+        `final_layer.norm.weight`'s first values. The request, not the file,
+        says which way a video runs (references, or keyframes, guides, text
+        alone): community merges (DaSiWa, Eros MAX) carry ref2va's fingerprint
+        and are run every way. A file run the other way is warned of.
+      - **int8 ConvRot checkpoints** stay in the file, as on every model: a
+        weight source gives ComfyUI's rotated weights undecoded, and a linear,
+        an embedding and a conversion read them, whole or by rows (H3's q/k/v
+        and gate/value are rows of a stacked weight). Anything else that meets
+        one fails naming its type.
       - **Checks.** LoRAs 0.11% and 0.14% (`Cpu`), 0.41% (`Hip`); the encoder on
         the released weights 0.24% (a frame) and 0.39% (a clip); the real
         vision tower against transformers 0.048%; an fl2va step 0.0026% and
@@ -2476,7 +2484,7 @@ on the old tool.
       - **Open:** keyframes and guides together have no reference; the
         negative pass keeps the condition rows (ComfyUI's has none).
     - **Done 2026-10-01: the MiniMax H3 Fun ControlNet union; references
-      (ref2va) built but broken live** (`diffusion/MiniMaxH3References`,
+      (ref2va)** (`diffusion/MiniMaxH3References`,
       `MiniMaxH3.ControlNet`).
       - **References** (diffusers' `ref2va` blocks, ComfyUI's
         `MiniMaxH3ReferenceToVideo` the second reading), on the ref2va
@@ -2514,19 +2522,17 @@ on the old tool.
         steps, 56 frames at 832 × 480): 421 s (28.5 s a step); the new subject
         follows the control's whole motion (side view, turn, driving away). A
         ControlNet loaded but not asked for leaves the video bit-identical.
-      - **Live, references: broken, cause open** (the ref2va Q4_K, 832 × 480).
-        The reference's subject comes through (the red convertible), but the
-        generated rows are corrupted: an image alone at 20 steps gives a foggy,
-        near-static clip at 56 frames (530 s) and at 124 frames (1366 s, so
-        not the 5–15 s duration), and on a sunny street prompt a dark frame of
-        vertical streaks around the car. An image and a 1 s clip at 12 steps:
-        1641 s (65 s a step), smeared. diffusers' `transformer` and
-        `transformer_ref` configs are identical, and the shared H3 path is
-        unchanged (a t2va rerun is bit-identical), so the fault is in the
-        references' inputs at real sizes, beyond the tiny fixtures. Next: one
-        step on the released file against diffusers (or ComfyUI's GGUF loader)
-        with the same image, tensor by tensor. drift does not offer the ref2va
-        checkpoint in a starter configuration.
+      - **Live, references** (2026-10-09, 832 × 480, 56 frames, a 512² picture
+        of a fox for reference): clean on the ref2va Q4_K at 20 steps (21 s a
+        step) and on DaSiWa's int8 merge at 8 (21 s; 33 s with the picture at
+        1344²); the picture and a 1 s clip, 59 s a step, clean. The corruption
+        seen on 2026-10-01 (foggy or streaked generated rows) no longer shows
+        at those settings; which later fix cured it was not traced. The vision
+        blocks need the text encoder's tower: from the encoder file's
+        `visual.` weights, or for a text-only GGUF from an mmproj in the
+        optional **llm vision** slot (`--llm_vision`, as Qwen Image 2.1's);
+        without either the request is refused, naming the slot. Live with the
+        heretic Q4_K_M and its mmproj F16: clean.
       - **Left:** ComfyUI's `"match"` sizing of references (diffusers' canvas
         sizing makes a clip reference cost more rows than the video itself);
         the 5–15 s duration check.

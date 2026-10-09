@@ -1443,6 +1443,13 @@
         "runners": ["DriftRunner"]
       },
       {
+        "name": "llm vision",
+        "familyId": "qwen3-vl-32b-mmproj",
+        "flag": "--llm_vision",
+        "required": false,
+        "runners": ["DriftRunner"]
+      },
+      {
         "name": "control-net",
         "familyId": "minimax-h3-controlnet",
         "flag": "--control-net",

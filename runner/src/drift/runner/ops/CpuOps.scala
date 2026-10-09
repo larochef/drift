@@ -50,7 +50,13 @@ final class CpuOps extends Ops {
         s"token id $row outside the table"
       )
       val values =
-        table.dtype.decode(rows.asSlice(row * rowBytes, rowBytes), columns)
+        if (ConvRot.stored(table.dtype))
+          // the BF16 weight the codes hold
+          rotatedRows(table, row, 1).map(value =>
+            java.lang.Float
+              .intBitsToFloat((CpuOps.toBfloat16(value) & 0xffff) << 16)
+          )
+        else table.dtype.decode(rows.asSlice(row * rowBytes, rowBytes), columns)
       MemorySegment.copy(
         values,
         0,

@@ -56,7 +56,7 @@ object ConvRotBenchmark {
     try
       Seq(ConvRot.Codes, ConvRot.Nibbles).foreach { kind =>
         val ofKind = weightNames(inPlace)
-          .map(name => name -> inPlace.linear(name))
+          .map(name => name -> inPlace(name))
           .filter(_._2.dtype == kind)
           .sortBy(_._2.shape.elementCount)
         println(
@@ -113,7 +113,7 @@ object ConvRotBenchmark {
   ): Unit = {
     val (source, opening) = timed(WeightSource.open(ops, path, storage))
     try {
-      val (tensors, loading) = timed(weightNames(source).map(source.linear(_)))
+      val (tensors, loading) = timed(weightNames(source).map(source(_)))
       val allocated = tensors
         .filter(_.storage.isInstanceOf[Storage.Device])
         .map(_.byteSize)

@@ -75,12 +75,9 @@ object ComfyQuantTests extends TestSuite {
         opened(ComfyQuantStorage.Decoded) { decoded =>
           val names = decoded.names.filter(_.endsWith(".weight")).toSeq
           opened(ComfyQuantStorage.InPlace) { inPlace =>
-            assert(names.exists(inPlace.linear(_).dtype == ConvRot.Codes))
-            assert(names.exists(inPlace.linear(_).dtype == ConvRot.Nibbles))
+            assert(names.exists(inPlace(_).dtype == ConvRot.Codes))
+            assert(names.exists(inPlace(_).dtype == ConvRot.Nibbles))
             names.foreach { name =>
-              assert(bits(inPlace.linear(name)) == bits(decoded(name)))
-              // asked as anything but a linear, a weight comes decoded
-              assert(inPlace(name).dtype == DType.BF16)
               assert(bits(inPlace(name)) == bits(decoded(name)))
               val rows = decoded.shape(name).dimensions.head.toInt
               assert(

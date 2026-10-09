@@ -117,7 +117,8 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
       s"no kernels for ${table.dtype} tables yet"
     )
     val (count, columns) = (ids.shape.elementCount, table.shape.last)
-    if (table.dtype == DType.F32)
+    if (ConvRot.stored(table.dtype)) gatherRotated(table, ids, out)
+    else if (table.dtype == DType.F32)
       // any width: the matvec gathers take whole 32-value blocks
       launch(
         kernel(elementwiseKernels, "gather_rows_f32"),
@@ -564,6 +565,46 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
       x.shape.elementCount,
       conversionCodes(x.dtype -> out.dtype)
     )
+  }
+
+  /** Rows `ids` of a rotated table (`rotated`), read where the file holds it,
+    * as the BF16 it holds.
+    */
+  private def gatherRotated(table: Tensor, ids: Tensor, out: Tensor): Unit = {
+    val parts = partsOf(table)
+    val blocks = ids.shape.elementCount * (table.shape.last / ConvRot.Group)
+    val grid = math.min((blocks + 15) / 16, 1L << 16)
+    val shape = Seq(
+      Pointer(pointer(ids)),
+      Pointer(pointer(out)),
+      I64(blocks),
+      I32(table.shape.last.toInt)
+    )
+    parts.levels match {
+      case None =>
+        launch(
+          kernel(convRotKernels, "convrot_gather_f32_i8"),
+          grid,
+          ConvRot.Group,
+          (Seq(
+            Pointer(pointer(table)),
+            Pointer(pointer(parts.scales)),
+            I32(parts.scales.shape.elementCount.toInt)
+          ) ++ shape)*
+        )
+      case Some(levels) =>
+        launch(
+          kernel(convRotKernels, "convrot_gather_f32_w4a8"),
+          grid,
+          ConvRot.Group,
+          (Seq(
+            Pointer(pointer(table)),
+            Pointer(pointer(levels.codebook)),
+            Pointer(pointer(levels.relative)),
+            Pointer(pointer(parts.scales))
+          ) ++ shape :+ I32(levels.groupSize))*
+        )
+    }
   }
 
   /** A rotated linear (`rotated`), read where the file holds it, to BF16 at

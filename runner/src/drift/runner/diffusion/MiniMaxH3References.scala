@@ -74,10 +74,6 @@ object MiniMaxH3References {
     val images = references.count(_.isInstanceOf[Media.Still])
     val clips = references.count(_.isInstanceOf[Media.Clip])
     val sounds = references.count(_.isInstanceOf[Media.Sound])
-    require(
-      references.nonEmpty,
-      "MiniMax H3's references transformer (ref2va) needs references: load the keyframes one (fl2va) for text alone"
-    )
     Seq(
       ("image", images, MaximumImages),
       ("video", clips, MaximumClips),

@@ -198,7 +198,7 @@ final class LtxConnector(
   private def affine(name: String, outputs: Long) = {
     val made = Affine(
       s"$prefix.$name",
-      source.linear(s"$prefix.$name.weight"),
+      source(s"$prefix.$name.weight"),
       floats(s"$name.bias", outputs)
     )
     affines += made

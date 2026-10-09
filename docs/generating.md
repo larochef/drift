@@ -123,10 +123,19 @@ every input a video was made with, and **reuse** loads them back.
 
 Per model, on the drift runner:
 
-- **MiniMax H3**: start and end images and guides on the usual (fl2va)
-  checkpoint; references need the **ref2va** checkpoint — pick it as the
-  configuration's diffusion model (experimental: the drift runner's ref2va
-  videos come out corrupted for now); a control video needs the **Fun ControlNet
+- **MiniMax H3**: text alone, start and end images and guides, or references
+  (not beside start, end or guides). Any checkpoint runs every way: the usual
+  (fl2va) one is trained for the first three, the **ref2va** one for references,
+  and community merges (DaSiWa and Eros MAX are built on ref2va) are made for
+  all of them; the log warns when a file runs the way it was not trained for.
+  Start and end images and references are read by the text encoder's vision
+  tower. The MiniMax H3 encoder file carries it; a text-only GGUF of Qwen3-VL
+  does not — give the tower then in the configuration's **llm vision** slot
+  (the `mmproj` file published beside such a GGUF, or the Qwen3-VL-32B one in
+  drift's model list). A reference clip
+  is costly — about three times the step time for one second. An int8
+  checkpoint takes no more GPU memory than its file. A
+  control video needs the **Fun ControlNet
   union** in the configuration's **control-net** slot. Both files are in drift's
   model list, ready to download.
 - **Wan 2.2 A14B (I2V)**: start and end images; LoRAs, a pair's high-noise

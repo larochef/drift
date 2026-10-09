@@ -595,7 +595,12 @@ object QwenVision {
       deepstack: Option[Seq[Int]] = None
   ): QwenVision = {
     val source = WeightSource.open(ops, path)
-    try
+    try {
+      require(
+        source.has(s"${prefix}patch_embed.proj.bias"),
+        s"${path.getFileName} carries no vision tower (`$prefix` weights), which image and video inputs " +
+          "are read with: give the tower as its own file (--llm_vision <mmproj>)"
+      )
       new QwenVision(
         ops,
         source,
@@ -603,7 +608,7 @@ object QwenVision {
         gguf = false,
         prefix
       )
-    catch {
+    } catch {
       case error: Throwable =>
         source.close()
         throw error

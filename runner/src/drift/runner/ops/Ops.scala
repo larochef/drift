@@ -4,7 +4,7 @@ import drift.runner.state.KvCache
 import drift.runner.tensor.*
 
 import java.nio.file.Path
-import scala.collection.concurrent.TrieMap
+import java.util.concurrent.ConcurrentSkipListMap
 
 /** The operations blocks and models are written against (`specs/42`). Two
   * backends implement them: `CpuOps`, the slow and obviously correct reference,
@@ -89,7 +89,8 @@ trait Ops extends AutoCloseable {
   def scale(x: Tensor, factor: Float, out: Tensor): Unit
 
   /** `out[t] = table[ids[t]]`: rows of an embedding table in any storage type,
-    * as F32. `ids` is I32 `[tokens]`, `out` `[tokens, D]`.
+    * as F32 (a rotated table's, `rotated`, as the BF16 it holds). `ids` is I32
+    * `[tokens]`, `out` `[tokens, D]`.
     */
   def embedding(table: Tensor, ids: Tensor, out: Tensor): Unit
 
@@ -115,32 +116,56 @@ trait Ops extends AutoCloseable {
     */
   def convert(x: Tensor, out: Tensor): Unit
 
-  private val rotatedParts = TrieMap.empty[Long, ConvRotParts]
+  // the rotated weights by where their codes start
+  private val rotatedWeights =
+    new ConcurrentSkipListMap[Long, (Tensor, ConvRotParts)]
 
   /** ComfyUI's rotated linear `[N, K]` left where the file holds it: `codes`,
     * I8 `[N, K]`, or with `levels` the 4-bit codes `[N, K / 2]`, seen as the
     * weight they make with `parts` (`ConvRot.Codes`, `ConvRot.Nibbles`).
-    * `linear` and `convert` decode it; `parts` are the caller's to release,
+    * `linear`, `embedding` and `convert` decode it, and rows of it
+    * (`Tensor.rows`) as they do the whole; `parts` are the caller's to release,
     * after `forgetRotated`.
     */
   def rotated(codes: Tensor, parts: ConvRotParts): Tensor = {
     val weight = Ops.checkRotated(codes, parts)
-    rotatedParts(Ops.address(weight)) = parts
+    rotatedWeights.put(Ops.address(weight), (weight, parts))
     weight
   }
 
   def forgetRotated(weight: Tensor): Unit = {
-    rotatedParts.remove(Ops.address(weight))
+    rotatedWeights.remove(Ops.address(weight))
     ()
   }
 
-  protected def partsOf(weight: Tensor): ConvRotParts =
-    rotatedParts.getOrElse(
-      Ops.address(weight),
-      throw new IllegalArgumentException(
-        s"${weight.dtype} ${weight.shape}: codes this backend holds no scales for"
+  /** What decodes a rotated linear, or rows of one: those rows' scales. */
+  protected def partsOf(weight: Tensor): ConvRotParts = {
+    val address = Ops.address(weight)
+    Option(rotatedWeights.floorEntry(address))
+      .map(_.getValue)
+      .flatMap { (whole, parts) =>
+        val rowBytes = whole.dtype.byteSize(whole.shape.last)
+        val offset = address - Ops.address(whole)
+        val (from, count) = (offset / rowBytes, weight.shape.dimensions.head)
+        Option.when(
+          weight.dtype == whole.dtype && weight.shape.rank == 2 &&
+            weight.shape.last == whole.shape.last && offset % rowBytes == 0 &&
+            from + count <= whole.shape.dimensions.head
+        )(
+          ConvRotParts(
+            if (parts.scales.shape.elementCount == 1) parts.scales
+            else parts.scales.rows(from, count),
+            parts.levels
+              .map(l => l.copy(relative = l.relative.rows(from, count)))
+          )
+        )
+      }
+      .getOrElse(
+        throw new IllegalArgumentException(
+          s"${weight.dtype} ${weight.shape}: codes this backend holds no scales for"
+        )
       )
-    )
+  }
 
   /** RMS norm over the last dimension:
     * `out = x / sqrt(mean(x²) + epsilon) × (weight + weightOffset)`;

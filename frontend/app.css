@@ -2113,6 +2113,17 @@ select.select:focus {
   gap: 0.5rem;
 }
 
+/* The picture being sampled (specs/54): a small estimate enlarged beside the
+   progress bar, so it is soft by nature; smooth scaling rather than pixels. */
+.step-preview img {
+  display: block;
+  width: min(100%, 24rem);
+  max-height: 60vh;
+  object-fit: contain;
+  object-position: left top;
+  border-radius: 4px;
+}
+
 /* A prompt diff (specs/20): what the assistant changed in the working prompt,
    or what changed between two versions. Translucent tints rather than solid
    colours, so the words keep the theme's own text colour and read on this

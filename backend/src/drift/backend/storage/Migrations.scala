@@ -366,6 +366,47 @@ private[storage] object Migrations {
         record
       }
     },
+    // `bugs/55`: the turbo LoRAs of Qwen Image 2.1 are told apart by their
+    // file, whatever site they were installed from. Each takes the noise
+    // levels its authors give (nodes the model shifts for the image's size;
+    // Fun-Acc's are final, hence its shift of 1) where a flow shift of 3 stood
+    // in for them. One whose levels were typed already is left alone.
+    "qwen-turbo-lora-levels" -> { (record, _) =>
+      val levels = Map(
+        // Viggle 6-step v0.2.1, rank 256
+        "2a0148f5c73abbed5f97da5ea356e439318aadb281d01fce4af39cdf43728803" ->
+          (6, List(1.0, 0.9375, 0.875, 0.75, 0.5, 0.25), None),
+        // Pruna 5-step v0.1
+        "021a6228a0fcd217275190b89072416a2f28548e8e18fe049531dc9b77ef89bd" ->
+          (5, List(1.0, 0.887, 0.75, 0.5, 0.25), None),
+        // alibaba-pai Fun-Acc 4-step
+        "764c56ae94f330b6d06ccc322f95e1b8ce46424ddde5899a15432f95f720d558" ->
+          (4, List(1.0, 0.917, 0.7862, 0.5495), Some(1.0))
+      )
+      val known = record.obj
+        .get("files")
+        .flatMap(_.arrOpt)
+        .getOrElse(Nil)
+        .flatMap(_.obj.get("sha256"))
+        .flatMap(_.strOpt)
+        .flatMap(levels.get)
+        .headOption
+      val sampling = record.obj.get("sampling").flatMap(_.objOpt)
+      val typed =
+        sampling.flatMap(_.get("sigmas")).flatMap(_.arrOpt).exists(_.nonEmpty)
+      known.filterNot(_ => typed).map { (steps, nodes, shift) =>
+        val settings = ujson.Obj.from(sampling.getOrElse(Nil))
+        settings("steps") = steps
+        settings("cfg") = 1.0
+        settings("sigmas") = ujson.Arr.from(nodes)
+        shift match {
+          case Some(value) => settings("flowShift") = value
+          case None        => settings.obj.remove("flowShift")
+        }
+        record.obj("sampling") = settings
+        record
+      }
+    },
     // `specs/03`: a checkpoint slot's family is what the browser searches,
     // and Wan 2.2's text encoder is umt5-xxl — `t5xxl` found Google's T5s
     "umt5-xxl-family" -> { (record, _) =>

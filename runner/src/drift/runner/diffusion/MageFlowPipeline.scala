@@ -62,6 +62,10 @@ final class MageFlowPipeline(
   private val transformer = MageFlow.open(ops, diffusionModel)
   private val autoencoder = MageVae.open(ops, vae)
   private val loraFiles = new LoraFiles(ops)
+  private val projection = LatentProjection.named(
+    LatentProjection.MageFlow,
+    transformer.config.latentChannels
+  )
   private val tower = vision.map(QwenVision.open(ops, _))
   private val sizing =
     tower.map(t => ImageSizing.qwen(t.config.patch, t.config.merge))
@@ -226,10 +230,7 @@ final class MageFlowPipeline(
       s"${request.width} × ${request.height}: Mage-Flow takes multiples of $scale"
     )
     val (loras, problems) = loraFiles.open(request.loras)
-    (problems ++ transformer
-      .useLoras(loras)
-      .map(target => s"a target of no weight: $target"))
-      .foreach(problem => println(s"[WARN] LoRA left unapplied: $problem"))
+    LoraReport.print(loras, problems, transformer.useLoras(loras))
     val grid = Grid(request.height / scale, request.width / scale)
     val channels = transformer.config.latentChannels
     val guided = request.cfgScale != 1f
@@ -306,6 +307,20 @@ final class MageFlowPipeline(
           ops.scale(velocity, request.cfgScale, velocity)
           ops.add(velocity, v, velocity)
         }
+        projection.foreach(drawn =>
+          preview(
+            i + 1 - first,
+            steps,
+            () =>
+              drawn.estimate(
+                ops.toFloats(x),
+                ops.toFloats(velocity),
+                sigmas(i),
+                grid.height,
+                grid.width
+              )
+          )
+        )
         ops.scale(velocity, sigmas(i + 1) - sigmas(i), velocity)
         ops.add(x, velocity, x)
         inpainting.foreach(_.restore(x, sigmas(i + 1)))

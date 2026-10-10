@@ -145,17 +145,31 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     checkpoint in its seven shards, Qwen3-VL-8B and the Qwen Image VAE. It is
     a base model: 50 steps at CFG 4, about 2 minutes 20 for a 1024² image.
     It takes no LoRAs or reference images yet.
-  - **HiDream O1** does text to image and img2img, from its one file and its
-    `tokenizer.json`. The Dev checkpoint samples as HiDream's own code does
-    (its distilled timesteps, fresh noise each step), which is why its
-    images come out finished where sd-cpp's look undercooked; a 2048² image
-    in 28 steps takes about 2 minutes, 40% less than sd-cpp. The full
-    checkpoint runs with guidance (CFG 5) on Euler steps, where HiDream's
-    code uses UniPC. LoRAs work (kohya's `lora_A`/`lora_B` over the
-    checkpoint's names, as Civitai's O1 LoRAs come). A LoRA trained on the full
-    checkpoint (ai-toolkit's, most of Civitai's) belongs on the full one: on Dev
-    its images come out washed out, soft and faintly gridded, worse the
-    stronger it is. It doesn't do reference images yet.
+  - **HiDream O1** does text to image, img2img and reference images, from
+    its one file and its `tokenizer.json`. Each checkpoint samples as
+    HiDream's own code does: the Dev one over its distilled timesteps with
+    fresh noise each step (`flash`), which is why its images come out
+    finished where sd-cpp's look undercooked — a 2048² image in 28 steps
+    takes about 2 minutes, 40% less than sd-cpp; the full one with guidance
+    (CFG 5) on UniPC steps (`unipc`), 50 of them at flow shift 3. The
+    **Sampler** field offers `unipc`, `euler` and `flash`; left on the
+    model's default, the checkpoint gets its own.
+    - **Reference images** — to edit a picture ("make the jacket red, keep
+      everything else") or to compose from several — need Qwen3-VL-8B's
+      vision projector in the configuration's optional **llm vision** slot
+      (the same file Qwen Image 2.1 edits with). Each reference is read at
+      about the output's size when it is alone, smaller as there are more;
+      a step then costs about as much as the output and its references
+      together, so an edit at 2048² takes two to three times a plain image.
+      The output keeps the size you ask for: give it the reference's shape
+      to edit without cropping it.
+    - **LoRAs** work whoever trained them: Civitai's (ai-toolkit),
+      DiffSynth-Studio's, kohya's, and those extracted from a checkpoint
+      with ComfyUI. A LoRA trained on the full checkpoint (most of Civitai's)
+      belongs on the full one: on Dev its images come out washed out, soft
+      and faintly gridded, worse the stronger it is. To keep the Dev speed
+      with such a LoRA, run the full checkpoint with the **HiDream O1 Dev
+      distillation** LoRA from the catalog beside it: 28 steps at CFG 1.
   - **PiD** upscales 1024 → 4096 in one pass, about 5 minutes, where sd-cpp
     needs nine tiles (its single pass comes out black). All three variants
     run: FLUX.2, FLUX.1 and Qwen Image, each with its own VAE (FLUX.1's takes

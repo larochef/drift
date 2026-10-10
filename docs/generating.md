@@ -62,16 +62,22 @@ Folded sections, opened on click. A closed section says when it is doing
 something (an image attached, hires on, a non-default sampler):
 
 - **Sampling**: sampler and scheduler; **Flow shift**: how far the steps lean
-  toward the noisy end (empty: the model's own). A turbo LoRA usually wants
-  about 3 with CFG 1 and at least the steps it was made for — more steps are
-  fine, fewer break the image. And **Sigmas**: the noise levels to
-  step through, typed as a list (`1.0, 0.9375, 0.875, 0.75, 0.5, 0.25`), in
-  place of the scheduler's. A turbo LoRA is trained on its own few levels and
-  its page lists them; with a list, the steps are the list's, whatever
-  **Steps** says. sd-cpp takes them for every model, the drift runner for
-  its image models — Qwen Image 2.1, Krea 2, FLUX.2 [klein], HiDream O1,
-  Mage-Flow, Nucleus-Image and LLaDA-Image —
-  and not for video or PiD, where it refuses them.
+  toward the noisy end (empty: the model's own). And **Sigmas**: the noise
+  levels to step through, typed as a list (`1.0, 0.9375, 0.875, 0.75, 0.5,
+  0.25`), in place of the scheduler's. A turbo LoRA is trained on its own few
+  levels and its page lists them; with a list, the steps are the list's,
+  whatever **Steps** says. sd-cpp takes them for every model, the drift
+  runner for its image models — Qwen Image 2.1, Krea 2, FLUX.2 [klein],
+  HiDream O1, Mage-Flow, Nucleus-Image and LLaDA-Image — and not for video or
+  PiD, where it refuses them.
+  On Qwen Image 2.1 the drift runner reads the list as the model's own
+  pipeline does: the levels are shifted for the image's size, so a list
+  published for it is typed as written and holds at every size. A flow shift
+  beside the list replaces the size's; a flow shift of 1 takes the list as the
+  final levels (Fun-Acc's are given that way). sd-cpp takes every list as
+  final. A turbo LoRA wants CFG 1, its own levels and at least its steps; the
+  ones drift offers, and Viggle's, Pruna's and Fun-Acc's once installed, come
+  with theirs filled in.
 - **Inputs**: init image (img2img) with a strength, reference images (edit),
   and a mask once an init image is attached (inpaint). On video: start and
   end images, references, guides and a control video, as far as the model
@@ -160,6 +166,20 @@ Per model, on the drift runner:
   moves the bar while it runs, for pictures and videos alike — from the second
   step on (the first one measures how much work a step is; MiniMax H3 moves
   from the first).
+  A picture also shows itself while it is sampled, on the drift runner and
+  on sd-cpp alike:
+  under the bar, a small **preview** of what the model has so far, redrawn
+  after each step and captioned with that step. It is rough at first and
+  settles as the steps go, soft all along (it is read straight off the
+  model's latents, not decoded), and it leaves when the picture arrives. A
+  batch previews the image being made. On the drift runner FLUX.2, Krea 2,
+  Qwen Image 2.1, Mage-Flow, Nucleus-Image and HiDream O1 have one; sd-cpp
+  draws its own for every image model. Videos have none.
+  When the server could not apply a LoRA, or only part of it — a file made
+  for another model, or named in a way it does not read — the picture is
+  still made, and a yellow note above it says what was left out; the gallery
+  keeps it as a **Warning** in the entry's parameters. The drift runner
+  reports this; sd-cpp says nothing of it.
   Submit several and a short list
   appears above the result with the jobs waiting behind the one on screen, each
   with its own **⏹**, so a queue can be trimmed without touching the rest — jobs

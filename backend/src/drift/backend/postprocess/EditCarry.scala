@@ -466,10 +466,6 @@ final private[postprocess] class EditCarry(
                        server.exitCode,
                        nativeJob => jobs.waitingFor(job, server.port, nativeJob)
                      )
-                     .flatMap(
-                       _.left.toOption
-                         .toRight("the runner answered a tile with a video")
-                     )
                  finally jobs.doneWaiting(job))
                 .flatMap(bytes =>
                   Option(ImageIO.read(ByteArrayInputStream(bytes)))

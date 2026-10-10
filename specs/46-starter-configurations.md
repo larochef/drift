@@ -42,6 +42,9 @@ missing runtime or download is offered in place of the launch.
     and the shared SigVQ encoder and tokenizer
   - `starter-grn-2b` — GRN's 2B text-to-image model, from the safetensors
     conversion of its weights, with umT5 as a safetensors file
+  - `starter-hidream-o1-dev` — HiDream O1 Image Dev (ComfyUI's scaled fp8
+    file), with its tokenizer and Qwen3-VL-8B's vision projector, so that it
+    reads reference images
 - Wherever a model is started, a configuration missing weights offers their
   download instead: the run configuration card's footer, a project's image,
   video, chat and assistant pickers (the entry is suffixed *download the

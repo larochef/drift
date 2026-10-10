@@ -181,7 +181,13 @@ case class ImageGenerationParameters(
     /** None omits the field — the server's own VAE-tiling default. */
     vaeTilingParams: Option[VaeTilingParameters] = None,
     outputFormat: String = "png",
-    outputCompression: Int = 100
+    outputCompression: Int = 100,
+    /** How the server draws the picture being sampled for whoever polls the job
+      * (`specs/54-step-preview.md`): sd-server's `proj`, `tae` or `vae`. None
+      * omits the field — no preview. Set on what drift sends, never on what a
+      * generation records.
+      */
+    preview: Option[String] = None
 )
 object ImageGenerationParameters {
   given Schema[ImageGenerationParameters] = Schema.derived
@@ -437,7 +443,8 @@ case class Derivation(
     /** What the gallery says beside the entry about how it was made
       * (`specs/39-seamless-edit.md`): an edit whose model changed more than
       * half of what it was shown may have repainted the picture rather than
-      * edited it — the entry is kept, and says so.
+      * edited it — the entry is kept, and says so. So is a video whose upscale
+      * stopped before its last frame (`specs/51`).
       */
     warning: Option[String] = None
 )
@@ -500,6 +507,11 @@ case class Generation(
       * inputs browsed from the disk.
       */
     inputSources: List[InputSource],
+    /** What the server could not do as asked and went on without — a LoRA left
+      * unapplied, whole or in part, as the drift runner reports it. The picture
+      * was made; it is not the one that was asked for.
+      */
+    warnings: List[String],
     /** The project and version this generation belongs to
       * (`specs/19-projects-and-prompt-versions.md`); derived entries inherit
       * their parent's.

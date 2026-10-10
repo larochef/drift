@@ -1,0 +1,7 @@
+{
+  "version": 16,
+  "description": "specs/42: HiDream O1 reads reference images on the drift runner (Qwen3-VL-8B's vision projector in an optional slot)",
+  "steps": [
+    { "collection": "architectures", "op": "reseed", "where": { "id": "hidream-o1", "builtIn": true } }
+  ]
+}

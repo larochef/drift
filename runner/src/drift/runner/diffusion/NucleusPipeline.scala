@@ -49,6 +49,10 @@ final class NucleusPipeline(
   }
   private val transformer = Nucleus.open(ops, diffusionModel)
   private val autoencoder = WanVae.open(ops, vae)
+  private val projection = LatentProjection.named(
+    LatentProjection.Wan21,
+    transformer.config.latentChannels
+  )
 
   require(
     encoder.config.hidden == transformer.config.textWidth,
@@ -157,22 +161,38 @@ final class NucleusPipeline(
           velocity
         )
         val step = sigmas(i + 1) - sigmas(i)
+        // the estimate x − σ × v, of a velocity already times the step or not
+        def estimate(velocity: () => Array[Float], scale: Float): Unit =
+          projection.foreach(drawn =>
+            preview(
+              i + 1 - first,
+              steps,
+              () =>
+                drawn.estimate(
+                  ops.toFloats(x),
+                  velocity(),
+                  sigmas(i) / scale,
+                  gridHeight,
+                  gridWidth
+                )
+            )
+          )
         (unconditional, other) match {
           case (Some(uncond), Some(v)) =>
             transformer.velocity(x, uncond, sigmas(i), gridHeight, gridWidth, v)
-            val guidedStep = ops.fromFloats(
-              x.shape,
-              NucleusPipeline.guided(
-                ops.toFloats(velocity),
-                ops.toFloats(v),
-                request.cfgScale,
-                channels,
-                step
-              )
+            val moved = NucleusPipeline.guided(
+              ops.toFloats(velocity),
+              ops.toFloats(v),
+              request.cfgScale,
+              channels,
+              step
             )
+            estimate(() => moved, step)
+            val guidedStep = ops.fromFloats(x.shape, moved)
             try ops.add(x, guidedStep, x)
             finally ops.release(guidedStep)
           case _ =>
+            estimate(() => ops.toFloats(velocity), 1f)
             ops.scale(velocity, step, velocity)
             ops.add(x, velocity, x)
         }

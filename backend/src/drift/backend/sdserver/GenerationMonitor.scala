@@ -13,7 +13,10 @@ import ox.sleep
 
 /** Follows a submitted job to its end: one fork per job polls the native job
   * every second, mirrors its state into the generation, and persists the result
-  * the moment it completes — whether or not a browser is still watching.
+  * the moment it completes — whether or not a browser is still watching. An
+  * image job's poll finds the step's preview (`specs/54-step-preview.md`),
+  * which the drift runner answers and sd-server, matching the path alone,
+  * ignores.
   */
 final private[sdserver] class GenerationMonitor(
     registry: GenerationRegistry,
@@ -108,6 +111,7 @@ final private[sdserver] class GenerationMonitor(
         }
         if (entry.generation.status.isActive) sleep(1.second)
       }
+      entry.preview = None
     }
   }
 
@@ -116,13 +120,25 @@ final private[sdserver] class GenerationMonitor(
     val base = entry.generation.copy(
       queuePosition = job.queuePosition,
       startedAt = job.started.map(_ * 1000),
-      completedAt = job.completed.map(_ * 1000)
+      completedAt = job.completed.map(_ * 1000),
+      warnings = job.warnings
     )
     job.status match {
       case "queued" =>
         entry.generation = base.copy(status = GenerationStatus.Queued)
       case "generating" =>
         entry.generation = base.copy(status = GenerationStatus.Generating)
+        entry.preview = job.preview
+          .filter(_.b64Json.nonEmpty)
+          .map(preview =>
+            StepPreview(
+              math.max(preview.pass - 1, 0),
+              preview.step,
+              preview.totalSteps,
+              preview.mimeType,
+              preview.b64Json
+            )
+          )
       case "completed" =>
         val outputs =
           try files.persist(base, job.result.getOrElse(NativeJobResult()))

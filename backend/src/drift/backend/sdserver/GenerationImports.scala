@@ -96,7 +96,8 @@ final class GenerationImports(outputsRoot: Path) {
         )
       ),
       importedFileName = Some(importedFileName),
-      inputSources = List.empty
+      inputSources = List.empty,
+      warnings = List.empty
     )
     files.writeSidecar(generation)
     logger.info(s"Imported $importedFileName as $id ($date)")

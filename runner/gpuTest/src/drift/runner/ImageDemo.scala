@@ -12,10 +12,11 @@ import drift.runner.ops.{HipOps, MatVecInputs}
   * distilled guidance, 3.5 by default, for the models that embed one), and
   * where the family takes them `--init FILE`, `--strength S`,
   * `--reference FILE` (repeated) and `--llm-vision FILE` (the text encoder's
-  * mmproj, which Qwen Image 2.1 edits with), `--tokenizer FILE` (PiD's and
-  * HiDream O1's `tokenizer.json`) and `--shift S` (the flow shift, 1.15 by
-  * default). `-` for the VAE and the text encoder when the model holds its own
-  * (HiDream O1).
+  * mmproj, which Qwen Image 2.1 edits with and HiDream O1 reads references
+  * with), `--tokenizer FILE` (PiD's and HiDream O1's `tokenizer.json`),
+  * `--shift S` (the flow shift, 1.15 by default) and `--sampler NAME` (one of
+  * the family's, HiDream O1's `unipc`, `euler` or `flash`). `-` for the VAE and
+  * the text encoder when the model holds its own (HiDream O1).
   *
   * `./mill runner.gpuTest.runMain drift.runner.ImageDemo <diffusion> <vae> <llm> <out.png> "<prompt>" [steps] [size] [seed] [--lora FILE[:M]]… [--cfg S] [--negative TEXT] [--init FILE] [--strength S] [--reference FILE]…`
   */
@@ -82,7 +83,8 @@ object ImageDemo {
           strength,
           None,
           references,
-          None
+          None,
+          options.collectFirst { case ("--sampler", name) => name }
         ),
         (step, total) => {
           val now = System.nanoTime()

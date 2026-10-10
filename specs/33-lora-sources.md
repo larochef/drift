@@ -140,6 +140,12 @@ drift offers, one click to install.
 - The official LoRAs are a list to install from, not seeded built-ins: a LoRA
   is tuned (strength, nsfw, stages) and removed by the user, which a built-in
   rewritten on every start would forbid.
+- The catalog holds Kijai's extraction of HiDream O1's Dev checkpoint from
+  the full one (the pruned rank-64 file): on the full checkpoint it gives the
+  Dev sampling, so a LoRA trained on the full checkpoint — every O1 LoRA on
+  Civitai — keeps its effect in 28 steps at CFG 1. It carries the norms'
+  weights as whole-tensor differences, which the drift runner applies
+  (`specs/42`); whether sd-cpp does is not checked.
 - The catalog holds SenseNova's own 8-step LoRA and, at François's request,
   lightx2v's 4-step LoRA for HunyuanVideo 1.5 (not Tencent's, repackaged by
   Comfy-Org, whose repository the sd-cpp doc names), and Comfy-Org's rank-128

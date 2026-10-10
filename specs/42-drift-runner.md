@@ -1,6 +1,6 @@
 # 42 — drift runner: an inference engine for Strix Halo
 
-**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1, Mage-Flow (Turbo, Edit Turbo), Nucleus-Image, LLaDA-Image and GRN draw; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX with their soundtracks), with LoRAs and image inputs (H3 also guides and a ControlNet, its references built but broken live; LTX guides); groom each later step before building it
+**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1 (which also reads reference images), Mage-Flow (Turbo, Edit Turbo), Nucleus-Image, LLaDA-Image and GRN draw; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX with their soundtracks), with LoRAs and image inputs (H3 also guides and a ControlNet, its references built but broken live; LTX guides); groom each later step before building it
 **Depends on:** 06 (runtimes, TheRock), 07 (launch and supervision), 16 (parameter resolution), 17 and 18 (the chat runtime and its sessions), 41 (text projects)
 
 drift's own runner replaces sd-cpp and llama.cpp for one machine: Strix Halo
@@ -1774,35 +1774,54 @@ on the old tool.
       - **Fixed with it:** the text encoder read the residual stream after
         the second-to-last layer; diffusers and sd-cpp read it after the
         last.
-      - **Flow shift, 2026-10-01.** The model's schedule shifts by the image's
-        size (about 2 at 1024²) and is stretched to a last level of 0.02; a
-        turbo LoRA wants its steps nearer the noisy end. A given shift (the
-        request's `flow_shift`, else `--flow-shift`) is now the whole
+      - **Flow shift.** The model's schedule shifts by the image's size (about
+        2 at 1024²) and is stretched to a last level of 0.02. A given shift
+        (the request's `flow_shift`, else `--flow-shift`) is the whole
         schedule: `s σ / (1 + (s − 1) σ)` on the linear levels, not
-        stretched. With none the model's own runs, unchanged (the same seed,
-        the same pixels), and the capabilities report `flow_shift: null`, so
-        that drift does not send a default back as an override (`ownShift`;
-        the other families keep sd-server's 1.15). **Live**, Viggle's 6-step
-        LoRA, 1024², CFG 1: shift 3 at 6 steps is as clean as its published
-        levels, and at 8 steps the sign's text reads; stretched to 0.02, or
-        on fewer steps than the LoRA's (4, from its own levels or resampled),
-        the images break. One seed, one prompt.
-      - **Custom sigmas, 2026-10-01** (`FlowSchedule.custom`): a request's
-        `sample_params.custom_sigmas`, else the launch's `--sigmas`, replace
-        the schedule (shift and stretch included) — a turbo LoRA's own noise
-        levels. From at most 1 strictly down; the final 0 is added when the
-        list stops above it; the steps are the list's. Anything else is a
-        400. The image families that step through a flow schedule take
-        them (`takesSigmas`): Qwen Image 2.1, and since 2026-10-02 Krea 2,
-        FLUX.2 [klein] and HiDream O1 (over its guided and its distilled
-        schedule alike) — those three not run live with a list yet. PiD
-        keeps its four distilled levels, and the video families refuse a
-        request's sigmas: the others say at startup that they ignore
-        `--sigmas`. **Live:**
-        Viggle's 6-step turbo LoRA (v0.2.1, r256) at 1024², CFG 1, 5.2 s a
-        step, 36 s: with its levels (1.0, 0.9375, 0.875, 0.75, 0.5, 0.25) a
-        clean photograph; on the model's own schedule, the same seed comes
-        out with debris and broken structures.
+        stretched. With none the model's own runs, and the capabilities
+        report `flow_shift: null`, so that drift does not send a default
+        back as an override (`ownShift`; the other families keep sd-server's
+        1.15).
+      - **Custom sigmas** (`FlowSchedule.custom`, `FlowSchedule.shifted`): a
+        request's `sample_params.custom_sigmas`, else the launch's
+        `--sigmas`, replace the schedule's levels. From at most 1 strictly
+        down; the final 0 is added when the list stops above it; the steps
+        are the list's. Anything else is a 400. Qwen Image 2.1 reads them as
+        its pipeline reads `sigmas=`: nodes, shifted for the image's size and
+        not stretched — a turbo LoRA's published list (Viggle's `1.0,
+        0.9375, 0.875, 0.75, 0.5, 0.25`) is the same at every size, and at
+        1024 × 1536 runs as 1, 0.971, 0.940, 0.869, 0.689, 0.425. A flow
+        shift beside the list replaces the size's, 1 leaving the levels as
+        written. The other image families that step through a flow schedule
+        take a list as final (`takesSigmas`): Krea 2, FLUX.2 [klein] and
+        HiDream O1 (over its guided and its distilled schedule alike) — not
+        run live with a list yet. PiD keeps its four distilled levels, and
+        the video families refuse a request's sigmas: the others say at
+        startup that they ignore `--sigmas`. Every run prints its levels.
+      - **Turbo LoRAs** (`bugs/55`), each on the official Q4_K at 1024 ×
+        1536, CFG 1, the same seed and prompt:
+
+        | LoRA | steps | levels | time |
+        | --- | --- | --- | --- |
+        | Viggle 6-step v0.2.1 (r256) | 6 | its nodes | 71 s |
+        | Pruna 5-step (r64, alpha 128) | 5 | its nodes | 49 s |
+        | alibaba-pai Fun-Acc 4-step | 4 | its own, final | 54 s |
+        | none | 40, CFG 1 (the pipeline's own) | the model's | 343 s, the GPU shared |
+        | none | 25, CFG 6 (sd-cpp's example) | the model's | 325 s, soft and striped (`bugs/49`) |
+
+        - A LoRA's scale is `alpha / rank` from its `.alpha` tensors, else
+          from PEFT's settings in the file's metadata
+          (`lora_adapter_metadata`, as diffusers saves them): Pruna's is 2,
+          and at 1 the picture is smooth and unfinished.
+        - Fun-Acc (parallel decoding distillation) names its pairs
+          `lora_down` / `lora_up` without `.weight` and carries four output
+          layers, one a sampling step (`proj_out.weight`, `[4, 64, 4096]`):
+          `QwenImage21.atStep` picks the step's. Its norm weights are the
+          model's own, exported unchanged; a whole weight that differs is
+          reported, not applied.
+        - Viggle's levels taken as final, or a flow shift of 3 in their
+          place, give harsh, over-textured skin; its 4-step r64 file stays
+          soft on any schedule tried.
     - **Done 2026-10-07: GRN** (the 2B text-to-image model), an experiment in
       a model that does not diffuse (`models/Grn`, `diffusion/GrnPipeline`,
       the tokenizer through `models/QwenImage21Vae`). sd-cpp has no support
@@ -1980,8 +1999,9 @@ on the old tool.
         and 29.6 s at 1536² (sd-cpp without flash attention: 150–163 s at
         1024², `bugs/51`); a rank-32 LoRA 6.0 s; img2img at 0.6 over 8 steps
         5.1 s. The mask was not run live.
-    - **Done 2026-09-29: HiDream O1 Image** (Dev and full), txt2img and
-      img2img (`models/HiDreamO1`, `diffusion/HiDreamO1Pipeline`).
+    - **Done 2026-09-29: HiDream O1 Image** (Dev and full), txt2img,
+      img2img and reference images (`models/HiDreamO1`,
+      `diffusion/HiDreamO1Pipeline`, `diffusion/UniPc`).
       - **Reference.** HiDream-ai's own code (`HiDream-O1-Image`, main:
         `models/pipeline.py`, `flash_scheduler.py`,
         `qwen3_vl_transformers.py`); sd-cpp's `hidream_o1.hpp` is the tool to
@@ -2001,21 +2021,62 @@ on the old tool.
         the step, so it runs once into the sequence (`DenseDecoder.prefill`),
         and each step runs the generated tokens alone over it
         (`attendAll`). Patches sit at (4096, 4096 + row, 4096 + column).
-      - **Sampling.** Unguided (CFG 1, the Dev checkpoint) as the official
-        flash scheduler: the 28 distilled timesteps (other step counts
-        resample their curve), then `z = (1 − σ_next) x̂ + σ_next · 7.5 ·
-        noise`, fresh noise each step clipped to 2.5 of its deviation;
-        starting noise of deviation 7.5. Guided (the full checkpoint): Euler
-        on `(x̂ − z) / σ` over sd-cpp's flow-shifted schedule, CFG on x̂,
-        noise 8, the unconditional prompt a space unless a negative prompt is
-        given. The official full pipeline runs UniPC there, not yet here.
-        sd-cpp runs Euler for both, with noise × 8.
+      - **Sampling.** Three samplers (`flash`, `unipc`, `euler`), the
+        request's (`sample_method`) or the launch's (`--sampling-method`)
+        when it names one, else the one the official `inference.py` picks:
+        - unguided (CFG 1, the Dev checkpoint), the official flash scheduler:
+          the 28 distilled timesteps (other step counts resample their
+          curve), then `z = (1 − σ_next) x̂ + σ_next · 7.5 · noise`, fresh
+          noise each step clipped to 2.5 of its deviation; starting noise of
+          deviation 7.5;
+        - guided (the full checkpoint), UniPC as the official
+          `FlowUniPCMultistepScheduler` runs it (`diffusion/UniPc`): order 2,
+          `bh2`, on the clean image, the order 1 on the first and the last
+          step, the corrector on every step but the first; its levels evenly
+          spaced from 0.999 shifted, then shifted again (shift 3 unless the
+          request or the launch gives one); the model given the level's whole
+          timestep, as the official loop reads it off the scheduler; CFG on
+          x̂, noise 8, the unconditional prompt a space unless a negative
+          prompt is given;
+        - Euler on `(x̂ − z) / σ`: what the Dev checkpoint edits a single
+          reference with (over the distilled timesteps, noise 8); guided,
+          over the flow-shifted schedule.
+
+        Custom sigmas replace any of the schedules. sd-cpp runs Euler for
+        both checkpoints, with noise × 8.
+      - **References.** As the official pipeline reads them, twice. In the
+        prompt, each as Qwen3-VL reads a picture
+        (`<|vision_start|><|image_pad|><|vision_end|>` before the text): the
+        vision tower's tokens of a small copy (384² of area up to four
+        references, 288² up to eight, 192² beyond), with deepstack, cached
+        with the prompt. And in pixels: each resized to an area that depends
+        on their number (the target's longer side squared for one, then ¾,
+        ½, ⅜ and ¼ of that side; a lone reference of the target's own shape
+        at the target's size, as the official edit takes its target from the
+        reference — `editedSide`), cut around its centre to multiples of 32,
+        its patches through the same bottleneck after the target's among the
+        generated tokens — embedded once, read every step, given no x̂. The
+        target sits at (4096, 4096 + row, 4096 + column), each reference past
+        the longer side of what is before it. The guided unconditional
+        prompt keeps the pictures. The vision tower is Qwen3-VL-8B's own,
+        unchanged by HiDream (the official Dev and full checkpoints hold the
+        same tower, equal to unsloth's `mmproj-F16.gguf` to F16 rounding):
+        `--llm_vision` gives it, as for Qwen Image 2.1, since ComfyUI's
+        single files leave it out; a checkpoint that carries its tower
+        (`model.visual.`) needs none.
       - **Weights.** ComfyUI's scaled fp8: every fp8 E4M3 safetensors weight
         is dequantized to BF16 × its `weight_scale` on first load
         (`WeightSource`, any model), then runs through BF16 GEMMs.
-      - **Tests.** The distilled schedule and the patch layout against the
-        official pipeline; no tiny golden model yet (the official model class
-        needs flash-attn and CUDA).
+      - **Tests.** A tiny golden model from the official class
+        (`fixtures/tiny_hidream_o1.py`: its masked attention path runs on the
+        CPU and computes what the flash path does in two passes): one forward
+        of a prompt alone, 0.0017% of the largest value off on `Cpu`; of two
+        references seen and read, 0.0010%, every token's position the
+        official one; and a LoRA of each naming merged into the weights
+        (below). UniPC against the official scheduler driven as the official
+        loop drives it (`fixtures/unipc.py`: 50, 8, 3 and 1 steps, every
+        sample within 10⁻⁶). The distilled schedule, the patch layout and the
+        references' sizes against the official pipeline.
       - **On the laptop** (Dev fp8, 28 steps, the same seed and prompt, a fox
         holding a "drift runner" sign):
 
@@ -2035,17 +2096,56 @@ on the old tool.
         whole model in one file, `--vae` and `--llm` then absent.
       - **LoRAs** at run time on every linear (`LoraUpdates`): the decoder's
         seven per layer (`DenseDecoder.loraSites`, the prompt's prefill
-        included), the timestep MLP, the bottleneck and the pixel head. A
-        file's targets are the checkpoint's names less `model.` (Civitai's
-        O1 LoRAs: `diffusion_model.language_model.layers.N.…`, rank 32).
+        included), the timestep MLP, the bottleneck and the pixel head.
+        - **Namings** (`HiDreamO1.site`), each from a published file:
+          ai-toolkit's, Civitai's trainer (the checkpoint's names less
+          `model.` under `diffusion_model.`, `lora_A` / `lora_B`, rank 32, no
+          alpha: every O1 LoRA on Civitai); DiffSynth-Studio's (the names
+          whole, PEFT's `lora_A.default`); ComfyUI's extractions
+          (`lora_down` / `lora_up`); PEFT's `base_model.model.` and kohya's
+          `lora_unet_` with `_` for `.`, which no published O1 file uses yet.
+        - **Whole-tensor differences.** A LoRA extracted from a checkpoint
+          (Kijai's Dev-less-full, which turns the full checkpoint into the
+          Dev one) also carries the norms' weights and the heads' biases as
+          differences (`.diff`, `.diff_b`): added to copies of the norms'
+          weights (`DenseDecoder.useNormDifferences`) and of the biases while
+          the LoRA is active, at its multiplier.
+        - **Left to the checkpoint**, counted in the log: updates of the
+          vision tower (which the official checkpoints do not change) and of
+          the token embeddings.
+        - **Tests.** On the tiny model, a file of each naming gives the
+          official model's x̂ with the file merged (0.04% to 0.23% on `Cpu`,
+          the updates moving it by 10% to 81%), and leaves no trace once
+          removed.
         Live with Civitai's "Excellent Full Nude" (ai-toolkit, trained on the
         full checkpoint at 1024²; ai-toolkit's noise ×8, t = 1 − σ and x₀
         target match ours): on the full model at CFG 5 the image is clean
         with the LoRA's effect; on Dev it is washed out, soft and faintly
         gridded, less so at 0.5 — the LoRA does not transfer to the distilled
         checkpoint.
-      - **Left:** reference images (the vision tower and the deepstack
-        mergers, which ComfyUI's file does not carry), UniPC.
+      - **Live** (fp8 files, 2048², the GPU shared with other jobs, so the
+        times are upper bounds; `~/dev/redraw-experiments/2026-10-09-hidream`):
+        UniPC on the full checkpoint at 50 steps and CFG 5 is sharper than
+        Euler on the same seed (723 s against 927 s); Kijai's Dev-less-full
+        LoRA on the full checkpoint at CFG 1 applies its 399 updates and
+        gives the Dev checkpoint's picture; one reference on Dev (Euler)
+        changes what the prompt names and keeps the room at 1664 × 2496 in
+        242 s; two references are both read. Sizes far from the 2048² of
+        area the model was trained on mark the picture — a dark frame, white
+        specks on a wall at 1344 × 2016. From drift: the starter launches,
+        draws and shows its step preview.
+      - **Left:** the official layout boxes (references placed by drawn
+        boxes); LoKr, LoHa and DoRA files, which no published O1 LoRA uses.
+    - **Samplers.** A pipeline lists the samplers it runs
+      (`ImagePipeline.samplers`, in the capabilities) and the one a request
+      without one gets (`defaultSampler`: `default` where the pipeline picks
+      by the request). A request's `sample_method`, else the launch's
+      `--sampling-method`, is read when it is one of them; any other runs the
+      pipeline's own, with a line in the log.
+    - **LoRA report.** Every pipeline says what a request's LoRAs came to
+      (`diffusion/LoraReport`): `LoRA: n of m updates applied`, then what was
+      left — the updates of no weight of the model and the tensors that are
+      no update the runner reads — counted, the first six of each named.
 14. **Video and audio.** Wan 2.2 (cross-attention, two experts), LTX,
     HunyuanVideo, MiniMax; the causal 3-D VAE and the audio VAE.
     - **Done 2026-09-30: MiniMax H3, text to video** (`models/MiniMaxH3`,

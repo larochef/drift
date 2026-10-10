@@ -186,6 +186,7 @@ class GenerationResult(
           MemoryWarningView(
             sessionSignal.map(_.flatMap(_.memoryWarning))
           ).element,
+          GenerationWarningsView(generation.warnings).element,
           // The batch around the image in flight. The session's, like the bar
           // under it: with this generation queued behind a batch, both are the
           // running job's, and both stay.
@@ -199,6 +200,10 @@ class GenerationResult(
               (session.flatMap(_.progress), session.flatMap(_.activity))
             ),
             machine
+          ).element,
+          // This generation's own picture: none while it waits behind another.
+          StepPreviewView(
+            service.previews.map(_.get(generation.id))
           ).element,
           GenerationCancel.stopButton(
             service,
@@ -218,6 +223,7 @@ class GenerationResult(
                 generation.completedAt
               )}s" + seedText
           ),
+          GenerationWarningsView(generation.warnings).element,
           // A batch lays its images side by side (`specs/14`), so the
           // variations are compared rather than scrolled through.
           div(

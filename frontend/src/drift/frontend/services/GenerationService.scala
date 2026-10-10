@@ -101,6 +101,12 @@ class GenerationService(statusSocket: StatusSocketService)
   private val _generations = Var(List.empty[Generation])
   val generations: Signal[List[Generation]] = _generations.signal
 
+  /** The pictures being sampled, as their last step saw them, keyed by
+    * generation id (`specs/54-step-preview.md`).
+    */
+  private val _previews = Var(Map.empty[String, StepPreview])
+  val previews: Signal[Map[String, StepPreview]] = _previews.signal
+
   /** Which session `_generations` belongs to — socket pushes for any other
     * session are not this panel's to display.
     */
@@ -302,6 +308,7 @@ class GenerationService(statusSocket: StatusSocketService)
       } --> Observer[List[Generation]] { listing =>
       settle(listing)
       _generations.set(listing.sortBy(_.submittedAt))
-    }
+    },
+    statusSocket.previews --> _previews.writer
   )
 }

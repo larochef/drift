@@ -101,7 +101,12 @@ than in the form: they change nothing about the job.
   how many, **show the grid** draws them, *Advanced* holds the **tile** size
   (see the tile grid below), and the job can be paused and
   resumed; the target stops at 16384 px on the longest side. A video keeps its
-  frame rate and its soundtrack and comes back as a new video entry.
+  frame rate and its soundtrack and comes back as a new video entry. It can
+  be as long as you like — it is read, restored and written a few frames at a
+  time, and the bar runs over the whole of it. **Stop** keeps what is made:
+  the entry is the video up to there, marked ⚠ with how many frames of the
+  source it holds. It cannot be continued; a failure part of the way leaves
+  the same.
   **Original** / **Result** compares the two. A picture's colours
   are matched to its source; a video's are not yet.
 - A **PiD** model: a diffusion decoder re-renders the image at ×4, sharper

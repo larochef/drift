@@ -1,7 +1,7 @@
 package drift.runner.models
 
 import drift.runner.formats.*
-import drift.runner.ops.{ConvRotLevels, ConvRotParts, Ops}
+import drift.runner.ops.*
 import drift.runner.tensor.*
 
 import java.lang.foreign.MemorySegment
@@ -32,7 +32,11 @@ final class WeightSource private (
     /** The GGUF, when the weights are one. */
     val gguf: Option[GgufFile],
     /** `config.json` beside safetensors weights, when there is one. */
-    val config: Option[ModelConfig]
+    val config: Option[ModelConfig],
+    /** A safetensors file's `__metadata__` (every shard's, merged); none for a
+      * GGUF.
+      */
+    val metadata: Map[String, String]
 ) extends AutoCloseable {
 
   def has(name: String): Boolean = stored.contains(name)
@@ -55,6 +59,12 @@ final class WeightSource private (
     */
   def hostRows(name: String, first: Long, count: Int): Array[Float] =
     rowsOf(named(name), first, count)
+
+  /** A tensor stored in a plain type, whole, as floats on the host. */
+  def hostValues(name: String): Array[Float] = {
+    val tensor = named(name)
+    tensor.dtype.decode(tensor.bytes, tensor.shape.elementCount.toInt)
+  }
 
   /** The type the file stores a tensor as; `apply` may give another (fp8 and
     * ComfyUI's quantized weights come decoded).
@@ -132,7 +142,8 @@ object WeightSource {
         _.shape,
         () => mapped.close(),
         Some(file),
-        None
+        None,
+        Map.empty
       )
     } else {
       val shards =
@@ -240,7 +251,8 @@ object WeightSource {
           mappings.foreach(_.close())
         },
         None,
-        config
+        config,
+        files.flatMap((_, file) => file.metadata).toMap
       )
     }
   }
@@ -273,7 +285,8 @@ object WeightSource {
           mapped.close()
         },
         Some(file),
-        None
+        None,
+        Map.empty
       )
     } catch {
       case error: Throwable =>

@@ -67,16 +67,15 @@ final class WanPipeline(
   private val loraFiles = new LoraFiles(ops)
 
   /** Makes `loras` the experts' active sets; returns what is left unapplied. */
-  private def useLoras(loras: Seq[VideoLora]): Seq[String] = {
+  private def useLoras(loras: Seq[VideoLora]): Unit = {
     val (onHigh, onLow) = WanPipeline.experts(loras, high.isDefined)
     def use(model: Wan, chosen: Seq[VideoLora]) = {
       val (opened, problems) =
         loraFiles.open(chosen.map(lora => lora.path -> lora.multiplier))
-      problems ++ model
-        .useLoras(opened)
-        .map(target => s"a target of no weight: $target")
+      LoraReport.print(opened, problems, model.useLoras(opened))
     }
-    use(low, onLow) ++ high.toSeq.flatMap(use(_, onHigh))
+    use(low, onLow)
+    high.foreach(use(_, onHigh))
   }
 
   /** UMT5's rows of `prompt`, zeros past its tokens up to 512. */
@@ -185,9 +184,7 @@ final class WanPipeline(
       )
       if (request.initImage.isDefined || request.endImage.isDefined)
         condition.foreach(keep)
-      useLoras(request.loras).foreach(problem =>
-        println(s"[WARN] LoRA left unapplied: $problem")
-      )
+      useLoras(request.loras)
       val (prompt, negative) =
         (encoded(request.prompt), encoded(request.negativePrompt))
       held ++= Seq(prompt, negative)

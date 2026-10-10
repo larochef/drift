@@ -154,11 +154,7 @@ final class LtxPipeline(
     try {
       val (opened, problems) =
         loraFiles.open(request.loras.map(lora => lora.path -> lora.multiplier))
-      (problems ++ transformer
-        .useLoras(opened)
-        .map(target => s"a target of no weight: $target")).foreach(problem =>
-        println(s"[WARN] LoRA left unapplied: $problem")
-      )
+      LoraReport.print(opened, problems, transformer.useLoras(opened))
       val base = Ltx2Layout(
         frames = (frames - 1) / 8 + 1,
         height = height / 32,

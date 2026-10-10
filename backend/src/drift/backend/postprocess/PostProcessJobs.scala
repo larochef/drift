@@ -636,6 +636,7 @@ final private[postprocess] class PostProcessJobs(
       derivation = Some(derivation),
       importedFileName = None,
       inputSources = List.empty,
+      warnings = List.empty,
       projectId = src.parent.projectId,
       promptVersionId = src.parent.promptVersionId
     )

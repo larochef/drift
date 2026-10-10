@@ -2,11 +2,254 @@ package drift.runner.server
 
 import drift.runner.diffusion.*
 
-import java.awt.image.BufferedImage
+import java.awt.image.{BufferedImage, DataBufferInt}
 import java.io.*
 import java.nio.{ByteBuffer, ByteOrder}
-import java.nio.file.{Files, Path}
+import java.nio.file.*
 import javax.imageio.ImageIO
+
+/** A frame rate as a file states it, a fraction: 30000/1001 stays what it is
+  * from the source to the video made of it, where a rounded 30 runs the frames
+  * 0.1 % fast against their soundtrack.
+  */
+final case class FrameRate(numerator: Long, denominator: Long) {
+  require(
+    numerator > 0 && denominator > 0,
+    s"a frame rate of $numerator/$denominator"
+  )
+
+  def value: Double = numerator.toDouble / denominator
+
+  /** The nearest whole rate, for what only shows it. */
+  def rounded: Int = math.max(1, math.round(value).toInt)
+
+  /** As ffmpeg and ffprobe write it. */
+  override def toString: String = s"$numerator/$denominator"
+}
+
+object FrameRate {
+
+  def whole(fps: Int): FrameRate = FrameRate(fps, 1)
+
+  /** ffprobe's `n/d`; none for its `0/0` of a stream without a rate. */
+  def parse(text: String): Option[FrameRate] = text.split('/') match {
+    case Array(n, d) =>
+      for {
+        numerator <- n.toLongOption
+        denominator <- d.toLongOption
+        if numerator > 0 && denominator > 0
+      } yield FrameRate(numerator, denominator)
+    case _ => None
+  }
+}
+
+/** A file's frames as `ffprobe` describes them: their size, their rate and how
+  * many there are — the stream's packets counted, which costs no decoding. A
+  * few codecs carry packets that show nothing, so the count is what a progress
+  * bar is drawn on, never what a loop ends on.
+  */
+final case class FramesProbe(
+    width: Int,
+    height: Int,
+    rate: Option[FrameRate],
+    count: Int
+)
+
+/** A file's sound as `ffprobe` describes it. */
+final case class SoundProbe(codec: String, channels: Int, rate: Int)
+
+/** What a media file holds. */
+final case class MediaProbe(
+    frames: Option[FramesProbe],
+    sound: Option[SoundProbe]
+)
+
+/** A soundtrack the encoder takes from a file beside the frames it is sent:
+  * `file`'s first sound stream, written as `codec` says (ffmpeg's output
+  * options for it).
+  */
+final case class SoundFile(file: Path, codec: Seq[String])
+
+/** A clip's frames, read from `ffmpeg` one at a time: a frame is on the heap
+  * while its reader holds it and no longer, so a clip of any length is read in
+  * the room of one frame (`bugs/54`). The frames are `width × height` at
+  * `rate`; `count` is the probe's (`FramesProbe`). Closing it stops the
+  * decoder.
+  */
+final class ClipFrames private[server] (
+    val width: Int,
+    val height: Int,
+    val rate: FrameRate,
+    val count: Int,
+    process: Process,
+    log: Path
+) extends Iterator[BufferedImage]
+    with AutoCloseable {
+
+  private val in = new BufferedInputStream(process.getInputStream, 1 << 20)
+  private val bytes = new Array[Byte](width * height * 3)
+  private var ahead: Option[BufferedImage] = None
+  private var ended = false
+
+  private def read(): Option[BufferedImage] =
+    if (in.readNBytes(bytes, 0, bytes.length) < bytes.length) {
+      val status = process.waitFor()
+      val said = Files.readString(log).trim
+      close()
+      if (status != 0)
+        throw new IllegalArgumentException(
+          s"ffmpeg could not read the media ($status): $said"
+        )
+      None
+    } else {
+      val image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+      val pixels =
+        image.getRaster.getDataBuffer.asInstanceOf[DataBufferInt].getData
+      var at = 0
+      while (at < pixels.length) {
+        pixels(at) = (bytes(3 * at) & 0xff) << 16 |
+          (bytes(3 * at + 1) & 0xff) << 8 | bytes(3 * at + 2) & 0xff
+        at += 1
+      }
+      Some(image)
+    }
+
+  def hasNext: Boolean = {
+    if (ahead.isEmpty && !ended) ahead = read()
+    ahead.isDefined
+  }
+
+  def next(): BufferedImage = {
+    if (!hasNext) throw new NoSuchElementException("no frame left")
+    val frame = ahead.get
+    ahead = None
+    frame
+  }
+
+  def close(): Unit = if (!ended) {
+    ended = true
+    process.destroyForcibly()
+    try in.close()
+    catch { case _: IOException => () }
+    Files.deleteIfExists(log)
+    ()
+  }
+}
+
+/** A webm being written: `ffmpeg` runs from the first line, takes each frame as
+  * it is made and writes `output` as it goes, so a video of any length is
+  * encoded in the room of one frame, and what is written when the frames stop
+  * coming is a video that plays (`bugs/54`). Frames are `width × height` at
+  * `rate`; `sound` is muxed beside them, whatever it lasts: ffmpeg's
+  * `-shortest` would cut the frames at a shorter soundtrack's end.
+  */
+final class WebmWriter private[server] (
+    output: Path,
+    width: Int,
+    height: Int,
+    rate: FrameRate,
+    sound: Option[SoundFile]
+) {
+  private val log = Files.createTempFile("drift-video", ".log")
+  private val command =
+    Seq("ffmpeg", "-hide_banner", "-loglevel", "error", "-y") ++
+      Seq("-f", "rawvideo", "-pix_fmt", "rgb24", "-s", s"${width}x$height") ++
+      Seq("-r", rate.toString, "-i", "-") ++
+      sound.toSeq.flatMap(track => Seq("-i", track.file.toString)) ++
+      // the sound's file may hold frames of its own: only ours are written
+      Seq("-map", "0:v:0") ++ sound.toSeq.flatMap(_ => Seq("-map", "1:a:0")) ++
+      Seq("-c:v", "libvpx", "-crf", "6", "-b:v", "40M") ++
+      Seq("-pix_fmt", "yuv420p") ++
+      sound.toSeq.flatMap(_.codec) ++
+      Seq("-f", "webm", output.toString)
+  private val process =
+    try
+      new ProcessBuilder(command*)
+        .redirectErrorStream(true)
+        .redirectOutput(log.toFile)
+        .start()
+    catch {
+      case error: IOException =>
+        Files.deleteIfExists(log)
+        throw new IllegalStateException(
+          s"the drift runner encodes videos with ffmpeg, which is not installed: ${error.getMessage}"
+        )
+    }
+  private val in = new BufferedOutputStream(process.getOutputStream, 1 << 20)
+  private val row = new Array[Byte](width * 3)
+  private var written = 0
+  // An ffmpeg that stops reading says why in its log, not in the pipe's
+  // error: that one is kept for `finish`'s report.
+  private var refused: Option[IOException] = None
+
+  /** How many frames it has taken. */
+  def frames: Int = written
+
+  /** The next frame. One ffmpeg no longer takes is not an error here: `finish`
+    * reports why it stopped.
+    */
+  def write(frame: BufferedImage): Unit = {
+    require(
+      frame.getWidth == width && frame.getHeight == height,
+      s"a frame of ${frame.getWidth} × ${frame.getHeight} in a video of $width × $height"
+    )
+    if (refused.isEmpty)
+      try {
+        (0 until height).foreach { y =>
+          (0 until width).foreach { x =>
+            val rgb = frame.getRGB(x, y)
+            row(3 * x) = (rgb >> 16).toByte
+            row(3 * x + 1) = (rgb >> 8).toByte
+            row(3 * x + 2) = rgb.toByte
+          }
+          in.write(row)
+        }
+        written += 1
+      } catch { case error: IOException => refused = Some(error) }
+  }
+
+  /** Ends the video on the frames written: ffmpeg writes what it holds and the
+    * file's index, and its failure is this one's, in its own words. With
+    * `cutSound`, a soundtrack is cut where the frames end — what a video
+    * stopped early needs, its sound's file being the whole clip's.
+    */
+  def finish(cutSound: Boolean): Unit = {
+    try in.close()
+    catch { case error: IOException => refused = refused.orElse(Some(error)) }
+    val status = process.waitFor()
+    val said = Files.readString(log).trim
+    Files.deleteIfExists(log)
+    if (status != 0 || refused.isDefined)
+      throw new IllegalStateException(
+        s"ffmpeg ${refused.fold(s"failed ($status)")(error =>
+            s"stopped reading the frames (${error.getMessage}, status $status)"
+          )}: $said"
+      )
+    if (cutSound && sound.isDefined && written > 0) {
+      val cut = output.resolveSibling(s"${output.getFileName}.cut")
+      val seconds = written * rate.denominator.toDouble / rate.numerator
+      try {
+        VideoFiles.run(
+          Seq("ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i") ++
+            Seq(output.toString, "-t", f"$seconds%.6f", "-c", "copy") ++
+            Seq("-f", "webm", cut.toString)
+        )
+        Files.move(cut, output, StandardCopyOption.REPLACE_EXISTING)
+      } finally Files.deleteIfExists(cut)
+    }
+  }
+
+  /** Stops the encoder and removes what it wrote: a video nothing came of. */
+  def abandon(): Unit = {
+    process.destroyForcibly()
+    process.waitFor()
+    try in.close()
+    catch { case _: IOException => () }
+    Files.deleteIfExists(log)
+    Files.deleteIfExists(output)
+    ()
+  }
+}
 
 /** A video as the file drift saves: a webm (VP8, and Vorbis for a soundtrack),
   * encoded by the `ffmpeg` on the `PATH`. sd-server links libvpx and libwebm
@@ -15,16 +258,34 @@ import javax.imageio.ImageIO
   */
 object VideoFiles {
 
-  /** Every frame is kept, whatever the soundtrack lasts: one that runs past the
-    * last frame is cut there, a shorter one ends in silence. ffmpeg's own
-    * `-shortest` cut the frames instead, and closed its input on a run that
-    * still had frames to write — the "Broken pipe" a restored clip failed on
-    * once its soundtrack was a second short (`bugs/54`).
+  /** A webm written frame by frame into `output` (`WebmWriter`). */
+  def writer(
+      output: Path,
+      width: Int,
+      height: Int,
+      rate: FrameRate,
+      sound: Option[SoundFile]
+  ): WebmWriter = new WebmWriter(output, width, height, rate, sound)
+
+  /** A source's sound for the video made of its frames: copied when a webm
+    * holds its codec, encoded again (Vorbis, at most stereo) otherwise.
+    */
+  def soundOf(file: Path, sound: SoundProbe): SoundFile =
+    SoundFile(
+      file,
+      if (Set("vorbis", "opus")(sound.codec)) Seq("-c:a", "copy")
+      else Seq("-c:a", "libvorbis", "-ac", math.min(sound.channels, 2).toString)
+    )
+
+  /** A generated video, whole. Every frame is kept, whatever the soundtrack
+    * lasts: one that runs past the last frame is cut there, a shorter one ends
+    * in silence. ffmpeg's own `-shortest` cut the frames instead, and closed
+    * its input on a run that still had frames to write — the "Broken pipe" a
+    * restored clip failed on once its soundtrack was a second short
+    * (`bugs/54`).
     */
   def webm(video: Video): Array[Byte] = {
     require(video.frames.nonEmpty, "a video without frames")
-    val (width, height) =
-      (video.frames.head.getWidth, video.frames.head.getHeight)
     val folder = Files.createTempDirectory("drift-video")
     try {
       val output = folder.resolve("video.webm")
@@ -36,77 +297,17 @@ object VideoFiles {
           wav,
           wave(track.samples.take(whole), track.channels, track.rate)
         )
-        wav
+        SoundFile(wav, Seq("-c:a", "libvorbis"))
       }
-      val command =
-        Seq("ffmpeg", "-hide_banner", "-loglevel", "error", "-y") ++
-          Seq(
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            "rgb24",
-            "-s",
-            s"${width}x$height"
-          ) ++
-          Seq("-r", video.fps.toString, "-i", "-") ++
-          soundtrack.toSeq.flatMap(wav => Seq("-i", wav.toString)) ++
-          Seq(
-            "-c:v",
-            "libvpx",
-            "-crf",
-            "6",
-            "-b:v",
-            "40M",
-            "-pix_fmt",
-            "yuv420p"
-          ) ++
-          soundtrack.toSeq.flatMap(_ => Seq("-c:a", "libvorbis")) ++
-          Seq(output.toString)
-      val log = folder.resolve("ffmpeg.log")
-      val process =
-        try
-          new ProcessBuilder(command*)
-            .redirectErrorStream(true)
-            .redirectOutput(log.toFile)
-            .start()
-        catch {
-          case error: IOException =>
-            throw new IllegalStateException(
-              s"the drift runner encodes videos with ffmpeg, which is not installed: ${error.getMessage}"
-            )
-        }
-      val in = new BufferedOutputStream(process.getOutputStream, 1 << 20)
-      // An ffmpeg that stops reading says why in its log, not in the pipe's
-      // error: that one is kept for the report below.
-      val written =
-        try {
-          val row = new Array[Byte](width * 3)
-          video.frames.foreach { frame =>
-            (0 until height).foreach { y =>
-              (0 until width).foreach { x =>
-                val rgb = frame.getRGB(x, y)
-                row(3 * x) = (rgb >> 16).toByte
-                row(3 * x + 1) = (rgb >> 8).toByte
-                row(3 * x + 2) = rgb.toByte
-              }
-              in.write(row)
-            }
-          }
-          in.close()
-          None
-        } catch {
-          case error: IOException =>
-            try in.close()
-            catch { case _: IOException => () }
-            Some(error)
-        }
-      val status = process.waitFor()
-      if (status != 0 || written.isDefined)
-        throw new IllegalStateException(
-          s"ffmpeg ${written.fold(s"failed ($status)")(error =>
-              s"stopped reading the frames (${error.getMessage}, status $status)"
-            )}: ${Files.readString(log).trim}"
-        )
+      val encoder = writer(
+        output,
+        video.frames.head.getWidth,
+        video.frames.head.getHeight,
+        FrameRate.whole(video.fps),
+        soundtrack
+      )
+      video.frames.foreach(encoder.write)
+      encoder.finish(cutSound = false)
       Files.readAllBytes(output)
     } finally
       Files
@@ -125,6 +326,9 @@ object VideoFiles {
     * reference image at 2048).
     */
   private val StillShortEdge = 2048
+
+  /** The rate of frames whose file states none. */
+  private val UnstatedRate = FrameRate.whole(24)
 
   /** An uploaded media file, decoded: an image the JDK reads directly is a
     * still; anything else goes through `ffprobe` and `ffmpeg`, a single frame
@@ -147,38 +351,107 @@ object VideoFiles {
             .forEach(path => Files.deleteIfExists(path))
     }
 
-  private def decodeFile(file: Path): Media = {
-    val probe = ujson.read(
+  /** What `file` holds, by `ffprobe`. */
+  def probe(file: Path): MediaProbe = {
+    val described = ujson.read(
       run(
         Seq(
           "ffprobe",
           "-v",
           "error",
+          "-count_packets",
           "-show_entries",
-          "stream=codec_type,width,height,avg_frame_rate,r_frame_rate,channels,sample_rate",
+          "stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,nb_read_packets,nb_frames,channels,sample_rate",
           "-of",
           "json",
           file.toString
         )
       )
     )
-    val streams = probe("streams").arr.toSeq
+    val streams = described("streams").arr.toSeq
     def stream(kind: String) =
       streams.find(_.obj.get("codec_type").exists(_.str == kind))
-    val soundtrack = stream("audio").map { audio =>
-      val channels = math.min(audio("channels").num.toInt, 2)
-      val rate = audio("sample_rate").str.toInt
+    MediaProbe(
+      stream("video").map { video =>
+        def whole(name: String) =
+          video.obj.get(name).flatMap(_.strOpt).flatMap(_.toIntOption)
+        FramesProbe(
+          video("width").num.toInt,
+          video("height").num.toInt,
+          Seq("avg_frame_rate", "r_frame_rate")
+            .flatMap(video.obj.get)
+            .flatMap(rate => FrameRate.parse(rate.str))
+            .headOption,
+          whole("nb_read_packets").orElse(whole("nb_frames")).getOrElse(0)
+        )
+      },
+      stream("audio").map(audio =>
+        SoundProbe(
+          audio.obj.get("codec_name").fold("")(_.str),
+          audio("channels").num.toInt,
+          audio("sample_rate").str.toInt
+        )
+      )
+    )
+  }
+
+  /** `file`'s frames as `described`, one at a time, brought down to a short
+    * edge of `shortEdge` when larger.
+    */
+  def frames(
+      file: Path,
+      described: FramesProbe,
+      shortEdge: Int = ClipShortEdge
+  ): ClipFrames = {
+    val scale = math.min(
+      1.0,
+      shortEdge.toDouble / math.min(described.width, described.height)
+    )
+    def even(side: Double) = math.max(2, (math.round(side) / 2 * 2).toInt)
+    val (width, height) =
+      if (scale < 1)
+        (even(described.width * scale), even(described.height * scale))
+      else (described.width, described.height)
+    val log = Files.createTempFile("drift-media", ".log")
+    val command =
+      Seq("ffmpeg", "-hide_banner", "-loglevel", "error", "-i") ++
+        Seq(file.toString, "-an", "-vf") ++
+        Seq(s"scale=$width:$height:flags=lanczos") ++
+        Seq("-f", "rawvideo", "-pix_fmt", "rgb24", "-")
+    val process =
+      try new ProcessBuilder(command*).redirectError(log.toFile).start()
+      catch {
+        case error: IOException =>
+          Files.deleteIfExists(log)
+          throw new IllegalStateException(
+            s"the drift runner decodes media with ffmpeg, which is not installed: ${error.getMessage}"
+          )
+      }
+    new ClipFrames(
+      width,
+      height,
+      described.rate.getOrElse(UnstatedRate),
+      described.count,
+      process,
+      log
+    )
+  }
+
+  private def decodeFile(file: Path): Media = {
+    val described = probe(file)
+    val soundtrack = described.sound.map { sound =>
+      val channels = math.min(sound.channels, 2)
       val raw = run(
         Seq("ffmpeg", "-hide_banner", "-loglevel", "error", "-i") ++
           Seq(file.toString, "-vn", "-f", "f32le", "-ac", channels.toString) ++
-          Seq("-ar", rate.toString, "-")
+          Seq("-ar", sound.rate.toString, "-")
       )
       val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
       val samples = new Array[Float](raw.length / 4)
       buffer.asFloatBuffer().get(samples)
-      Soundtrack(samples, channels, rate)
+      Soundtrack(samples, channels, sound.rate)
     }
-    stream("video") match {
+    described.frames match {
       case None =>
         Media.Sound(
           soundtrack.getOrElse(
@@ -188,71 +461,28 @@ object VideoFiles {
           )
         )
       case Some(video) =>
-        val (width, height) =
-          (video("width").num.toInt, video("height").num.toInt)
-        val scale =
-          math.min(1.0, ClipShortEdge.toDouble / math.min(width, height))
-        def even(side: Double) = math.max(2, (math.round(side) / 2 * 2).toInt)
-        val (w, h) =
-          if (scale < 1) (even(width * scale), even(height * scale))
-          else (width, height)
-        val raw = run(
-          Seq("ffmpeg", "-hide_banner", "-loglevel", "error", "-i") ++
-            Seq(file.toString, "-an", "-vf", s"scale=$w:$h:flags=lanczos") ++
-            Seq("-f", "rawvideo", "-pix_fmt", "rgb24", "-")
-        )
-        val frameBytes = w * h * 3
-        val frames = (0 until raw.length / frameBytes).map { index =>
-          val image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
-          val base = index * frameBytes
-          (0 until h).foreach { y =>
-            (0 until w).foreach { x =>
-              val at = base + 3 * (y * w + x)
-              image.setRGB(
-                x,
-                y,
-                (raw(at) & 0xff) << 16 | (raw(at + 1) & 0xff) << 8 | raw(
-                  at + 2
-                ) & 0xff
-              )
-            }
-          }
-          image
-        }
-        if (frames.isEmpty)
+        val clip = frames(file, video)
+        val decoded =
+          try clip.toVector
+          finally clip.close()
+        if (decoded.isEmpty)
           throw new IllegalArgumentException("a video without frames")
-        if (frames.size == 1 && soundtrack.isEmpty) {
+        if (decoded.size == 1 && soundtrack.isEmpty) {
           // A still ffmpeg reads and the JDK doesn't (WebP): decoded again
           // at the stills' larger bound.
-          val stillScale =
-            math.min(1.0, StillShortEdge.toDouble / math.min(width, height))
-          if (stillScale == scale) Media.Still(frames.head)
+          if (math.min(video.width, video.height) <= ClipShortEdge)
+            Media.Still(decoded.head)
           else {
-            val (sw, sh) = (even(width * stillScale), even(height * stillScale))
-            val png = run(
-              Seq("ffmpeg", "-hide_banner", "-loglevel", "error", "-i") ++
-                Seq(file.toString, "-vf", s"scale=$sw:$sh:flags=lanczos") ++
-                Seq("-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "-")
-            )
-            Media.Still(ImageIO.read(new ByteArrayInputStream(png)))
+            val still = frames(file, video, StillShortEdge)
+            try Media.Still(still.next())
+            finally still.close()
           }
-        } else {
-          def rate(value: String) = value.split('/') match {
-            case Array(n, d) if d.toDouble > 0 => n.toDouble / d.toDouble
-            case _                             => 0.0
-          }
-          val fps = Seq("avg_frame_rate", "r_frame_rate")
-            .flatMap(video.obj.get)
-            .map(v => rate(v.str))
-            .find(_ > 0)
-            .getOrElse(24.0)
-          Media.Clip(frames, fps, soundtrack)
-        }
+        } else Media.Clip(decoded, clip.rate.value, soundtrack)
     }
   }
 
   /** `command`'s standard output; its errors when it fails. */
-  private def run(command: Seq[String]): Array[Byte] = {
+  private[server] def run(command: Seq[String]): Array[Byte] = {
     val process =
       try new ProcessBuilder(command*).start()
       catch {

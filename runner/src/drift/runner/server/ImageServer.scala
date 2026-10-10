@@ -20,10 +20,14 @@ import com.sun.net.httpserver.{HttpExchange, HttpServer}
   * `vid_gen` jobs queued and run one at a time, polled, and cancelled — while
   * queued, or between two steps once generating. A request starts from the
   * launch flags' values and overrides what it sends. Progress goes to the log
-  * as sd-cpp prints it (`| i/n - Xs/it`), which drift parses. Images come as
-  * base64 or data URLs; references are stretched to the output's size first
-  * unless `auto_resize_ref_image` is false, as sd-server does. A video comes
-  * back as one webm (`VideoFiles`).
+  * as sd-cpp prints it (`| i/n - Xs/it`), which drift parses; an image job
+  * whose request asks for it (`preview`, sd-server's field) also carries the
+  * last step's estimate of its picture (`specs/54-step-preview.md`), and any
+  * job what it went on without (`warnings`: a LoRA left unapplied). Images come
+  * as base64 or data URLs; references are stretched to the output's size first
+  * unless `auto_resize_ref_image` is false, as sd-server does. A generated
+  * video comes back as one webm (`VideoFiles`); an upscaled one is written to
+  * the file its request names (`VideoUpscale`).
   */
 final class ImageServer(
     options: ImageOptions,
@@ -46,12 +50,34 @@ final class ImageServer(
 
     /** Asked to stop while it generates: read between two steps. */
     @volatile var cancelRequested: Boolean = false
+
+    /** Whether its request asked for step previews (`preview`, anything but
+      * `none`, as sd-server's): only then are they drawn.
+      */
+    @volatile var previewWanted: Boolean = false
+
+    /** What the job could not do as asked and went on without (a LoRA left
+      * unapplied), for whoever shows the result.
+      */
+    val warnings = new java.util.concurrent.CopyOnWriteArrayList[String]()
+
+    /** The last step's preview of the image being made, as the job's document
+      * gives it.
+      */
+    @volatile var preview: Option[ujson.Value] = None
   }
 
   /** What a step throws once its job is asked to stop: the generation unwinds
     * the way a failed one does, and the job ends `cancelled`.
     */
   final private class JobCancelled extends RuntimeException("cancelled")
+
+  /** What a job throws when `reason` ended it with part of its work done and
+    * kept: the job ends `cancelled` or `failed` as `reason` says, and carries
+    * `result` all the same (a video's upscale, `VideoUpscale`).
+    */
+  final private class PartialResult(val result: ujson.Value, reason: Throwable)
+      extends RuntimeException(reason)
 
   /** The job the worker is generating, if any. */
   @volatile private var generating: Option[Job] = None
@@ -178,6 +204,10 @@ final class ImageServer(
     case _                                         => Nil
   }
 
+  /** `--sampling-method`, when it is one of the model's samplers. */
+  private def launchSampler(pipeline: ImagePipeline): Option[String] =
+    options.sampler.filter(pipeline.samplers.contains)
+
   /** A request's `sample_params.custom_sigmas`. */
   private def requestSigmas(
       sample: collection.Map[String, ujson.Value]
@@ -193,7 +223,11 @@ final class ImageServer(
     val name = options.diffusionModel.getFileName.toString
     val sampleParams = ujson.Obj(
       "scheduler" -> "default",
-      "sample_method" -> "euler",
+      "sample_method" -> (pipeline match {
+        case image: ImagePipeline =>
+          launchSampler(image).getOrElse(image.defaultSampler)
+        case _ => "euler"
+      }),
       "sample_steps" -> steps,
       "eta" -> 0.0,
       "shifted_timestep" -> 0,
@@ -274,7 +308,14 @@ final class ImageServer(
       "defaults_by_mode" -> ujson.Obj(mode -> defaults),
       "features_by_mode" -> ujson.Obj(mode -> features),
       "output_formats_by_mode" -> ujson.Obj(mode -> formats),
-      "samplers" -> ujson.Arr("euler"),
+      "preview_modes" -> (pipeline match {
+        case _: ImagePipeline => ujson.Arr("none", "proj")
+        case _                => ujson.Arr("none")
+      }),
+      "samplers" -> ujson.Arr.from(pipeline match {
+        case image: ImagePipeline => image.samplers
+        case _                    => Seq("euler")
+      }),
       "schedulers" -> ujson.Arr("default"),
       "loras" -> ujson.Arr.from(loraFiles.map { path =>
         ujson.Obj(
@@ -319,7 +360,8 @@ final class ImageServer(
       "hires" -> false,
       "vae_tiling" -> false,
       "cancel_queued" -> true,
-      "cancel_generating" -> true
+      "cancel_generating" -> true,
+      "preview" -> true
     )
 
   /** `POST /sdcpp/v1/img_gen`: a job from the request over the launch flags'
@@ -389,6 +431,24 @@ final class ImageServer(
         return json(exchange, 400, ujson.Obj("error" -> problem))
     }
     val stretch = field("auto_resize_ref_image").forall(_.bool)
+    // a sampler the family does not run is not refused: it runs its own
+    val sampler = sample
+      .get("sample_method")
+      .flatMap(_.strOpt)
+      .filter(pipeline.samplers.contains)
+      .orElse(launchSampler(pipeline))
+    sample
+      .get("sample_method")
+      .flatMap(_.strOpt)
+      .filterNot(name =>
+        pipeline.samplers.contains(name) || name == pipeline.defaultSampler
+      )
+      .foreach(name =>
+        println(
+          s"[WARN] ${pipeline.family} has no sampler '$name' (${pipeline.samplers
+              .mkString(", ")}): running its own"
+        )
+      )
     // the request's levels, else the launch's: a list is its own step count
     val sigmas = Some(requestSigmas(sample))
       .filter(_.nonEmpty)
@@ -420,11 +480,17 @@ final class ImageServer(
           options.guidance.getOrElse(ImageOptions.DefaultGuidance).toFloat
         ),
       seed = if (seed < 0) Random.nextLong(Long.MaxValue) else seed,
+      // A request's own noise levels come without the launch's shift, where
+      // the family derives one: `--flow-shift` was set for the schedule the
+      // levels replace, and only a shift sent with them is meant for them.
       shift = sample
         .get("flow_shift")
         .filterNot(_.isNull)
         .map(_.num)
-        .orElse(defaultShift),
+        .orElse(
+          defaultShift
+            .filterNot(_ => pipeline.ownShift && requestSigmas(sample).nonEmpty)
+        ),
       loras = loras.map { lora =>
         val path = Paths.get(lora("path").str)
         val resolved =
@@ -438,7 +504,8 @@ final class ImageServer(
       references =
         if (stretch) references.map(Images.resized(_, width, height))
         else references,
-      sigmas = sigmas
+      sigmas = sigmas,
+      sampler = sampler
     )
     val missing = request.loras.map(_._1).filterNot(Files.isRegularFile(_))
     if (missing.nonEmpty)
@@ -462,7 +529,15 @@ final class ImageServer(
         )
       )
     val count = field("batch_count").map(_.num.toInt).getOrElse(1).max(1)
-    enqueue(exchange, "img_gen", () => images(pipeline, request, count))
+    // sd-server's `preview`: a mode (`proj`, `tae`, `vae`) or `none`. The
+    // runner has one way to draw one, whatever the mode asked.
+    val previews = field("preview").flatMap(_.strOpt).exists(_ != "none")
+    enqueue(
+      exchange,
+      "img_gen",
+      () => images(pipeline, request, count),
+      previews
+    )
   }
 
   /** `POST /sdcpp/v1/vid_gen`: a job from the request over the launch flags'
@@ -652,11 +727,20 @@ final class ImageServer(
     enqueue(exchange, "vid_gen", () => video(pipeline, request))
   }
 
-  /** `POST /sdcpp/v1/upscale`, the runner's own job: `source` (a picture or a
-    * video, base64 or a data URL) restored at `width × height`, or at `scale`
-    * times its size (4 unless said); `seed`, `batch` and `overlap` as
-    * `SeedVr2Options` has them. A picture comes back as `img_gen`'s result
-    * does, a video as `vid_gen`'s, its frame rate and soundtrack kept.
+  /** `POST /sdcpp/v1/upscale`, the runner's own job, restored at
+    * `width × height`, or at `scale` times the source's size (4 unless said);
+    * `seed`, `batch` and `overlap` as `SeedVr2Options` has them.
+    *   - **A picture** is `source`, base64 or a data URL, and comes back as
+    *     `img_gen`'s result does.
+    *   - **A video** is a file, `source_file`, and is written to another,
+    *     `output_file` (a webm, its frame rate and soundtrack the source's):
+    *     drift and the runner share the machine, and a video of any length goes
+    *     through without being held (`VideoUpscale`, `bugs/54`). The result
+    *     names the file (`file`), its frames (`frame_count`, of
+    *     `source_frames`) and its rate (`frame_rate`, exact; `fps`, rounded). A
+    *     job stopped or failed after its first frames ends `cancelled` or
+    *     `failed` with that result all the same: the file is the video of the
+    *     frames made.
     */
   private def submitUpscale(
       exchange: HttpExchange,
@@ -667,31 +751,13 @@ final class ImageServer(
     val body = ujson.read(exchange.getRequestBody.readAllBytes())
     def field(name: String) = body.obj.get(name).filterNot(_.isNull)
     def whole(name: String) = field(name).map(_.num.toInt)
-    val encoded = field("source").map(_.str).getOrElse("")
-    if (encoded.isEmpty)
-      return json(exchange, 400, ujson.Obj("error" -> "no source"))
-    val bytes = Base64.getMimeDecoder.decode(
-      if (encoded.startsWith("data:")) encoded.drop(encoded.indexOf(',') + 1)
-      else encoded
-    )
-    // a picture as it is: `VideoFiles` would bring a large one down
-    val source = Option(ImageIO.read(new ByteArrayInputStream(bytes)))
-      .fold(VideoFiles.decode(bytes))(Media.Still(_))
-    val (frames, fps, soundtrack) = source match {
-      case Media.Still(image)                  => (Seq(image), None, None)
-      case Media.Clip(frames, fps, soundtrack) =>
-        (frames, Some(fps), soundtrack)
-      case Media.Sound(_) =>
-        return json(
-          exchange,
-          400,
-          ujson.Obj("error" -> "a sound has no frames")
-        )
-    }
+    def text(name: String) = field(name).map(_.str).filter(_.nonEmpty)
     val scale = whole("scale").getOrElse(SeedVr2Pipeline.DefaultScale)
     def even(side: Int) = side / 2 * 2
-    val width = even(whole("width").getOrElse(frames.head.getWidth * scale))
-    val height = even(whole("height").getOrElse(frames.head.getHeight * scale))
+    def target(width: Int, height: Int) = (
+      even(whole("width").getOrElse(width * scale)),
+      even(whole("height").getOrElse(height * scale))
+    )
     val seed = field("seed")
       .map(_.num.toLong)
       .filter(_ >= 0)
@@ -709,15 +775,157 @@ final class ImageServer(
         case error: IllegalArgumentException =>
           return json(exchange, 400, ujson.Obj("error" -> error.getMessage))
       }
+    (text("source"), text("source_file"), text("output_file")) match {
+      case (Some(encoded), None, None) =>
+        submitPictureUpscale(
+          exchange,
+          pipeline,
+          encoded,
+          target,
+          seed,
+          upscaleOptions
+        )
+      case (None, Some(source), Some(output)) =>
+        submitVideoUpscale(
+          exchange,
+          pipeline,
+          Paths.get(source),
+          Paths.get(output),
+          target,
+          seed,
+          upscaleOptions
+        )
+      case _ =>
+        json(
+          exchange,
+          400,
+          ujson.Obj(
+            "error" -> "a picture as `source`, or a video as `source_file` and `output_file`"
+          )
+        )
+    }
+  }
+
+  /** A video's `upscale` job, from a file into a file (`VideoUpscale`). */
+  private def submitVideoUpscale(
+      exchange: HttpExchange,
+      pipeline: SeedVr2Pipeline,
+      source: Path,
+      output: Path,
+      target: (Int, Int) => (Int, Int),
+      seed: Long,
+      upscaleOptions: SeedVr2Options
+  ): Unit = {
+    if (!Files.isReadable(source))
+      return json(
+        exchange,
+        400,
+        ujson.Obj("error" -> s"no readable file at $source")
+      )
+    if (!Option(output.getParent).exists(Files.isDirectory(_)))
+      return json(
+        exchange,
+        400,
+        ujson.Obj("error" -> s"no folder to write $output in")
+      )
+    val pass = new UpscalePass {
+      def steps(frames: Int, width: Int, height: Int): Int =
+        pipeline.steps(frames, width, height, upscaleOptions)
+      def upscaled(
+          frames: Iterator[java.awt.image.BufferedImage],
+          count: Int,
+          width: Int,
+          height: Int,
+          tick: () => Unit
+      ): Iterator[java.awt.image.BufferedImage] =
+        pipeline.upscaled(
+          frames,
+          count,
+          width,
+          height,
+          seed,
+          upscaleOptions,
+          tick
+        )
+    }
+    enqueue(
+      exchange,
+      "upscale",
+      () => {
+        println("sampling using Euler method")
+        val startedAt = System.nanoTime()
+        val made = VideoUpscale.run(
+          source,
+          output,
+          target,
+          pass,
+          stepPrinter(),
+          (clip, size, passes) =>
+            println(
+              s"upscaling ${clip.count} frames of ${clip.width} × ${clip.height} to ${size._1} × ${size._2}${
+                  if (passes > 1) s" in $passes passes" else ""
+                } (seed $seed)"
+            )
+        )
+        val result = ujson.Obj(
+          "output_format" -> "webm",
+          "mime_type" -> "video/webm",
+          "fps" -> made.rate.rounded,
+          "frame_rate" -> made.rate.toString,
+          "frame_count" -> made.frames,
+          "source_frames" -> made.sourceFrames,
+          "file" -> output.toString
+        )
+        made.stopped match {
+          case Some(reason) =>
+            println(
+              s"stopped after ${made.frames} frames: the video of those is kept"
+            )
+            throw new PartialResult(result, reason)
+          case None =>
+            println(
+              f"generate_image completed in ${(System.nanoTime() - startedAt) / 1e9}%.2fs"
+            )
+            result
+        }
+      }
+    )
+  }
+
+  /** A picture's `upscale` job: `encoded` is base64 or a data URL. */
+  private def submitPictureUpscale(
+      exchange: HttpExchange,
+      pipeline: SeedVr2Pipeline,
+      encoded: String,
+      target: (Int, Int) => (Int, Int),
+      seed: Long,
+      upscaleOptions: SeedVr2Options
+  ): Unit = {
+    val bytes = Base64.getMimeDecoder.decode(
+      if (encoded.startsWith("data:")) encoded.drop(encoded.indexOf(',') + 1)
+      else encoded
+    )
+    // a picture as it is: `VideoFiles` would bring a large one down
+    val frames = Option(ImageIO.read(new ByteArrayInputStream(bytes)))
+      .fold(VideoFiles.decode(bytes))(Media.Still(_)) match {
+      case Media.Still(image) => Seq(image)
+      case _                  =>
+        return json(
+          exchange,
+          400,
+          ujson.Obj(
+            "error" -> "`source` is a picture: a video goes as `source_file` and `output_file`"
+          )
+        )
+    }
+    val (width, height) = target(frames.head.getWidth, frames.head.getHeight)
     enqueue(
       exchange,
       "upscale",
       () => {
         println("sampling using Euler method")
         println(
-          s"upscaling ${frames.size} frame${
-              if (frames.size == 1) "" else "s"
-            } of ${frames.head.getWidth} × ${frames.head.getHeight} to $width × $height (seed $seed)"
+          s"upscaling 1 frame of ${frames.head.getWidth} × ${frames.head.getHeight} to $width × $height (seed $seed)"
         )
         val startedAt = System.nanoTime()
         val sizes = SeedVr2Pipeline.passes(
@@ -742,32 +950,17 @@ final class ImageServer(
         println(
           f"generate_image completed in ${(System.nanoTime() - startedAt) / 1e9}%.2fs"
         )
-        fps match {
-          case None =>
-            val png = new ByteArrayOutputStream()
-            ImageIO.write(restored.head, "png", png)
+        val png = new ByteArrayOutputStream()
+        ImageIO.write(restored.head, "png", png)
+        ujson.Obj(
+          "output_format" -> "png",
+          "images" -> ujson.Arr(
             ujson.Obj(
-              "output_format" -> "png",
-              "images" -> ujson.Arr(
-                ujson.Obj(
-                  "index" -> 0,
-                  "b64_json" -> Base64.getEncoder.encodeToString(
-                    png.toByteArray
-                  )
-                )
-              )
+              "index" -> 0,
+              "b64_json" -> Base64.getEncoder.encodeToString(png.toByteArray)
             )
-          case Some(rate) =>
-            val video = Video(restored, math.round(rate).toInt, soundtrack)
-            ujson.Obj(
-              "output_format" -> "webm",
-              "mime_type" -> "video/webm",
-              "fps" -> video.fps,
-              "frame_count" -> video.frames.size,
-              "b64_json" -> Base64.getEncoder
-                .encodeToString(VideoFiles.webm(video))
-            )
-        }
+          )
+        )
       }
     )
   }
@@ -775,7 +968,8 @@ final class ImageServer(
   private def enqueue(
       exchange: HttpExchange,
       kind: String,
-      run: () => ujson.Value
+      run: () => ujson.Value,
+      previews: Boolean = false
   ): Unit = {
     val job = new Job(
       UUID.randomUUID().toString,
@@ -783,6 +977,7 @@ final class ImageServer(
       kind,
       run
     )
+    job.previewWanted = previews
     jobs.put(job.id, job)
     queue.put(job)
     json(
@@ -839,11 +1034,14 @@ final class ImageServer(
           json(exchange, 200, describe(job))
         } else
           json(exchange, 409, ujson.Obj("error" -> s"the job is ${job.status}"))
-      case Some(job) => json(exchange, 200, describe(job))
+      case Some(job) =>
+        val described = describe(job)
+        job.preview.foreach(described("preview") = _)
+        json(exchange, 200, described)
     }
   }
 
-  private def describe(job: Job): ujson.Value = {
+  private def describe(job: Job): ujson.Obj = {
     val position = queue.asScala.toSeq.indexOf(job)
     val described = ujson.Obj(
       "id" -> job.id,
@@ -854,11 +1052,14 @@ final class ImageServer(
     )
     job.started.foreach(t => described("started") = ujson.Num(t.toDouble))
     job.completed.foreach(t => described("completed") = ujson.Num(t.toDouble))
-    if (job.status == "completed") job.result.foreach(described("result") = _)
+    // a completed job's, or what a stopped one keeps (`PartialResult`)
+    job.result.foreach(described("result") = _)
     job.error.foreach(message =>
       described("error") =
         ujson.Obj("code" -> "generation_failed", "message" -> message)
     )
+    if (!job.warnings.isEmpty)
+      described("warnings") = ujson.Arr.from(job.warnings.asScala)
     described
   }
 
@@ -896,7 +1097,10 @@ final class ImageServer(
       if (steps > 0) {
         val now = System.nanoTime()
         val filled = 50 * step / steps
-        rate = if (step == 0) 0.0 else (now - last) / 1e9
+        // a call may count several steps at once (a pass on more pixels)
+        rate =
+          if (step == 0) 0.0
+          else (now - last) / 1e9 / math.max(1, step - at._1)
         println(
           f"  |${"=" * filled}${" " * (50 - filled)}| $step/$steps - $rate%.2fs/it"
         )
@@ -955,9 +1159,26 @@ final class ImageServer(
       println(s"generating image ${index + 1}/$count (seed ${seeded.seed})")
       val bar = new StepBar
       ops.onWork = bar.work
+      // the picture being made has no estimate yet, whatever the last one had
+      generating.foreach(_.preview = None)
+      // One a second at most, and the last step's: a poll comes once a second,
+      // and steps shorter than that would pay for pictures nobody sees.
+      var drawnAt = 0L
+      pipeline.preview = (step, steps, picture) =>
+        generating.filter(_.previewWanted).foreach { job =>
+          val now = System.nanoTime()
+          if (step == steps || now - drawnAt >= PreviewIntervalNanos) {
+            drawnAt = now
+            job.preview = Some(preview(index + 1, step, steps, picture()))
+          }
+        }
       val image =
         try pipeline.generate(seeded, bar.step)
-        finally ops.onWork = () => ()
+        finally {
+          ops.onWork = () => ()
+          pipeline.preview = (_, _, _) => ()
+          generating.foreach(_.preview = None)
+        }
       val png = new ByteArrayOutputStream()
       ImageIO.write(image, "png", png)
       png.toByteArray
@@ -973,6 +1194,29 @@ final class ImageServer(
           "b64_json" -> Base64.getEncoder.encodeToString(png)
         )
       })
+    )
+  }
+
+  /** The least time between two previews of a picture. */
+  private val PreviewIntervalNanos = 1_000_000_000L
+
+  /** A step's preview in a job's document, as sd-server gives one: the pass
+    * (the image of the batch, from 1), the step it is the estimate of, the
+    * pass' steps and the picture — a JPEG here, a PNG there.
+    */
+  private def preview(
+      pass: Int,
+      step: Int,
+      steps: Int,
+      picture: java.awt.image.BufferedImage
+  ): ujson.Value = {
+    val jpeg = new ByteArrayOutputStream()
+    ImageIO.write(picture, "jpg", jpeg)
+    ujson.Obj(
+      "pass" -> pass,
+      "step" -> step,
+      "total_steps" -> steps,
+      "b64_json" -> Base64.getEncoder.encodeToString(jpeg.toByteArray)
     )
   }
 
@@ -1024,18 +1268,24 @@ final class ImageServer(
       job.status = "generating"
       job.started = Some(System.currentTimeMillis() / 1000)
       generating = Some(job)
-      try {
-        job.result = Some(job.run())
-        job.status = "completed"
-      } catch {
+      LoraReport.listener = warning => job.warnings.add(warning)
+      def ended(reason: Throwable): Unit = reason match {
+        case partial: PartialResult =>
+          job.result = Some(partial.result)
+          ended(partial.getCause)
         case _: JobCancelled =>
           println("generation cancelled")
           job.status = "cancelled"
-        case error: Throwable =>
+        case error =>
           System.err.println(s"[ERROR] generation failed: $error")
           job.error = Some(String.valueOf(error.getMessage))
           job.status = "failed"
       }
+      try {
+        job.result = Some(job.run())
+        job.status = "completed"
+      } catch { case reason: Throwable => ended(reason) }
+      LoraReport.listener = _ => ()
       generating = None
       job.completed = Some(System.currentTimeMillis() / 1000)
     }

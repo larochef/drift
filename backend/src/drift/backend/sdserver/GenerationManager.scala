@@ -112,6 +112,15 @@ final class GenerationManager(
       .mapValues(_.sortBy(_.submittedAt))
       .toMap
 
+  /** The pictures being sampled, as their last step saw them, keyed by
+    * generation id (`specs/54-step-preview.md`) — what the status socket
+    * samples beside the generations.
+    */
+  def previews: Map[String, StepPreview] =
+    registry.all
+      .flatMap(entry => entry.preview.map(entry.generation.id -> _))
+      .toMap
+
   /** Replaces the in-memory record of a generation whose sidecar was rewritten
     * — moved to another project — so a live session's list does not push the
     * old one back.

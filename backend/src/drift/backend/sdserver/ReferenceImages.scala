@@ -59,12 +59,17 @@ private[sdserver] object ReferenceImages {
         )
       )
 
+  /** The architectures whose references keep the output's area. */
+  private val OutputSized = Set("qwen-image-2.1", "hidream-o1")
+
   /** The size sd-cpp's `resize_before_vae` gives a reference
     * (`src/pipeline/image.cpp`): an area of a megapixel — the output's own for
     * Qwen-Image 2.1 — never more than the output's, the reference's shape kept,
     * each side rounded to 32 for the Qwen-Image family and 16 for the rest.
     * sd-cpp tells the families apart by its own version enum; drift by the
-    * built-in architecture ids.
+    * built-in architecture ids. HiDream O1, which only the drift runner gives
+    * references to, reads them in pixels at up to the output's size: it gets
+    * the output's area too, in sides of 32.
     */
   def vaeSizeOf(
       referenceWidth: Int,
@@ -75,11 +80,16 @@ private[sdserver] object ReferenceImages {
   ): (Int, Int) = {
     val outputArea = outputWidth.toLong * outputHeight
     val wanted =
-      if (architecture.id == "qwen-image-2.1") outputArea else 1024L * 1024
+      if (OutputSized(architecture.id)) outputArea else 1024L * 1024
     val area = math.min(wanted, outputArea).toDouble
     val width = math.sqrt(area * referenceWidth / referenceHeight)
     val height = width * referenceHeight / referenceWidth
-    val factor = if (architecture.id.startsWith("qwen-image")) 32 else 16
+    val factor =
+      if (
+        architecture.id.startsWith("qwen-image") ||
+        architecture.id == "hidream-o1"
+      ) 32
+      else 16
     def rounded(side: Double) =
       (math.round(side / factor) * factor).toInt.max(factor)
     (rounded(width), rounded(height))

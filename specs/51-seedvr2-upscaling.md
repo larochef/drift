@@ -117,14 +117,35 @@ In drift:
   runner, `starter-seedvr2-7b` (the panel's default) and
   `starter-seedvr2-3b`.
 - The runner's sd-server answers a native job of its own for it,
-  `POST /sdcpp/v1/upscale`: `source` (a picture or a video, base64),
-  `scale` (4 unless said) or `width` and `height`, `seed`, `batch`,
-  `overlap`. A picture comes back as `img_gen`'s result does, a video as
-  `vid_gen`'s (a webm, its frame rate and soundtrack kept). Its progress
-  bar counts, for every batch, its VAE tiles encoded, the transformer's
-  step and its tiles decoded; drift shows it on the job's card, and
-  **Stop** stops the job's server, the runner having no way to drop a job
-  it is generating.
+  `POST /sdcpp/v1/upscale`: `scale` (4 unless said) or `width` and
+  `height`, `seed`, `batch`, `overlap`, and what to upscale:
+  - **a picture** as `source` (base64 or a data URL), which comes back as
+    `img_gen`'s result does;
+  - **a video** as two paths, `source_file` to read and `output_file` to
+    write (drift and the runner share the machine). The result names the
+    file (`file`, a webm), its frames (`frame_count` of the source's
+    `source_frames`) and its rate (`frame_rate`, the source's own fraction;
+    `fps`, rounded). A video sent as `source` is refused.
+
+  Its progress bar counts, for every batch, its VAE tiles encoded, the
+  transformer's step and its tiles decoded — one bar over every pass of a
+  video. A job is stopped between two of those steps.
+- **A video is never held** (`server/VideoUpscale`, `VideoFiles`): its
+  frames are read from ffmpeg one at a time (`ClipFrames`), restored a
+  batch at a time (`SeedVr2Pipeline.batched`, the batches read as they are
+  asked for), each pass feeding the next as it goes, and written to the
+  encoder as they are made (`WebmWriter`), which takes the soundtrack from
+  the source's file (copied when it is Vorbis or Opus). A frame being
+  read, the batches being restored and a frame being written are all that
+  is on the heap, whatever the video lasts. The frame count the bar is
+  drawn on is the source's packets counted by `ffprobe`.
+- **A video stopped, or failed after its first frames, is kept**: the
+  encoder is closed on the frames written, the soundtrack cut where they
+  end, and the job ends `cancelled` or `failed` with its result all the
+  same. drift saves it as the entry it would have been, with a warning
+  (`Derivation.warning`: "partial: the first 340 of 4439 frames — the
+  upscale was stopped"), shown as ⚠ on its card and in its details. A
+  runner that dies takes its video with it.
 - A post-processing job kind `seedvr2` (`postprocess/SeedVr2Upscale`,
   `POST /api/outputs/{date}/{file}/seedvr2`, `SeedVr2UpscaleRequest`), the
   only kind that takes a video. The result is a **Made from** entry
@@ -142,9 +163,13 @@ In drift:
     What a tiled job asks its server for is the one thing that differs
     between models (`TileRequests`: an `img_gen` a tile for PiD, redraw and
     edit; the runner's `upscale` a tile for SeedVR2).
-  - **A video** goes whole, on a runner the job starts and stops; the
-    runner cuts it itself (batches, VAE tiles). It is saved as the runner
-    encoded it, unmatched, and does not pause; **Stop** stops its server.
+  - **A video** goes whole, on a runner the job starts and stops: drift
+    gives the runner the source's path and a `.part` file beside the
+    result's place, and renames it once the job has ended
+    (`NativeJobs.upscaleVideo`). It is saved as the runner encoded it,
+    unmatched, and does not pause. **Stop** asks the runner to stop the job,
+    and keeps the video of the frames made; a runner that has not answered
+    within two minutes is stopped itself.
 - One **Upscale** task in the Redraw & upscale tab (`UpscaleTaskPanel`):
   its model select lists the SeedVR2 and PiD configurations and the ESRGAN
   models, and what follows is what the chosen model takes — for SeedVR2 the
@@ -159,10 +184,12 @@ Not there yet:
 - **A SeedVR2 configuration launched as a session** has nothing to offer:
   its server has the `upscale` mode alone, and the generation form expects
   `img_gen` or `vid_gen`.
-- **The last frame of a video with a soundtrack** can be dropped by the
-  runner's webm encoding (`-shortest`), as for the generated videos.
-- Inputs travel as base64 in the job's request and a video's frames are
-  held in memory by the runner: fine for clips, not for long films.
+- **A stopped video cannot be resumed**: what it made is kept, and the rest
+  is a new job on the whole source.
+- **A video larger than 1080 px on its short side** is brought down to it
+  before it is upscaled, as every clip the runner decodes.
+- A generated video (`vid_gen`) still travels whole, as base64 in its job's
+  result: two gigabytes of webm at most, far above what the models make.
 
 ## How it is checked
 

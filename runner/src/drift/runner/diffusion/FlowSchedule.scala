@@ -63,6 +63,18 @@ object FlowSchedule {
     else Right(schedule.map(_.toFloat).toIndexedSeq)
   }
 
+  /** `nodes` (a schedule ending in 0, as `custom` gives it) each shifted by μ
+    * = `shift`, as `sigmas` shifts its own: what diffusers' pipelines do with
+    * the `sigmas` they are given under a dynamic shift. A step-distilled
+    * model's published levels are such nodes, the same at every size.
+    */
+  def shifted(nodes: IndexedSeq[Float], shift: Double): IndexedSeq[Float] = {
+    val e = math.exp(shift)
+    nodes.map(node =>
+      if (node <= 0f) 0f else (e / (e + (1 / node - 1))).toFloat
+    )
+  }
+
   /** Qwen Image 2.1's μ for `imageTokens` (its scheduler's configuration): the
     * line through 256 tokens at 0.5 and 8192 at 0.9.
     */

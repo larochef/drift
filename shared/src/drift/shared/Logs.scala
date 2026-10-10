@@ -109,6 +109,23 @@ object BatchProgress {
   given Schema[BatchProgress] = Schema.derived
 }
 
+/** The picture a generation is sampling, as the model's last step estimated it
+  * (`specs/54-step-preview.md`): small, never stored, gone with the result.
+  * `image` is the image of the batch it belongs to, from 0; `data` is the
+  * picture in base64, of `mimeType`.
+  */
+case class StepPreview(
+    image: Int,
+    step: Int,
+    steps: Int,
+    mimeType: String,
+    data: String
+) {
+
+  /** The picture as an `<img>` source. */
+  def url: String = s"data:$mimeType;base64,$data"
+}
+
 /** Which stage of a video's generation a session is on: `stage` of `total`,
   * counted from 1, and its `name` ("reading the references", "sampling",
   * "decoding the video"). The bar in flight ([[SessionProgress]]) is that

@@ -97,8 +97,10 @@ Each installed LoRA shows:
   guidance, the exact sigmas, or on wan 2.2 the high-noise steps and CFG.
   Type them from the LoRA's page (drift does not read them from Civitai or
   Hugging Face); leave empty what the LoRA does not care about. A turbo LoRA
-  typically wants its step count, CFG 1 and a flow shift around 3. The LoRAs
-  drift offers come with theirs filled in;
+  typically wants its step count, CFG 1 and the noise levels its page lists
+  (see **Sigmas** in [generating.md](generating.md) for how Qwen Image 2.1
+  reads them); a flow shift around 3 is a rough stand-in when it lists none.
+  The LoRAs drift offers come with theirs filled in;
 - **delete**, which removes the entity and its files.
 
 ## Using one in a generation
@@ -131,6 +133,14 @@ The generation form has a LoRA picker:
   ModelScope or this machine.
 - A wan 2.2 pair is sent as both files automatically, the high-noise half
   applied to the high-noise stage.
+- On the drift runner the session's log says what each generation's LoRAs
+  came to: `LoRA: 257 of 257 updates applied`, and a warning that counts and
+  names what was left out — a file made for another model, or whose weights
+  are named a way the runner does not read, applies nothing and says so
+  there rather than leaving the picture unchanged without a word.
+- A LoRA belongs to the checkpoint it was trained on. HiDream O1's are
+  trained on the full checkpoint: on the distilled Dev one they wash the
+  picture out ([settings.md](settings.md) has the way around it).
 
 ## LoRAs for a chat model
 

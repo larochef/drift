@@ -15,7 +15,14 @@ final private[sdserver] class GenerationEntry(
     @volatile var generation: Generation,
     val nativeJobId: String,
     val port: Int
-)
+) {
+
+  /** The picture as the job's last step saw it, while it generates
+    * (`specs/54-step-preview.md`): never part of the generation, which is
+    * stored.
+    */
+  @volatile var preview: Option[StepPreview] = None
+}
 
 /** The generations of this drift run, held in memory — runtime state like
   * sessions, gone on restart, rebuilt by the history from the sidecars — and

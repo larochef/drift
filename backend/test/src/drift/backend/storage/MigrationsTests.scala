@@ -531,10 +531,53 @@ object MigrationsTests extends TestSuite {
         viggle.sampling == LoraSampling(
           steps = Some(6),
           cfg = Some(1.0),
-          flowShift = Some(3.0)
+          sigmas = List(1.0, 0.9375, 0.875, 0.75, 0.5, 0.25)
         )
       )
       assert(catalog.forall(_.sampling.nonEmpty))
+    }
+
+    test("15: the installed Qwen turbo LoRAs take their levels (bugs/55)") {
+      val dir = Files.createTempDirectory("drift-qwen-turbo-levels")
+      val loras = Files.createDirectories(dir.resolve("loras"))
+      Files.writeString(dir.resolve("schema.json"), """{"version": 14}""")
+      def write(id: String, sha256: String, sampling: String): Unit =
+        Files.writeString(
+          loras.resolve(s"$id.json"),
+          s"""{"id": "$id", "architectureId": "qwen-image-2.1", "label": "$id",
+             |"files": [{"fileName": "$id.safetensors", "sha256": "$sha256"}],
+             |"sampling": $sampling}""".stripMargin,
+          StandardCharsets.UTF_8
+        )
+      def sampling(id: String) =
+        ujson.read(Files.readString(loras.resolve(s"$id.json")))("sampling")
+      val pruna =
+        "021a6228a0fcd217275190b89072416a2f28548e8e18fe049531dc9b77ef89bd"
+      val funAcc =
+        "764c56ae94f330b6d06ccc322f95e1b8ce46424ddde5899a15432f95f720d558"
+      write("pruna", pruna, """{"steps": 5, "cfg": 1.0, "flowShift": 3.0}""")
+      write("fun-acc", funAcc, """{"steps": 4, "cfg": 1.0, "flowShift": 3.0}""")
+      write("typed", pruna, """{"steps": 8, "sigmas": [1.0, 0.5]}""")
+      write("style", "0000", """{"sampler": "euler"}""")
+      Migrations(dir).run()
+      assert(
+        sampling("pruna") == ujson.read(
+          """{"steps": 5, "cfg": 1.0, "sigmas": [1.0, 0.887, 0.75, 0.5, 0.25]}"""
+        )
+      )
+      assert(
+        sampling("fun-acc") == ujson.read(
+          """{"steps": 4, "cfg": 1.0, "flowShift": 1.0,
+            |"sigmas": [1.0, 0.917, 0.7862, 0.5495]}""".stripMargin
+        )
+      )
+      // levels typed by the user stay, and so does any other LoRA
+      assert(
+        sampling("typed") == ujson.read(
+          """{"steps": 8, "sigmas": [1.0, 0.5]}"""
+        )
+      )
+      assert(sampling("style") == ujson.read("""{"sampler": "euler"}"""))
     }
 
     test(
@@ -555,6 +598,15 @@ object MigrationsTests extends TestSuite {
       assert(merged.flowShift == Some(3.0))
       // an empty layer changes nothing
       assert(LoraSampling().over(base) == base)
+      // noise levels without a shift take the shift underneath away
+      val levels = LoraSampling(sigmas = List(1.0, 0.75, 0.5, 0.25))
+      val shifted = base.copy(flowShift = Some(3.0))
+      assert(levels.over(shifted).flowShift.isEmpty)
+      assert(levels.over(turbo).flowShift.isEmpty)
+      assert(levels.fields == Set("flowShift", "sigmas"))
+      assert(
+        levels.copy(flowShift = Some(1.0)).over(shifted).flowShift == Some(1.0)
+      )
       // the later LoRA wins the fields it sets, and keeps the others
       val later = LoraSampling(steps = Some(8)).over(turbo)
       assert(later.steps == Some(8) && later.cfg == Some(1.0))

@@ -75,7 +75,8 @@ class SamplingSection(
           "Empty: the model's own. Higher spends more of the steps at high noise; a turbo LoRA usually wants about 3."
         ),
         // Or its exact noise levels, when its page lists them: they go here,
-        // and replace the schedule, shift included.
+        // in place of the schedule's own (Qwen Image 2.1 on the drift runner
+        // still shifts them for the size, as its pipeline does).
         field(
           "Sigmas",
           input(

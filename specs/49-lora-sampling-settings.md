@@ -18,8 +18,13 @@ LoRAs', then what the user types.
   - **steps**, the count it was made for: a minimum, more is fine;
   - **CFG**;
   - **flow shift**;
-  - **sigmas**, the exact noise levels when its page lists them; they
-    replace the schedule, and are their own step count;
+  - **sigmas**, the noise levels its page lists; they replace the schedule's
+    own, and are their own step count. On Qwen Image 2.1 the drift runner
+    shifts them for the image's size as the model's pipeline does (a turbo
+    LoRA's published levels are such nodes), unless a flow shift is set
+    beside them — 1 for levels that are final. A LoRA that brings levels
+    without a shift takes away the shift set underneath it (a
+    configuration's `--flow-shift`), which was meant for another schedule;
   - **sampler** and **scheduler**, for the LoRAs that need one;
   - **distilled guidance**, for the models that embed one;
   - **high-noise steps** and **high-noise CFG**, for a pair on a two-expert
@@ -80,6 +85,9 @@ LoRAs', then what the user types.
   picker.
 - `TiledJobs` hands the jobs the configuration's LoRAs with their merged
   sampling (`ConfiguredLoras`).
-- Sigmas and the flow shift override reach the drift runner for Qwen Image
-  2.1 only (42); the other families read the shift they already read and
-  refuse sigmas. sd-cpp takes both for every model.
+- The flow shift override reaches the drift runner for Qwen Image 2.1 only
+  (42); the other families read the shift they already read. sd-cpp takes
+  sigmas and the shift for every model, sigmas always as final levels.
+- The Qwen Image 2.1 turbo LoRAs are known by their file's checksum
+  (migration 15): Viggle's 6-step and Pruna's 5-step take their nodes,
+  alibaba-pai's Fun-Acc its four final levels with a flow shift of 1.

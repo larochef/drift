@@ -107,7 +107,7 @@ object RecordedParameters {
     * a batch was made with.
     */
   def rows(generation: Generation, outputIndex: Int): List[(String, String)] =
-    generation.derivation
+    generation.warnings.map("Warning" -> _) ++ generation.derivation
       .map(derivedRows)
       .orElse(
         generation.imageParameters.map(p =>

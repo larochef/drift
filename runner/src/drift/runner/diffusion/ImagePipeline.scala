@@ -41,7 +41,11 @@ final case class ImageRequest(
     /** The noise levels to step through in place of the model's schedule, 0
       * last (`FlowSchedule.custom`): `steps` is one less than their count.
       */
-    sigmas: Option[IndexedSeq[Float]]
+    sigmas: Option[IndexedSeq[Float]],
+    /** The sampler asked for (sd-server's `sample_method`), one of the family's
+      * `samplers`; none runs the family's own.
+      */
+    sampler: Option[String]
 )
 
 /** A model family end to end, from a prompt to an image. */
@@ -73,6 +77,21 @@ trait ImagePipeline extends AutoCloseable {
   /** Whether requests may carry their own noise levels (custom sigmas). */
   def takesSigmas: Boolean = false
 
+  /** The samplers a request may ask for, by sd-server's names. */
+  def samplers: Seq[String] = Seq("euler")
+
+  /** The sampler a request without one runs, as the capabilities name it:
+    * `default` where the family picks one by the request.
+    */
+  def defaultSampler: String = "euler"
+
+  /** Handed each step's estimate of the finished picture, small, before the
+    * step is counted (`specs/54-step-preview.md`): `preview(step, steps,
+    * picture)`, `picture` drawn only if called, there and then. The server's to
+    * set around `generate`; a family that cannot draw one never calls it.
+    */
+  var preview: (Int, Int, () => BufferedImage) => Unit = (_, _, _) => ()
+
   /** The image of `request`; `progress(0, steps)` before the first step,
     * `progress(step, steps)` after each.
     */
@@ -90,7 +109,8 @@ object ImagePipeline {
     * Nucleus-Image, LLaDA-Image (which takes LLaDA2's `tokenizer.json` and its
     * `connectors`, or finds both in the released folders), Mage-Flow (which
     * edits with the vision tower too), else Krea 2. All but HiDream O1 take a
-    * VAE and a text encoder.
+    * VAE and a text encoder; HiDream O1 reads references with Qwen3-VL-8B's
+    * vision tower (`textEncoderVision`).
     */
   def open(
       ops: Ops,
@@ -131,7 +151,8 @@ object ImagePipeline {
       new HiDreamO1Pipeline(
         ops,
         diffusionModel,
-        needed(tokenizer, "--tokenizer", "HiDream O1's tokenizer.json")
+        needed(tokenizer, "--tokenizer", "HiDream O1's tokenizer.json"),
+        textEncoderVision
       )
     else if (flux2) new Flux2Pipeline(ops, diffusionModel, vae, textEncoder)
     else if (qwenImage21)

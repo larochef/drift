@@ -54,6 +54,9 @@ class StatusSocketService {
   val postProcessJobs: EventStream[List[PostProcessJob]] =
     topic(_.postProcessJobs)
   val conversions: EventStream[List[ConversionJob]] = topic(_.conversions)
+
+  /** Keyed by generation id: every picture being sampled, as it last looked. */
+  val previews: EventStream[Map[String, StepPreview]] = topic(_.previews)
   val machine: EventStream[MachineStatus] = topic(_.machine)
 
   private var socket: Option[dom.WebSocket] = None

@@ -266,5 +266,21 @@
     "lastUsedAt": 0,
     "loras": [],
     "runner": "DriftRunner"
+  },
+  {
+    "id": "starter-hidream-o1-dev",
+    "label": "HiDream O1 Image Dev",
+    "architectureId": "hidream-o1",
+    "assignments": {
+      "model": "hidream-o1-image-dev-fp8-scaled",
+      "tokenizer": "hidream-o1-tokenizer",
+      "llm vision": "qwen3-vl-8b-instruct-mmproj-f16"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "runner": "DriftRunner"
   }
 ]

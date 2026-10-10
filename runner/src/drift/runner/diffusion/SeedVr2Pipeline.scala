@@ -313,11 +313,37 @@ final class SeedVr2Pipeline(ops: Ops, diffusionModel: Path, vae: Path)
       (count - options.overlap + step - 1) / step
     }
 
-  /** Restores `count` `frames` (as `restoreBatch` takes them), batch by batch,
-    * every batch from `seed`'s noise; a last batch short of `1 + 4n` frames is
-    * filled with its last frame. The restored frames go to `emit` in order;
+  /** `count` `frames` (as `restoreBatch` takes them) restored, batch by batch
+    * as they are asked for (`SeedVr2Pipeline.batched`): no more than a batch is
+    * read ahead, so a video of any length goes through, and one pass can feed
+    * the next. Every batch is restored from `seed`'s noise;
     * `progress(batch, batches, stage)` as each batch's stages start.
     */
+  def restored(
+      frames: Iterator[Array[Float]],
+      count: Int,
+      height: Int,
+      width: Int,
+      seed: Long,
+      options: SeedVr2Options = SeedVr2Options.Default,
+      progress: (Int, Int, String) => Unit = (_, _, _) => (),
+      tick: () => Unit = () => ()
+  ): Iterator[Array[Float]] = {
+    val total = batches(count, options)
+    SeedVr2Pipeline.batched(frames, options)((padded, batch) =>
+      restoreBatch(
+        padded,
+        height,
+        width,
+        noise(seed, padded.size, height, width),
+        options,
+        progress(batch, total, _),
+        tick
+      )
+    )
+  }
+
+  /** `restored`, its frames given to `emit` in order. */
   def restore(
       frames: Iterator[Array[Float]],
       count: Int,
@@ -328,56 +354,50 @@ final class SeedVr2Pipeline(ops: Ops, diffusionModel: Path, vae: Path)
       options: SeedVr2Options = SeedVr2Options.Default,
       progress: (Int, Int, String) => Unit = (_, _, _) => (),
       tick: () => Unit = () => ()
-  ): Unit = {
-    val total = batches(count, options)
-    var carried = Seq.empty[Array[Float]] // the next batch's first frames
-    var tail = Seq.empty[Array[Float]] // their results, awaiting the blend
-    var batch = 0
-    while (frames.hasNext) {
-      val input = carried ++ frames.take(options.batch - carried.size).toSeq
-      val padded =
-        input ++ Seq.fill((4 - (input.size - 1) % 4) % 4)(input.last)
-      val out = restoreBatch(
-        padded,
-        height,
-        width,
-        noise(seed, padded.size, height, width),
-        options,
-        progress(batch, total, _),
-        tick
-      ).take(input.size)
-      val weights = SeedVr2Pipeline.fade(tail.size)
-      val blended = tail.zip(out).zip(weights).map { case ((before, now), w) =>
-        Array.tabulate(now.length)(i => before(i) * w + now(i) * (1 - w))
-      }
-      val results = blended ++ out.drop(tail.size)
-      val keep = if (frames.hasNext) options.overlap else 0
-      results.dropRight(keep).foreach(emit)
-      tail = results.takeRight(keep)
-      carried = input.takeRight(keep)
-      batch += 1
-    }
+  ): Unit =
+    restored(frames, count, height, width, seed, options, progress, tick)
+      .foreach(emit)
+
+  private def padded(side: Int) = (side + multiple - 1) / multiple * multiple
+
+  /** How many steps `frames` frames upscaled to `width × height` take: for
+    * every batch, its tiles encoded, the transformer's step and its tiles
+    * decoded.
+    */
+  def steps(
+      frames: Int,
+      width: Int,
+      height: Int,
+      options: SeedVr2Options = SeedVr2Options.Default
+  ): Int = {
+    val tiles = VaeTiles.count(
+      padded(height),
+      padded(width),
+      options.tile,
+      options.tileOverlap,
+      multiple
+    )
+    batches(frames, options) * (2 * tiles + 1)
   }
 
-  /** `frames` (a picture, or a video's frames) upscaled to `width × height`
-    * (even sides): each resized to that size (bicubic) on a black canvas of the
+  /** `count` `frames` upscaled to `width × height` (even sides), as they are
+    * asked for: each resized to that size (bicubic) on a black canvas of the
     * next multiples of `multiple`, as the reference pads, restored, and cut
-    * back. `progress(done, of)` counts, for every batch, its tiles encoded, the
-    * transformer's step and its tiles decoded.
+    * back. `tick` after each of `steps`' steps.
     */
-  def upscale(
-      frames: Seq[BufferedImage],
+  def upscaled(
+      frames: Iterator[BufferedImage],
+      count: Int,
       width: Int,
       height: Int,
       seed: Long,
       options: SeedVr2Options = SeedVr2Options.Default,
-      progress: (Int, Int) => Unit = (_, _) => ()
-  ): Seq[BufferedImage] = {
+      tick: () => Unit = () => ()
+  ): Iterator[BufferedImage] = {
     require(
       width % 2 == 0 && height % 2 == 0 && width > 0 && height > 0,
       s"$width × $height: even sides"
     )
-    def padded(side: Int) = (side + multiple - 1) / multiple * multiple
     val (fullWidth, fullHeight) = (padded(width), padded(height))
     def prepared(frame: BufferedImage): Array[Float] = {
       val canvas =
@@ -387,35 +407,47 @@ final class SeedVr2Pipeline(ops: Ops, diffusionModel: Path, vae: Path)
       finally graphics.dispose()
       Images.pixels(canvas)
     }
-    // a batch's steps: its tiles encoded, the transformer, its tiles decoded
-    val tiles = VaeTiles.count(
-      fullHeight,
-      fullWidth,
-      options.tile,
-      options.tileOverlap,
-      multiple
-    )
-    val steps = batches(frames.size, options) * (2 * tiles + 1)
-    var done = 0
-    progress(0, steps)
-    val out = Seq.newBuilder[BufferedImage]
-    restore(
-      frames.iterator.map(prepared),
-      frames.size,
+    restored(
+      frames.map(prepared),
+      count,
       fullHeight,
       fullWidth,
       seed,
-      image =>
-        out += Images
-          .toImage(image, fullWidth, fullHeight)
-          .getSubimage(0, 0, width, height),
       options,
-      tick = () => {
-        done += 1
-        progress(done, steps)
-      }
+      tick = tick
+    ).map(image =>
+      Images
+        .toImage(image, fullWidth, fullHeight)
+        .getSubimage(0, 0, width, height)
     )
-    out.result()
+  }
+
+  /** `frames` (a picture, or a few frames) upscaled to `width × height`, all at
+    * once (`upscaled`); `progress(done, of)` counts `steps`' steps.
+    */
+  def upscale(
+      frames: Seq[BufferedImage],
+      width: Int,
+      height: Int,
+      seed: Long,
+      options: SeedVr2Options = SeedVr2Options.Default,
+      progress: (Int, Int) => Unit = (_, _) => ()
+  ): Seq[BufferedImage] = {
+    val total = steps(frames.size, width, height, options)
+    var done = 0
+    progress(0, total)
+    upscaled(
+      frames.iterator,
+      frames.size,
+      width,
+      height,
+      seed,
+      options,
+      () => {
+        done += 1
+        progress(done, total)
+      }
+    ).toVector
   }
 
   /** The model, as messages name it. */
@@ -464,6 +496,47 @@ object SeedVr2Pipeline {
     * `[58, 5120]`), written by `fixtures/tiny_seedvr2.py picture`.
     */
   val TextEmbedding = "/seedvr2/text.safetensors"
+
+  /** `frames` restored in batches of `options.batch`, each starting on the last
+    * `options.overlap` frames of the one before, where the two results are
+    * cross-faded (`fade`); a last batch short of `1 + 4n` frames is filled with
+    * its last frame. `restore(batch, index)` restores one batch. The result is
+    * read as it is asked for: a batch is restored when its first frame is
+    * wanted, and nothing but the overlap is kept of the one before.
+    */
+  def batched(frames: Iterator[Array[Float]], options: SeedVr2Options)(
+      restore: (Seq[Array[Float]], Int) => Seq[Array[Float]]
+  ): Iterator[Array[Float]] = {
+    var carried = Seq.empty[Array[Float]] // the next batch's first frames
+    var tail = Seq.empty[Array[Float]] // their results, awaiting the blend
+    var batch = 0
+    Iterator
+      .continually(())
+      .takeWhile(_ => frames.hasNext)
+      .flatMap { _ =>
+        val fresh = Vector.newBuilder[Array[Float]]
+        var taken = carried.size
+        while (taken < options.batch && frames.hasNext) {
+          fresh += frames.next()
+          taken += 1
+        }
+        val input = carried ++ fresh.result()
+        val padded =
+          input ++ Seq.fill((4 - (input.size - 1) % 4) % 4)(input.last)
+        val out = restore(padded, batch).take(input.size)
+        val weights = fade(tail.size)
+        val blended =
+          tail.zip(out).zip(weights).map { case ((before, now), w) =>
+            Array.tabulate(now.length)(i => before(i) * w + now(i) * (1 - w))
+          }
+        val results = blended ++ out.drop(tail.size)
+        val keep = if (frames.hasNext) options.overlap else 0
+        tail = results.takeRight(keep)
+        carried = input.takeRight(keep)
+        batch += 1
+        results.dropRight(keep)
+      }
+  }
 
   /** The earlier batch's weights over `overlap` shared frames (the reference's
     * `blend_overlapping_frames`): a Hann fall over the middle third from 3

@@ -77,11 +77,14 @@ final private[sdserver] class GenerationSubmissions(
       submittedAt,
       kind = "img_gen",
       path = "/sdcpp/v1/img_gen",
+      // every image is asked with its step previews, drawn the cheap way
+      // (`specs/54-step-preview.md`); a server that knows none ignores it
       body = writeToString(
-        architectureAndRuntimeOf(sessionId).fold(parameters)(
-          (architecture, runtime) =>
+        architectureAndRuntimeOf(sessionId)
+          .fold(parameters)((architecture, runtime) =>
             ReferenceImages.prepared(parameters, architecture, runtime)
-        )
+          )
+          .copy(preview = Some(GenerationSubmissions.PreviewMode))
       ),
       context = context,
       scratch = scratch,
@@ -225,6 +228,7 @@ final private[sdserver] class GenerationSubmissions(
         submittedAt = submittedAt,
         importedFileName = None,
         inputSources = inputs.sources,
+        warnings = List.empty,
         scratch = scratch
       )
     )
@@ -315,6 +319,15 @@ final private[sdserver] class GenerationSubmissions(
           port = port
         )
     }
+}
+
+private[sdserver] object GenerationSubmissions {
+
+  /** How a server is asked to draw the picture being sampled: sd-server's
+    * latent projection, the cheapest of its modes and the drift runner's only
+    * one.
+    */
+  val PreviewMode = "proj"
 }
 
 /** The inputs of one submission that arrive as the URL of a file drift serves —

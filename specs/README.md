@@ -66,6 +66,7 @@ in [`../docs/`](../docs/README.md).
 | [51](51-seedvr2-upscaling.md) | SeedVR2 on the drift runner: one-step video and image upscaling, the missing video upscaler and a second one beside PiD | done in code, run once end to end on a configuration copy; not yet used live |
 | [52](52-auto-redraw.md) | Auto redraw: one call to the assistant on the downscaled picture, the tiles drawn on it, gives each tile its own prompt and strength and proposes repairs; shown in the form before the redraw starts | done in code, measured, run once end to end on an isolated copy; not yet used live |
 | [53](53-background-tasks.md) | Background tasks: a long answer is asked for, then fetched — one system for any long-running task, first used by the reading of a picture (52) | planned, to groom |
+| [54](54-step-preview.md) | Step preview: a picture sampled on the drift runner shows the model's estimate of it under the progress bar, step by step | done in code, previews seen from the runner; not yet seen in a browser |
 
 ## What is left
 
@@ -81,6 +82,7 @@ in [`../docs/`](../docs/README.md).
   generating and editing, and its defaults settled against the vendor's numbers.
 - `33`, `34`: a live pass — SenseNova U1.5 from its official shards, and the
   official 8-step LoRA on it.
+- `54`: the preview seen in a browser; better pictures for FLUX.2 and Mage-Flow; redraw tiles and videos.
 - `42`: steps 10–15 of the runner; step 14 has MiniMax H3 and LTX 2.5 (with their soundtracks; no image conditions) and Wan 2.2 A14B (no LoRAs, no 5B); video LoRAs (Wan 2.2's high/low-noise pairs first) and HunyuanVideo next.
 - Ideas not specced: parameter sweeps (one prompt × configurations), timings
   and a loud CPU-fallback warning, Civitai example → form, assistant autopilot,

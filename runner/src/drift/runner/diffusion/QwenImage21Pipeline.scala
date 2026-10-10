@@ -19,6 +19,14 @@ import scala.collection.mutable
   * prefix; noise of the VAE's 64 channels, one token per latent pixel, denoised
   * by Euler steps on the flow-matching schedule shifted for the image's size
   * and stretched to end at 0.02; the latents decoded to RGBA by its VAE.
+  *   - Given noise levels (`custom_sigmas`) are nodes, shifted for the image's
+  *     size like the pipeline's own and not stretched: a turbo LoRA's published
+  *     list is the same at every size. A given flow shift replaces the size's
+  *     (1: the levels as written); alone, it is the whole schedule,
+  *     unstretched.
+  *   - LoRAs at run time; one that brings an output layer per sampling step
+  *     (alibaba-pai's Fun-Acc, four steps on its own noise levels) has each
+  *     step read its own.
   *   - Guidance: `--cfg-scale` above 1 runs the negative prompt too (the
   *     official pipeline's `true_cfg_scale`), empty prompts encoded as a space.
   *   - img2img: the init image's latents mixed with the noise at the schedule's
@@ -56,6 +64,10 @@ final class QwenImage21Pipeline(
   private val transformer = QwenImage21.open(ops, diffusionModel)
   private val autoencoder = QwenImage21Vae.open(ops, vae)
   private val loraFiles = new LoraFiles(ops)
+  private val projection = LatentProjection.named(
+    LatentProjection.QwenImage21,
+    transformer.config.latentChannels
+  )
   private val tower = vision.map(QwenVision.open(ops, _))
   private val sizing =
     tower.map(t => ImageSizing.qwen(t.config.patch, t.config.merge))
@@ -196,11 +208,9 @@ final class QwenImage21Pipeline(
       request.width % scale == 0 && request.height % scale == 0,
       s"${request.width} × ${request.height}: Qwen Image 2.1 takes multiples of $scale"
     )
-    val (loras, problems) = loraFiles.open(request.loras)
-    (problems ++ transformer
-      .useLoras(loras)
-      .map(target => s"a target of no weight: $target"))
-      .foreach(problem => println(s"[WARN] LoRA left unapplied: $problem"))
+    val (loras, problems) =
+      loraFiles.open(request.loras, wholeWeights = true)
+    LoraReport.print(loras, problems, transformer.useLoras(loras))
     val (gridHeight, gridWidth) =
       (request.height / scale, request.width / scale)
     val tokens = gridHeight * gridWidth
@@ -229,21 +239,22 @@ final class QwenImage21Pipeline(
       val unconditional = Option.when(guided)(
         keep(prefix(request.negativePrompt, tokens, references.toSeq))
       )
-      // a given flow shift is the whole schedule, not stretched to the
-      // terminal: what a turbo LoRA wants (stretched, its images break)
-      val sigmas = request.sigmas.getOrElse(
-        request.shift match {
-          case Some(shift) =>
-            FlowSchedule.sigmas(request.steps, math.log(shift))
-          case None =>
-            FlowSchedule.stretched(
-              FlowSchedule.sigmas(
-                request.steps,
-                FlowSchedule.qwenImage21Shift(tokens)
-              ),
-              0.02
-            )
-        }
+      // The official pipeline shifts whatever levels it runs, its own or the
+      // ones it is given, for the image's size; only its own are stretched to
+      // the terminal (stretched, a turbo LoRA's images break). A given flow
+      // shift stands for the size's, 1 leaving given levels as written.
+      val shift = request.shift.fold(FlowSchedule.qwenImage21Shift(tokens))(
+        math.log
+      )
+      val sigmas = request.sigmas match {
+        case Some(nodes) => FlowSchedule.shifted(nodes, shift)
+        case None        =>
+          val levels = FlowSchedule.sigmas(request.steps, shift)
+          if (request.shift.isDefined) levels
+          else FlowSchedule.stretched(levels, 0.02)
+      }
+      println(
+        s"noise levels: ${sigmas.map(level => f"$level%.4f").mkString(", ")}"
       )
       val random = new SplittableRandom(request.seed)
       val noise = Array.fill(tokens * channels)(Images.gaussian(random))
@@ -285,6 +296,7 @@ final class QwenImage21Pipeline(
       val steps = request.steps - first
       progress(0, steps)
       (first until request.steps).foreach { i =>
+        transformer.atStep(i, request.steps)
         transformer.velocity(
           x,
           conditional,
@@ -303,6 +315,20 @@ final class QwenImage21Pipeline(
           ops.scale(velocity, request.cfgScale, velocity)
           ops.add(velocity, v, velocity)
         }
+        projection.foreach(drawn =>
+          preview(
+            i + 1 - first,
+            steps,
+            () =>
+              drawn.estimate(
+                ops.toFloats(x),
+                ops.toFloats(velocity),
+                sigmas(i),
+                gridHeight,
+                gridWidth
+              )
+          )
+        )
         ops.scale(velocity, sigmas(i + 1) - sigmas(i), velocity)
         ops.add(x, velocity, x)
         inpainting.foreach(_.restore(x, sigmas(i + 1)))

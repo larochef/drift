@@ -404,6 +404,41 @@ final class DenseDecoder private[models] (
     loras.foreach(_(x, site(i, part), out))
   }
 
+  /** The names a file's whole-tensor differences reach the norms' weights by
+    * (ComfyUI's `.diff`): the weight's name less `.weight`.
+    */
+  def normSites: Set[String] =
+    (storedNorms.keys ++ Option.when(source.has(names.finalNorm))(
+      names.finalNorm
+    )).map(_.stripSuffix(".weight")).toSet
+
+  /** Replaces the differences added to the norms' weights: per site of
+    * `normSites`, the values to add, each already at its multiplier. The stored
+    * weights stay untouched.
+    */
+  def useNormDifferences(differences: Map[String, Seq[Array[Float]]]): Unit = {
+    changedNorms.values.foreach(ops.release)
+    changedNorms.clear()
+    differences.foreach { (site, added) =>
+      val name = s"$site.weight"
+      val stored =
+        if (name == names.finalNorm) storedFinalNorm else storedNorms(name)
+      val values = ops.toFloats(stored)
+      added.foreach { difference =>
+        require(
+          difference.length == values.length,
+          s"$site: a difference of ${difference.length} values for a norm of ${values.length}"
+        )
+        var i = 0
+        while (i < values.length) {
+          values(i) += difference(i)
+          i += 1
+        }
+      }
+      changedNorms(name) = ops.fromFloats(stored.shape, values)
+    }
+  }
+
   def newSequence(context: Int, pageSize: Int): Sequence =
     new Sequence(
       ops,
@@ -426,23 +461,41 @@ final class DenseDecoder private[models] (
       copy
     }
 
+  /** The norms' weights as stored, by name, and those a LoRA file's
+    * whole-tensor differences are added to (`useNormDifferences`), which stand
+    * for them while active.
+    */
+  private val storedNorms = scala.collection.mutable.Map.empty[String, Tensor]
+  private val changedNorms = scala.collection.mutable.Map.empty[String, Tensor]
+
   final private class Layer(i: Int) {
     private def weight(part: String) = source(names.layer(i, part))
-    private def norm(part: String) = floats(weight(part))
-    val attentionNorm: Tensor = norm("attention_norm")
+
+    /** A norm's weight as it stands: with the active differences, if any. */
+    private def norm(part: String): () => Tensor = {
+      val name = names.layer(i, part)
+      val stored = floats(source(name))
+      storedNorms(name) = stored
+      () => changedNorms.getOrElse(name, stored)
+    }
+    private val attentionNormWeight = norm("attention_norm")
+    def attentionNorm: Tensor = attentionNormWeight()
     val q: Tensor = weight("q")
     val k: Tensor = weight("k")
     val v: Tensor = weight("v")
-    val qNorm: Option[Tensor] =
-      Option.when(style.headNorms)(norm("q_norm"))
-    val kNorm: Option[Tensor] =
-      Option.when(style.headNorms)(norm("k_norm"))
+    private val qNormWeight = Option.when(style.headNorms)(norm("q_norm"))
+    def qNorm: Option[Tensor] = qNormWeight.map(_())
+    private val kNormWeight = Option.when(style.headNorms)(norm("k_norm"))
+    def kNorm: Option[Tensor] = kNormWeight.map(_())
     val o: Tensor = weight("o")
-    val postAttentionNorm: Option[Tensor] =
+    private val postAttentionNormWeight =
       Option.when(style.sandwichNorms)(norm("post_attention_norm"))
-    val mlpNorm: Tensor = norm("mlp_norm")
-    val postMlpNorm: Option[Tensor] =
+    def postAttentionNorm: Option[Tensor] = postAttentionNormWeight.map(_())
+    private val mlpNormWeight = norm("mlp_norm")
+    def mlpNorm: Tensor = mlpNormWeight()
+    private val postMlpNormWeight =
       Option.when(style.sandwichNorms)(norm("post_mlp_norm"))
+    def postMlpNorm: Option[Tensor] = postMlpNormWeight.map(_())
     val gate: Tensor = weight("gate")
     val up: Tensor = weight("up")
     val down: Tensor = weight("down")
@@ -450,7 +503,9 @@ final class DenseDecoder private[models] (
 
   private val embedding = source(names.embedding)
   // a text encoder's file may be cut before it (MiniMax H3's Qwen3-VL)
-  private lazy val finalNorm = floats(source(names.finalNorm))
+  private lazy val storedFinalNorm = floats(source(names.finalNorm))
+  private def finalNorm: Tensor =
+    changedNorms.getOrElse(names.finalNorm, storedFinalNorm)
   // small Qwen 3 models tie the output head to the embeddings
   private val output =
     if (source.has(names.output)) source(names.output) else embedding
@@ -653,9 +708,16 @@ final class DenseDecoder private[models] (
   }
 
   /** A prompt's tokens into `sequence` from slot 0, causally, no logits: the
-    * prefix later rows attend to (`attendAll`).
+    * prefix later rows attend to (`attendAll`). `images`' rows stand for their
+    * tokens' embeddings and their deepstack rows join the first layers'
+    * outputs; the tokens turn by the positions the sequence already has
+    * (`images.positions` is not read).
     */
-  def prefill(ids: Array[Int], sequence: Sequence): Unit = {
+  def prefill(
+      ids: Array[Int],
+      sequence: Sequence,
+      images: Option[SeenImages] = None
+  ): Unit = {
     sequence.reserve(ids.length)
     run(
       ids,
@@ -664,7 +726,8 @@ final class DenseDecoder private[models] (
       workspaceFor(ids.length, allLogits = false),
       config.layers,
       ids.length,
-      _ => ()
+      _ => (),
+      images
     )
   }
 
@@ -871,6 +934,7 @@ final class DenseDecoder private[models] (
 
   def close(): Unit = {
     workspace.foreach(_.release())
+    changedNorms.values.foreach(ops.release)
     converted.foreach(ops.release)
     source.close()
   }

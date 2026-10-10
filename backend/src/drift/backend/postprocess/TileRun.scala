@@ -254,10 +254,6 @@ final private[postprocess] class TileRun(
                         exitCode,
                         nativeJobId => jobs.waitingFor(job, port, nativeJobId)
                       )
-                      .flatMap(
-                        _.left.toOption
-                          .toRight("the runner answered a tile with a video")
-                      )
                   finally jobs.doneWaiting(job)
                 }
             }

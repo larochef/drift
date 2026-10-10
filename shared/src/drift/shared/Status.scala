@@ -32,6 +32,11 @@ case class StatusUpdate(
     generations: Option[Map[String, List[Generation]]] = None,
     postProcessJobs: Option[List[PostProcessJob]] = None,
     conversions: Option[List[ConversionJob]] = None,
+    /** The pictures being sampled, as their last step saw them, keyed by
+      * generation id (`specs/54-step-preview.md`): a topic of its own, so a
+      * picture crosses once a step and never with a progress redraw.
+      */
+    previews: Option[Map[String, StepPreview]] = None,
     /** Absent too where the machine's memory cannot be read. */
     machine: Option[MachineStatus] = None
 )

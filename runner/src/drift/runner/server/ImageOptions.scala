@@ -74,6 +74,10 @@ final case class ImageOptions(
       * separated), for the models that take them; none is the schedule.
       */
     sigmas: Seq[Double],
+    /** The sampler of a request that names none (`--sampling-method`), where
+      * the model has it among its own; else the model's.
+      */
+    sampler: Option[String],
     notes: Seq[String]
 )
 
@@ -95,7 +99,6 @@ object ImageOptions {
     "--diffusion-conv-direct" -> 0,
     "--cache-mode" -> 1, // spectrum and the like: the runner computes every step
     "--hires-upscalers-dir" -> 1,
-    "--sampling-method" -> 1, // Euler: flow-matching models' only sampler here
     "--scheduler" -> 1,
     "-t" -> 1,
     "--threads" -> 1,
@@ -140,9 +143,9 @@ object ImageOptions {
             "--llm_vision" | "--audio-vae" | "--video-frames" |
             "--high-noise-diffusion-model" | "--t5xxl" | "--high-noise-steps" |
             "--high-noise-cfg-scale" | "--moe-boundary" | "--fps" |
-            "--control-net" | "--sigmas" | "--embeddings-connectors" |
-            "--llada-queryformer" | "--llada-text-projection" |
-            "--llada-sigvq" =>
+            "--control-net" | "--sigmas" | "--sampling-method" |
+            "--embeddings-connectors" | "--llada-queryformer" |
+            "--llada-text-projection" | "--llada-sigvq" =>
           value().foreach(v => values(canonical(flag)) = v)
         case other if NotYet.contains(other) =>
           problem = Some(s"$other is not supported yet: ${NotYet(other)}")
@@ -205,6 +208,7 @@ object ImageOptions {
           .toSeq
           .flatMap(_.split(',').map(_.trim).filter(_.nonEmpty))
           .map(_.toDouble),
+        values.get("--sampling-method"),
         notes.result()
       )
     }

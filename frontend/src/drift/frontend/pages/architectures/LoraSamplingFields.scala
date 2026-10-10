@@ -80,8 +80,8 @@ class LoraSamplingFields(
           shown(sampling.flowShift),
           "4.5rem",
           "number",
-          "How far its steps lean toward the noisy end; a turbo LoRA " +
-            "usually wants about 3"
+          "How far its steps lean toward the noisy end; about 3 for a turbo " +
+            "LoRA that lists no sigmas, 1 beside sigmas that are final"
         )(
           optional(_, _.toDoubleOption.filter(_ > 0))
             .map(shift => sampling.copy(flowShift = shift))

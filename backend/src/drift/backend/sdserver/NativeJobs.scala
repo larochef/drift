@@ -33,8 +33,30 @@ private[backend] case class NativeJobResult(
     fps: Option[Int] = None,
     frameCount: Option[Int] = None,
     images: List[NativeJobImage] = List.empty,
-    @named("b64_json") b64Json: Option[String] = None
+    @named("b64_json") b64Json: Option[String] = None,
+    /** A video's upscale on the runner: the file it wrote, and how many frames
+      * its source has (`frameCount` of them are in the file).
+      */
+    file: Option[String] = None,
+    sourceFrames: Option[Int] = None
 )
+
+/** The picture a job is sampling, in a job whose request asked for one
+  * (`preview`, `specs/54-step-preview.md`), as sd-server and the drift runner
+  * both give it: the sampling pass, from 1 (an image of the batch; on sd-cpp a
+  * hires pass counts too), the step within it, and a PNG or a JPEG.
+  */
+private[backend] case class NativeJobPreview(
+    pass: Int = 0,
+    step: Int = 0,
+    totalSteps: Int = 0,
+    @named("b64_json") b64Json: String = ""
+) {
+
+  /** The picture's type, told from how its base64 starts. */
+  def mimeType: String =
+    if (b64Json.startsWith("/9j/")) "image/jpeg" else "image/png"
+}
 private[backend] case class NativeJob(
     id: String = "",
     kind: String = "",
@@ -44,16 +66,25 @@ private[backend] case class NativeJob(
     completed: Option[Long] = None,
     queuePosition: Int = 0,
     result: Option[NativeJobResult] = None,
-    error: Option[NativeJobError] = None
+    error: Option[NativeJobError] = None,
+    preview: Option[NativeJobPreview] = None,
+    /** What the job went on without (the drift runner's: a LoRA left
+      * unapplied).
+      */
+    warnings: List[String] = Nil
 )
 
-/** A video the runner's `upscale` job made. */
+/** A video the runner's `upscale` job wrote, in the file its request named.
+  * `stopped` is why it holds fewer frames than its source, when the job was
+  * cancelled or failed after its first frames: the file is the video of those.
+  */
 private[backend] case class UpscaledVideo(
-    bytes: Array[Byte],
     format: String,
     mimeType: String,
     fps: Option[Int],
-    frameCount: Option[Int]
+    frameCount: Option[Int],
+    sourceFrames: Option[Int],
+    stopped: Option[String]
 )
 private[backend] object NativeJob {
   given JsonValueCodec[NativeJob] = JsonCodecMaker.make(
@@ -61,8 +92,8 @@ private[backend] object NativeJob {
   )
 }
 
-/** The runner's `upscale` job (`specs/51`): `source` is a picture or a video,
-  * base64; a negative seed is the server's to draw.
+/** The runner's `upscale` job on a picture (`specs/51`): `source` is the
+  * picture, base64; a negative seed is the server's to draw.
   */
 private[backend] case class NativeUpscale(
     source: String,
@@ -71,6 +102,22 @@ private[backend] case class NativeUpscale(
 )
 private[backend] object NativeUpscale {
   given JsonValueCodec[NativeUpscale] = JsonCodecMaker.make
+}
+
+/** The runner's `upscale` job on a video: read from `sourceFile` and written to
+  * `outputFile`, both paths on the machine drift and the runner share, so a
+  * video of any length goes through (`bugs/54`).
+  */
+private[backend] case class NativeVideoUpscale(
+    sourceFile: String,
+    outputFile: String,
+    scale: Int,
+    seed: Long
+)
+private[backend] object NativeVideoUpscale {
+  given JsonValueCodec[NativeVideoUpscale] = JsonCodecMaker.make(
+    CodecMakerConfig.withFieldNameMapper(JsonCodecMaker.enforce_snake_case)
+  )
 }
 
 /** Images straight from an sd-server, for jobs that drive a server themselves
@@ -171,50 +218,87 @@ object NativeJobs {
       .map(image => Base64.getMimeDecoder.decode(image.b64Json))
       .toRight("sd-server completed the job without an image")
 
-  /** Submits the runner's `upscale` job and waits for its result: a picture
-    * (`Left`, a PNG) or a video (`Right`: its bytes, format, frame rate and
-    * frame count). `serverExit` and `onSubmitted` as `image` has them.
+  /** Submits the runner's `upscale` job on a picture and waits for it: a PNG.
+    * `serverExit` and `onSubmitted` as `image` has them.
     */
   def upscale(
       port: Int,
       request: NativeUpscale,
       serverExit: () => Option[Int],
       onSubmitted: String => Unit
-  ): Either[String, Either[Array[Byte], UpscaledVideo]] =
+  ): Either[String, Array[Byte]] =
+    submitted(port, writeToString(request), serverExit, onSubmitted)
+      .flatMap(jobId => await(port, jobId, serverExit))
+      .flatMap(firstImage)
+
+  /** Submits the runner's `upscale` job on a video and waits for it: the video
+    * is in the request's `outputFile`. A job cancelled or failed after its
+    * first frames is a result too, the shorter video those make, and says so
+    * (`UpscaledVideo.stopped`).
+    */
+  def upscaleVideo(
+      port: Int,
+      request: NativeVideoUpscale,
+      serverExit: () => Option[Int],
+      onSubmitted: String => Unit
+  ): Either[String, UpscaledVideo] =
+    submitted(port, writeToString(request), serverExit, onSubmitted)
+      .flatMap(jobId => awaitEnd(port, jobId, serverExit))
+      .flatMap { job =>
+        val reason = job.status match {
+          case "completed" => None
+          case "cancelled" => Some("stopped")
+          case _           =>
+            Some(
+              job.error.map(_.message).filter(_.nonEmpty).getOrElse("failed")
+            )
+        }
+        job.result.filter(_.file.exists(_.nonEmpty)) match {
+          case Some(result) =>
+            Right(
+              UpscaledVideo(
+                result.outputFormat,
+                result.mimeType.getOrElse(s"video/${result.outputFormat}"),
+                result.fps,
+                result.frameCount,
+                result.sourceFrames,
+                reason
+              )
+            )
+          case None =>
+            Left(
+              reason.fold("the runner completed the job without a video")(why =>
+                s"the runner ${job.status} the job: $why"
+              )
+            )
+        }
+      }
+
+  /** Posts an `upscale` job; its id once the runner has taken it. */
+  private def submitted(
+      port: Int,
+      body: String,
+      serverExit: () => Option[Int],
+      onSubmitted: String => Unit
+  ): Either[String, String] =
     try {
-      val submitted = client.send(
+      val response = client.send(
         HttpRequest
           .newBuilder(uri(port, "/sdcpp/v1/upscale"))
           .timeout(java.time.Duration.ofSeconds(120))
           .header("Content-Type", "application/json")
-          .POST(HttpRequest.BodyPublishers.ofString(writeToString(request)))
+          .POST(HttpRequest.BodyPublishers.ofString(body))
           .build(),
         HttpResponse.BodyHandlers.ofString()
       )
-      if (submitted.statusCode != 202)
+      if (response.statusCode != 202)
         Left(
-          s"the runner refused the job (${submitted.statusCode}): ${submitted.body.trim.take(300)}"
+          s"the runner refused the job (${response.statusCode}): ${response.body.trim.take(300)}"
         )
       else {
-        val jobId = readFromString[NativeJob](submitted.body).id
+        val jobId = readFromString[NativeJob](response.body).id
         onSubmitted(jobId)
-        await(port, jobId, serverExit).flatMap(result =>
-          result.b64Json.filter(_.nonEmpty) match {
-            case Some(video) =>
-              Right(
-                Right(
-                  UpscaledVideo(
-                    Base64.getMimeDecoder.decode(video),
-                    result.outputFormat,
-                    result.mimeType.getOrElse(s"video/${result.outputFormat}"),
-                    result.fps,
-                    result.frameCount
-                  )
-                )
-              )
-            case None => firstImage(result).map(Left(_))
-          }
-        )
+        Right(jobId)
       }
     } catch {
       case NonFatal(err) =>
@@ -258,19 +342,41 @@ object NativeJobs {
         logger.warn(s"Cancelling job $jobId on sd-server failed", err)
     }
 
-  /** Polls the job once a second until it ends. A timed-out poll means a busy
-    * server and is tolerated as long as a session's would be
-    * (`GenerationManager.SilenceGraceMillis`); a dead server, a vanished or
-    * failed job, or five other failures in a row, end the wait with the reason.
-    */
+  /** A completed job's result; a failed or cancelled one's reason. */
   private def await(
       port: Int,
       jobId: String,
       serverExit: () => Option[Int]
-  ): Either[String, NativeJobResult] = {
+  ): Either[String, NativeJobResult] =
+    awaitEnd(port, jobId, serverExit).flatMap(job =>
+      job.status match {
+        case "completed" =>
+          job.result.toRight("sd-server completed the job without a result")
+        case _ =>
+          Left(
+            s"sd-server ${job.status} the job: " +
+              job.error
+                .map(_.message)
+                .filter(_.nonEmpty)
+                .getOrElse("no reason given")
+          )
+      }
+    )
+
+  /** Polls the job once a second until it ends — completed, failed or cancelled
+    * — and gives it as it ended. A timed-out poll means a busy server and is
+    * tolerated as long as a session's would be
+    * (`GenerationManager.SilenceGraceMillis`); a dead server, a vanished job,
+    * or five other failures in a row, end the wait with the reason.
+    */
+  private def awaitEnd(
+      port: Int,
+      jobId: String,
+      serverExit: () => Option[Int]
+  ): Either[String, NativeJob] = {
     var lastAnswerAt = System.currentTimeMillis()
     var failures = 0
-    var outcome: Option[Either[String, NativeJobResult]] = None
+    var outcome: Option[Either[String, NativeJob]] = None
     while (outcome.isEmpty) {
       sleep(1.second)
       serverExit().foreach(code => outcome = Some(Left(exited(code))))
@@ -282,22 +388,8 @@ object NativeJobs {
             lastAnswerAt = System.currentTimeMillis()
             failures = 0
             job.status match {
-              case "completed" =>
-                outcome = Some(
-                  job.result.toRight(
-                    "sd-server completed the job without a result"
-                  )
-                )
-              case "failed" | "cancelled" =>
-                outcome = Some(
-                  Left(
-                    s"sd-server ${job.status} the job: " +
-                      job.error
-                        .map(_.message)
-                        .filter(_.nonEmpty)
-                        .getOrElse("no reason given")
-                  )
-                )
+              case "completed" | "failed" | "cancelled" =>
+                outcome = Some(Right(job))
               case _ => ()
             }
           case 404 | 410 =>

@@ -414,10 +414,7 @@ final class MiniMaxH3Pipeline(
     val channels = c.videoWidth / 4
     val (loras, problems) =
       loraFiles.open(request.loras.map(lora => lora.path -> lora.multiplier))
-    (problems ++ transformer
-      .useLoras(loras)
-      .map(target => s"a target of no weight of this file: $target"))
-      .foreach(problem => println(s"[WARN] LoRA left unapplied: $problem"))
+    LoraReport.print(loras, problems, transformer.useLoras(loras))
     val keyframeImages = request.initImage.map(_ -> 0).toSeq ++
       request.endImage.map(_ -> (frames - 1)).toSeq
     require(

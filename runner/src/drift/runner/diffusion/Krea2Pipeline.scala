@@ -43,15 +43,17 @@ final class Krea2Pipeline(
   private val autoencoder = WanVae.open(ops, vae)
 
   private val loraFiles = new LoraFiles(ops)
+  private val projection = LatentProjection.named(
+    LatentProjection.Wan21,
+    transformer.config.latentChannels
+  )
 
   /** Makes `loras` the transformer's active set; returns what is left
     * unapplied.
     */
-  private def useLoras(loras: Seq[(Path, Float)]): Seq[String] = {
+  private def useLoras(loras: Seq[(Path, Float)]): Unit = {
     val (opened, problems) = loraFiles.open(loras)
-    problems ++ transformer
-      .useLoras(opened)
-      .map(target => s"a target of no weight: $target")
+    LoraReport.print(opened, problems, transformer.useLoras(opened))
   }
 
   private val Prefix =
@@ -106,9 +108,7 @@ final class Krea2Pipeline(
     val channels = transformer.config.latentChannels
     val tokens = gridHeight * gridWidth
     val guided = request.cfgScale != 1f
-    useLoras(request.loras).foreach(problem =>
-      println(s"[WARN] LoRA left unapplied: $problem")
-    )
+    useLoras(request.loras)
     val conditional = text(request.prompt)
     val unconditional = Option.when(guided)(text(request.negativePrompt))
     val random = new SplittableRandom(request.seed)
@@ -163,6 +163,20 @@ final class Krea2Pipeline(
           ops.scale(velocity, request.cfgScale, velocity)
           ops.add(velocity, v, velocity)
         }
+        projection.foreach(drawn =>
+          preview(
+            i + 1 - first,
+            steps,
+            () =>
+              drawn.estimate(
+                ops.toFloats(latents),
+                ops.toFloats(velocity),
+                sigmas(i),
+                gridHeight,
+                gridWidth
+              )
+          )
+        )
         ops.scale(velocity, sigmas(i + 1) - sigmas(i), velocity)
         ops.add(latents, velocity, latents)
         progress(i + 1 - first, steps)

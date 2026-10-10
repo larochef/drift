@@ -33,6 +33,7 @@ private case class StatusSnapshot(
     generations: Map[String, List[Generation]],
     postProcessJobs: List[PostProcessJob],
     conversions: List[ConversionJob],
+    previews: Map[String, StepPreview],
     machine: Option[MachineStatus]
 )
 
@@ -68,6 +69,7 @@ def statusEndpoint(
     generations = generationManager.listBySession,
     postProcessJobs = postProcessManager.listJobs,
     conversions = conversionManager.listJobs,
+    previews = generationManager.previews,
     machine = machineMonitor.status
   )
 
@@ -84,6 +86,7 @@ def statusEndpoint(
     generations = Some(current.generations),
     postProcessJobs = Some(current.postProcessJobs),
     conversions = Some(current.conversions),
+    previews = Some(current.previews),
     machine = current.machine
   )
 
@@ -109,6 +112,7 @@ def statusEndpoint(
       ),
       postProcessJobs = changed(_.postProcessJobs),
       conversions = changed(_.conversions),
+      previews = changed(_.previews),
       machine = changed(_.machine).flatten
     )
     Some(update).filter(_ != StatusUpdate())

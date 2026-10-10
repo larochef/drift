@@ -126,7 +126,8 @@ case class LoraSampling(
     List(
       steps.map(_ => "steps"),
       cfg.map(_ => "cfg"),
-      flowShift.map(_ => "flowShift"),
+      // noise levels set the shift too, to none when they bring none
+      Option.when(flowShift.isDefined || sigmas.nonEmpty)("flowShift"),
       Option.when(sigmas.nonEmpty)("sigmas"),
       sampler.map(_ => "sampler"),
       scheduler.map(_ => "scheduler"),
@@ -150,12 +151,20 @@ case class LoraSampling(
       highNoiseCfg.map(scale => s"high-noise CFG $scale")
     ).flatten
 
+  /** The flow shift these settings leave over `below`'s: their own, and none
+    * when they bring noise levels without one — the levels are the schedule
+    * then, and a shift set for another schedule underneath (a configuration's,
+    * an earlier LoRA's) would bend them.
+    */
+  private def shiftOver(below: Option[Double]): Option[Double] =
+    flowShift.orElse(if (sigmas.nonEmpty) None else below)
+
   /** These settings over `base`, a later layer's over an earlier one's. */
   def over(base: LoraSampling): LoraSampling =
     LoraSampling(
       steps = steps.orElse(base.steps),
       cfg = cfg.orElse(base.cfg),
-      flowShift = flowShift.orElse(base.flowShift),
+      flowShift = shiftOver(base.flowShift),
       sigmas = if (sigmas.nonEmpty) sigmas else base.sigmas,
       sampler = sampler.orElse(base.sampler),
       scheduler = scheduler.orElse(base.scheduler),
@@ -168,7 +177,7 @@ case class LoraSampling(
   def over(base: SampleParameters): SampleParameters =
     base.copy(
       sampleSteps = steps.getOrElse(base.sampleSteps),
-      flowShift = flowShift.orElse(base.flowShift),
+      flowShift = shiftOver(base.flowShift),
       customSigmas = if (sigmas.nonEmpty) sigmas else base.customSigmas,
       sampleMethod = sampler.orElse(base.sampleMethod),
       scheduler = scheduler.orElse(base.scheduler),

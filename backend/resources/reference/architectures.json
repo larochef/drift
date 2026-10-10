@@ -383,6 +383,15 @@
         "familyId": "hidream-o1-tokenizer",
         "flag": "--tokenizer",
         "required": true
+      },
+      {
+        "name": "llm vision",
+        "familyId": "qwen3-vl-8b-instruct-mmproj",
+        "flag": "--llm_vision",
+        "required": false,
+        "runners": [
+          "DriftRunner"
+        ]
       }
     ],
     "defaultParameters": {
@@ -398,7 +407,7 @@
     "tags": [
       "image"
     ],
-    "promptingNotes": "Reads natural language: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes. The seeded defaults are the Dev checkpoint's — 28 steps, no CFG, flow shift 1. The full checkpoint wants 50 steps at CFG 5 with flow shift 3. It was trained around 2048x2048 (2048x2048, 2304x1728, 2560x1440, 2496x1664, 3104x1312, 2304x1792 and their portraits); at 1024 it loses detail. Sides are multiples of 32. One file holds the whole model: no separate VAE or text encoder, only its tokenizer.json. On the drift runner the Dev checkpoint samples as the vendor's does (its distilled timesteps, fresh noise each step); sd-cpp runs plain Euler, which leaves the Dev images looking unfinished.",
+    "promptingNotes": "Reads natural language: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes. The seeded defaults are the Dev checkpoint's — 28 steps, no CFG, flow shift 1. The full checkpoint wants 50 steps at CFG 5 with flow shift 3. It was trained around 2048x2048 (2048x2048, 2304x1728, 2560x1440, 2496x1664, 3104x1312, 2304x1792 and their portraits); at 1024 it loses detail. Sides are multiples of 32. One file holds the whole model: no separate VAE or text encoder, only its tokenizer.json. On the drift runner each checkpoint samples as the vendor's does — the Dev one over its distilled timesteps with fresh noise each step, the full one with UniPC — where sd-cpp runs plain Euler, which leaves the Dev images looking unfinished. On the drift runner the same checkpoints also edit and compose: attach one or more reference images and say in plain words what to change or how to combine them, naming what must stay as it is. References are read through Qwen3-VL-8B's vision projector, in the optional slot; a prompt alone does not need it.",
     "sizeMultiple": 32,
     "modelKind": "hidream-o1",
     "runners": [
@@ -1086,9 +1095,9 @@
     ],
     "defaultParameters": {
       "--diffusion-fa": "",
-      "--cfg-scale": "6.0",
+      "--cfg-scale": "1.0",
       "--sampling-method": "euler",
-      "--steps": "25",
+      "--steps": "40",
       "-H": "1024",
       "-W": "1024",
       "--cache-mode": "spectrum",
@@ -1097,7 +1106,7 @@
     "tags": [
       "image"
     ],
-    "promptingNotes": "Reads natural language through Qwen3-VL-8B: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes — it is especially strong at text, Chinese included. Unlike Qwen Image, it steers on real classifier-free guidance rather than an embedded guidance value: CFG 6 with euler is the vendor's example, and the negative prompt does have an effect. The same checkpoint edits: attach one or more reference images and say in plain words what to change (\"change 'qwen2.1.cpp' to 'sd.cpp'\"), naming what must stay as it is. Editing reads the references through the text encoder, so it needs the Qwen3-VL-8B vision projector in the optional slot; generating from a prompt alone does not.",
+    "promptingNotes": "Reads natural language through Qwen3-VL-8B: write full, specific sentences, subject first, then setting, lighting, composition and style. Long, detailed prompts work well; tag lists and quality tags such as \"masterpiece, best quality\" add little. Put any text to render in the image in quotes — it is especially strong at text, Chinese included. Its own pipeline runs 40 euler steps without guidance, and so do drift's defaults: CFG 1, where the negative prompt is not read. A CFG above 1 turns on real classifier-free guidance, the negative prompt with it, at twice the time a step; 2 to 3 stays clean; from about 4 up the picture reddens and smooths, and at 6 (sd-cpp's example) it is over-saturated, smeared and carries a faint 8-pixel pattern. A turbo LoRA brings the steps down to 4 to 6. The same checkpoint edits: attach one or more reference images and say in plain words what to change (\"change 'qwen2.1.cpp' to 'sd.cpp'\"), naming what must stay as it is. Editing reads the references through the text encoder, so it needs the Qwen3-VL-8B vision projector in the optional slot; generating from a prompt alone does not.",
     "sizeMultiple": 32,
     "modelKind": "qwen-image-2.1",
     "runners": [

@@ -12,5 +12,7 @@
   "011-starters-on-runner.json",
   "012-slots-per-runner.json",
   "013-edit-models.json",
-  "014-mage-flow-runner.json"
+  "014-mage-flow-runner.json",
+  "015-qwen-turbo-lora-levels.json",
+  "016-hidream-o1-references.json"
 ]

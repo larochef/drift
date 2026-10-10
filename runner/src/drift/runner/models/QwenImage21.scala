@@ -217,11 +217,27 @@ final class QwenImage21 private (ops: Ops, source: WeightSource)
 
   private val updates = new LoraUpdates(ops)
 
+  /** A site's weight by sampling step (`[steps, out, in]`), when a LoRA
+    * replaces it so: alibaba-pai's Fun-Acc gives the output layer one head a
+    * step.
+    */
+  private var stepWeights = Map.empty[String, Tensor]
+  private var step = (0, 1)
+
+  /** The sampling step the next `velocity` is: `index` of `of`. A weight held
+    * by step takes the head of that step, the steps spread over the heads when
+    * they are not as many.
+    */
+  def atStep(index: Int, of: Int): Unit = step = (index, math.max(of, 1))
+
   /** Makes `loras` (each at its multiplier) the active set, replacing the last;
     * they read diffusers' names and ComfyUI's (the MLP's `gate_up` whole, its
-    * update split by the rows of its `up`). Returns the targets that matched
-    * nothing or a weight of another shape, left unapplied. A prompt's prefix
-    * made before depends on the LoRAs of its time.
+    * update split by the rows of its `up`). A LoRA's whole weights: an output
+    * layer per sampling step is taken as such (`atStep`); any other must be the
+    * model's own, as the published files' are (norm weights exported unchanged)
+    * — nothing here replaces a weight. Returns the targets that matched nothing
+    * or a weight of another shape, left unapplied. A prompt's prefix made
+    * before depends on the LoRAs of its time.
     */
   def useLoras(loras: Seq[(Lora, Float)]): Seq[String] = {
     val placed = loras.flatMap((lora, multiplier) =>
@@ -251,14 +267,52 @@ final class QwenImage21 private (ops: Ops, source: WeightSource)
       }
     }
     updates.use(bySite.groupMap(_._1)(_._2))
+    val bySteps = loras.flatMap((lora, _) => lora.stepWeights.toSeq)
+    val (heads, misfits) = bySteps.partition((site, stack) =>
+      siteWeights
+        .get(site)
+        .exists(_.shape.dimensions == stack.shape.dimensions.tail)
+    )
+    stepWeights = heads.toMap
+    val changed = loras.flatMap((lora, _) =>
+      lora.whole.toSeq.collect {
+        case (name, tensor)
+            if tensor.shape.dimensions.size != 3 && !sameAsOwn(lora, name) =>
+          name
+      }
+    )
     textModulationMade.foreach(_.release())
     textModulationMade = None
-    placed.collect { case (target, _, Nil) => target }.distinct
+    (placed.collect { case (target, _, Nil) => target } ++
+      misfits.map((site, _) => s"$site (a weight by step)") ++
+      changed.map(name =>
+        s"$name (a whole weight, other than the model's)"
+      )).distinct
   }
 
-  /** `out = x · weightᵀ` for the linear at `site`, and its LoRA updates. */
+  /** Whether a LoRA's whole weight `name` is this model's own, to the rounding
+    * of the types they are stored in.
+    */
+  private def sameAsOwn(lora: Lora, name: String): Boolean =
+    source.has(name) && {
+      val (theirs, own) = (lora.wholeValues(name), source.hostValues(name))
+      theirs.length == own.length && theirs.indices.forall(i =>
+        math.abs(theirs(i) - own(i)) <= 1e-2f * math.max(1f, math.abs(own(i)))
+      )
+    }
+
+  /** `out = x · weightᵀ` for the linear at `site` (its weight of the step, when
+    * it has one by step), and its LoRA updates.
+    */
   private def linear(x: Tensor, site: String, out: Tensor): Unit = {
-    ops.linear(x, siteWeights(site), out)
+    val weight = stepWeights.get(site) match {
+      case Some(stack) =>
+        val Seq(heads, rows, columns) = stack.shape.dimensions
+        val head = math.min(heads - 1, step._1.toLong * heads / step._2)
+        stack.view(heads, rows * columns).rows(head, 1).view(rows, columns)
+      case None => siteWeights(site)
+    }
+    ops.linear(x, weight, out)
     updates(x, site, out)
   }
 

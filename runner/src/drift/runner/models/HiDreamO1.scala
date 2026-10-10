@@ -5,7 +5,7 @@ import drift.runner.ops.*
 import drift.runner.state.Sequence
 import drift.runner.tensor.*
 
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable
 
 /** HiDream O1 Image (HiDream-ai's `Qwen3VLForConditionalGeneration` with a
   * pixel head, `models/qwen3_vl_transformers.py`): Qwen3-VL-8B's language model
@@ -21,9 +21,18 @@ import scala.collection.mutable.ArrayBuffer
   * in through a bottleneck (`x_embedder`: 3072 → 1024 → hidden), out through
   * `final_layer2` after the final norm, as the model's clean image x̂.
   *
+  * Reference images (`models/pipeline.py`) come in twice. The prompt carries
+  * each as Qwen3-VL reads a picture — its vision tower's tokens, with deepstack
+  * — in the cached prefix (`prefill`'s `images`). And their pixel patches, in
+  * through the same bottleneck, follow the target's among the generated tokens
+  * (`embed`, `predict`'s `references`), each reference on its own grid past the
+  * target's on every axis; only the target's rows go through the pixel head.
+  *
   * LoRAs reach every linear at run time (`useLoras`): the decoder's, the
   * timestep MLP's, the bottleneck's and the pixel head's, by the checkpoint's
-  * names.
+  * names; a file's whole-tensor differences (ComfyUI's `.diff` and `.diff_b`,
+  * which a LoRA extracted from a checkpoint carries) are added to the norms'
+  * weights and to the heads' biases.
   */
 final class HiDreamO1 private (
     ops: Ops,
@@ -37,35 +46,32 @@ final class HiDreamO1 private (
 
   private def hidden = decoder.config.hidden
 
-  /** Biases stored in BF16, converted to F32 once. */
-  private val converted = ArrayBuffer.empty[Tensor]
-  private def bias(name: String): Tensor = {
-    val stored = source(name)
+  /** Biases stored in BF16, converted to F32 once, by their linear's site; and
+    * those a LoRA file's differences are added to, which stand for them while
+    * active.
+    */
+  private val storedBiases = mutable.Map.empty[String, Tensor]
+  private val changedBiases = mutable.Map.empty[String, Tensor]
+  private def bias(site: String): () => Tensor = {
+    val stored = source(s"$site.bias")
     val copy = ops.allocate(DType.F32, stored.shape)
-    ops.convert(stored, copy)
-    converted += copy
-    copy
+    if (stored.dtype == DType.F32) ops.copy(stored, copy)
+    else ops.convert(stored, copy)
+    storedBiases(site) = copy
+    () => changedBiases.getOrElse(site, copy)
   }
 
   private val timeIn = source("model.t_embedder1.mlp.0.weight")
-  private val timeInBias = bias("model.t_embedder1.mlp.0.bias")
+  private val timeInBias = bias("model.t_embedder1.mlp.0")
   private val timeOut = source("model.t_embedder1.mlp.2.weight")
-  private val timeOutBias = bias("model.t_embedder1.mlp.2.bias")
+  private val timeOutBias = bias("model.t_embedder1.mlp.2")
   private val patchIn = source("model.x_embedder.proj1.weight")
   private val patchOut = source("model.x_embedder.proj2.weight")
-  private val patchOutBias = bias("model.x_embedder.proj2.bias")
+  private val patchOutBias = bias("model.x_embedder.proj2")
   private val pixels = source("model.final_layer2.linear.weight")
-  private val pixelsBias = bias("model.final_layer2.linear.bias")
+  private val pixelsBias = bias("model.final_layer2.linear")
 
   private val frequencies = timeIn.shape.dimensions.last.toInt
-
-  private val HeadSites = Set(
-    "model.t_embedder1.mlp.0",
-    "model.t_embedder1.mlp.2",
-    "model.x_embedder.proj1",
-    "model.x_embedder.proj2",
-    "model.final_layer2.linear"
-  )
 
   /** A head's linear (`site` its weight's name less `.weight`), its LoRA
     * updates added.
@@ -75,52 +81,102 @@ final class HiDreamO1 private (
     updates(x, site, out)
   }
 
-  /** Makes `loras` (each at its multiplier) the active set, replacing the last.
-    * A file's targets are the checkpoint's names less `model.` (ComfyUI's
-    * `diffusion_model.` gone by then). Returns the targets that matched
-    * nothing, left unapplied.
+  /** Makes `loras` (each at its multiplier) the active set, replacing the last:
+    * the pairs whose target is one of the model's linears (`HiDreamO1.site`
+    * reads the namings), and the whole-tensor differences of a norm's weight
+    * (`.diff`) or of a head's bias (`.diff_b`). What a file holds for the
+    * vision tower or the token embeddings is left out and counted.
     */
-  def useLoras(loras: Seq[(Lora, Float)]): Seq[String] = {
-    val sites = decoder.loraSites ++ HeadSites
-    val all = loras.flatMap((lora, multiplier) =>
+  def useLoras(loras: Seq[(Lora, Float)]): HiDreamO1Loras = {
+    val linears = decoder.loraSites ++ HiDreamO1.HeadSites
+    val sites = linears ++ decoder.normSites ++ storedBiases.keySet
+    def site(target: String) = HiDreamO1.site(target, sites)
+    val pairs = loras.flatMap((lora, multiplier) =>
       lora.pairs.toSeq.map((target, pair) =>
-        (if (target.startsWith("model.")) target else s"model.$target") ->
-          pair.copy(scale = pair.scale * multiplier)
+        site(target) -> pair.copy(scale = pair.scale * multiplier)
       )
     )
     updates.use(
-      all.filter((site, _) => sites.contains(site)).groupMap(_._1)(_._2)
+      pairs.filter((site, _) => linears.contains(site)).groupMap(_._1)(_._2)
     )
-    all.map(_._1).distinct.filterNot(sites.contains)
+    val differences = for {
+      (lora, multiplier) <- loras
+      name <- lora.unread
+      (suffix, ofBias) <- Seq(".diff_b" -> true, ".diff" -> false)
+      if name.endsWith(suffix)
+    } yield HiDreamO1.Difference(
+      site(name.stripSuffix(suffix)),
+      ofBias,
+      lora,
+      name,
+      multiplier
+    )
+    val norms =
+      differences.filter(d => !d.ofBias && decoder.normSites.contains(d.site))
+    val biases =
+      differences.filter(d => d.ofBias && storedBiases.contains(d.site))
+    decoder.useNormDifferences(norms.groupMap(_.site)(_.values))
+    changedBiases.values.foreach(ops.release)
+    changedBiases.clear()
+    biases.groupBy(_.site).foreach { (site, added) =>
+      val stored = storedBiases(site)
+      val values = ops.toFloats(stored)
+      added.foreach { difference =>
+        val more = difference.values
+        require(
+          more.length == values.length,
+          s"${difference.name}: ${more.length} values for a bias of ${values.length}"
+        )
+        values.indices.foreach(i => values(i) += more(i))
+      }
+      changedBiases(site) = ops.fromFloats(stored.shape, values)
+    }
+    val taken = (norms ++ biases).map(_.name).toSet
+    val left =
+      pairs.map(_._1).distinct.filterNot(linears.contains) ++
+        differences.filterNot(d => taken(d.name)).map(_.site)
+    val (outside, unmatched) = left.partition(HiDreamO1.outside)
+    HiDreamO1Loras(
+      updates = pairs.size + differences.size,
+      applied = pairs.count((site, _) => linears.contains(site)) + taken.size,
+      outside = outside.size,
+      unmatched = unmatched,
+      unread = loras
+        .flatMap(_._1.unread)
+        .filterNot(name => name.endsWith(".diff") || name.endsWith(".diff_b"))
+    )
   }
 
-  /** A sequence for a prompt of `promptTokens` (the timestep token included)
-    * and `patches` patches in a `gridHeight × gridWidth` grid, the patches
-    * placed as the official `get_rope_index_fix_point` places them: the prompt
-    * at its slots on all three axes, the patches at (4096, 4096 + row, 4096 +
-    * column).
+  /** A sequence for a prompt whose tokens (the timestep token included) turn by
+    * `promptPositions` (`[3, tokens]` axis-major, `Prompt.positions`), a target
+    * of `gridHeight × gridWidth` patches and `references`' patches (each its
+    * grid's height and width), placed as `HiDreamO1.patchPositions` places
+    * them.
     */
   def newSequence(
-      promptTokens: Int,
+      promptPositions: Array[Int],
       gridHeight: Int,
-      gridWidth: Int
+      gridWidth: Int,
+      references: Seq[(Int, Int)] = Nil
   ): Sequence = {
-    val patches = gridHeight * gridWidth
-    val sequence = decoder.newSequence(promptTokens + patches, 64)
-    val at = HiDreamO1.PatchPositions
-    val positions = new Array[Int](3 * patches)
-    (0 until patches).foreach { p =>
-      positions(p) = at
-      positions(patches + p) = at + p / gridWidth
-      positions(2 * patches + p) = at + p % gridWidth
-    }
-    sequence.place(promptTokens, positions)
+    val promptTokens = promptPositions.length / 3
+    val grids = (gridHeight, gridWidth) +: references
+    val sequence =
+      decoder.newSequence(promptTokens + grids.map(_ * _).sum, 64)
+    sequence.place(0, promptPositions)
+    sequence.place(promptTokens, HiDreamO1.patchPositions(grids))
     sequence
   }
 
-  /** The prompt before its timestep token into `sequence`. */
-  def prefill(ids: Array[Int], sequence: Sequence): Unit =
-    decoder.prefill(ids, sequence)
+  /** The prompt before its timestep token into `sequence`, the reference images
+    * it carries as their vision tower's tokens (`images`).
+    */
+  def prefill(
+      ids: Array[Int],
+      sequence: Sequence,
+      images: Option[SeenImages] = None
+  ): Unit =
+    decoder.prefill(ids, sequence, images)
 
   /** The timestep token's embedding into `out` (`[1, hidden]`): `1000 t`'s
     * sinusoid (cosines then sines of 128 frequencies `10000^(−i/128)`) through
@@ -138,50 +194,78 @@ final class HiDreamO1 private (
     val inner = ops.allocate(DType.F32, Shape.of(1, hidden))
     try {
       linear(input, "model.t_embedder1.mlp.0", timeIn, inner)
-      ops.addRow(inner, timeInBias, inner)
+      ops.addRow(inner, timeInBias(), inner)
       ops.activation(Activation.Silu, inner, inner)
       linear(inner, "model.t_embedder1.mlp.2", timeOut, out)
-      ops.addRow(out, timeOutBias, out)
+      ops.addRow(out, timeOutBias(), out)
     } finally {
       ops.release(input)
       ops.release(inner)
     }
   }
 
+  /** Pixel patches (`[L, 3072]`) through the bottleneck into `out` (`[L,
+    * hidden]`): what the model reads of a patch, the target's each step and a
+    * reference's once.
+    */
+  def embed(patches: Tensor, out: Tensor): Unit = {
+    val count = patches.shape.dimensions.head
+    val bottleneck =
+      ops.allocate(DType.F32, Shape.of(count, patchIn.shape.dimensions.head))
+    try {
+      linear(patches, "model.x_embedder.proj1", patchIn, bottleneck)
+      linear(bottleneck, "model.x_embedder.proj2", patchOut, out)
+      ops.addRow(out, patchOutBias(), out)
+    } finally ops.release(bottleneck)
+  }
+
   /** x̂, the model's clean image, of `patches` (`[L, 3072]`) at timestep `t` (1
     * − σ), the prompt cached in `sequence` before `start` (the timestep token's
-    * slot), into `out` (like `patches`).
+    * slot), into `out` (like `patches`). `references` are the reference images'
+    * embedded patches (`embed`), read after the target's and given no x̂.
     */
   def predict(
       patches: Tensor,
       t: Float,
       start: Int,
       sequence: Sequence,
-      out: Tensor
+      out: Tensor,
+      references: Option[Tensor] = None
   ): Unit = {
     val count = patches.shape.dimensions.head
-    val rows = ops.allocate(DType.F32, Shape.of(1 + count, hidden))
-    val bottleneck =
-      ops.allocate(DType.F32, Shape.of(count, patchIn.shape.dimensions.head))
-    val states = ops.allocate(DType.F32, Shape.of(1 + count, hidden))
+    val read = references.fold(0L)(_.shape.dimensions.head)
+    val rows = ops.allocate(DType.F32, Shape.of(1 + count + read, hidden))
+    val states = ops.allocate(DType.F32, Shape.of(1 + count + read, hidden))
     try {
       timeEmbedding(t, rows.rows(0, 1))
-      val image = rows.rows(1, count)
-      linear(patches, "model.x_embedder.proj1", patchIn, bottleneck)
-      linear(bottleneck, "model.x_embedder.proj2", patchOut, image)
-      ops.addRow(image, patchOutBias, image)
+      embed(patches, rows.rows(1, count))
+      references.foreach(ops.copy(_, rows.rows(1 + count, read)))
       decoder.attendAll(rows, start, sequence, states)
       linear(states.rows(1, count), "model.final_layer2.linear", pixels, out)
-      ops.addRow(out, pixelsBias, out)
-    } finally Seq(rows, bottleneck, states).foreach(ops.release)
+      ops.addRow(out, pixelsBias(), out)
+    } finally Seq(rows, states).foreach(ops.release)
   }
 
   def close(): Unit = {
-    converted.foreach(ops.release)
+    (storedBiases.values ++ changedBiases.values).foreach(ops.release)
     updates.close()
     decoder.close()
   }
 }
+
+/** What `HiDreamO1.useLoras` made of the files: how many `updates` they hold
+  * (pairs and whole-tensor differences), how many are `applied`, how many are
+  * for parts the runner leaves as they are (`outside`: the vision tower, the
+  * token embeddings), the updates of no weight of the model (`unmatched`) and
+  * the tensors that are no update it reads (`unread`).
+  */
+final case class HiDreamO1Loras(
+    updates: Int,
+    applied: Int,
+    outside: Int,
+    unmatched: Seq[String],
+    unread: Seq[String]
+)
 
 object HiDreamO1 {
 
@@ -197,8 +281,112 @@ object HiDreamO1 {
 
   private val Prefix = "model.language_model."
 
+  /** The linears outside the decoder's layers, by their weight's name less
+    * `.weight`.
+    */
+  val HeadSites: Set[String] = Set(
+    "model.t_embedder1.mlp.0",
+    "model.t_embedder1.mlp.2",
+    "model.x_embedder.proj1",
+    "model.x_embedder.proj2",
+    "model.final_layer2.linear"
+  )
+
+  /** A file's whole-tensor difference: of `site`'s bias or weight, stored under
+    * `name` in `lora`, applied at `multiplier`.
+    */
+  final private case class Difference(
+      site: String,
+      ofBias: Boolean,
+      lora: Lora,
+      name: String,
+      multiplier: Float
+  ) {
+    def values: Array[Float] = {
+      val stored = lora.values(name)
+      if (multiplier != 1f) stored.mapInPlace(_ * multiplier)
+      stored
+    }
+  }
+
+  /** What trainers put before the checkpoint's names: PEFT's wrapper,
+    * DiffSynth-Studio's pipeline, ComfyUI's and diffusers' (the last two gone
+    * by the time most files are read).
+    */
+  private val Prefixes =
+    Seq("base_model.model.", "pipe.dit.", "diffusion_model.", "transformer.")
+
+  /** kohya's prefix, before the name with `_` for every `.`. */
+  private val Kohya = "lora_unet_"
+
+  /** The model's name (a weight's less `.weight`) for a file's `target`: the
+    * checkpoint's own name with or without `model.` (ai-toolkit and ComfyUI
+    * leave it out, DiffSynth-Studio keeps it), behind any of `Prefixes`, or
+    * kohya's `lora_unet_` form of one of `sites`. A target that is none of them
+    * comes back as it is read.
+    */
+  def site(target: String, sites: Set[String]): String = {
+    val name = Prefixes.find(target.startsWith).fold(target)(target.stripPrefix)
+    if (name.startsWith(Kohya)) {
+      val underscored = name.stripPrefix(Kohya)
+      sites
+        .find(_.stripPrefix("model.").replace('.', '_') == underscored)
+        .getOrElse(name)
+    } else if (name.startsWith("model.")) name
+    else s"model.$name"
+  }
+
+  /** Whether `site` belongs to a part the runner leaves as the checkpoint has
+    * it: the vision tower (Qwen3-VL-8B's own, which the official checkpoints do
+    * not change) or the token embeddings.
+    */
+  def outside(site: String): Boolean = {
+    val name = site.stripPrefix("model.").stripPrefix(Kohya)
+    name.startsWith("visual.") || name.startsWith("visual_") ||
+    name.startsWith("language_model.embed_tokens") ||
+    name.startsWith("language_model_embed_tokens")
+  }
+
+  /** The mRoPE positions (`[3, patches]`, axis-major) of the patches of `grids`
+    * (each its height and width, the target's first), one grid after the other,
+    * as the official `get_rope_index_fix_point` places them: the target at
+    * (4096, 4096 + row, 4096 + column), each reference at `(base, base + row,
+    * base + column)`, `base` past the longer side of every grid before it.
+    */
+  def patchPositions(grids: Seq[(Int, Int)]): Array[Int] = {
+    val patches = grids.map(_ * _).sum
+    val positions = new Array[Int](3 * patches)
+    var slot = 0
+    var base = PatchPositions
+    grids.foreach { (height, width) =>
+      (0 until height * width).foreach { p =>
+        positions(slot) = base
+        positions(patches + slot) = base + p / width
+        positions(2 * patches + slot) = base + p % width
+        slot += 1
+      }
+      base += math.max(height, width)
+    }
+    positions
+  }
+
   def holds(source: WeightSource): Boolean =
     source.has("model.x_embedder.proj1.weight")
+
+  /** The vision tower's names in a checkpoint that carries it. */
+  val VisionPrefix = "model.visual."
+
+  /** Whether the checkpoint at `path` carries its vision tower whole: ComfyUI's
+    * single files keep the tower and leave out the deepstack mergers the
+    * references are read through, so theirs does not count.
+    */
+  def holdsVision(ops: Ops, path: java.nio.file.Path): Boolean = {
+    val source = WeightSource.open(ops, path)
+    try
+      source.has(s"${VisionPrefix}patch_embed.proj.weight") &&
+        source.has(s"${VisionPrefix}deepstack_merger_list.0.norm.weight")
+    finally source.close()
+  }
 
   def open(ops: Ops, path: java.nio.file.Path): HiDreamO1 = {
     val source = WeightSource.open(ops, path)

@@ -18,22 +18,62 @@ final case class LoraPair(down: Tensor, up: Tensor, scale: Float) {
 /** A LoRA file's updates by target (the weight's name without `.weight` and
   * without the file's prefix, as the file names it; each model maps the namings
   * it reads), at multiplier 1: `scale = alpha / rank` when the file has an
-  * `.alpha`, else 1 (sd-cpp's and ComfyUI's rule; metadata such as
+  * `.alpha`; else from PEFT's settings when diffusers saved them in the file's
+  * metadata (`lora_adapter_metadata`: `lora_alpha`, `alpha_pattern`,
+  * `use_rslora` — a file trained at alpha 128 over rank 64 is twice its
+  * matrices, and at 1 it is half a LoRA); else 1 (sd-cpp's and ComfyUI's rule;
   * `ss_network_alpha` is not read by them either). Its tensors stay mapped.
   *
   * Pairs are read in the forms the published files use: `lora_A` / `lora_B` or
-  * `lora_down` / `lora_up`, under `diffusion_model.`, `model.diffusion_model.`
-  * (which `WeightNames` drops at load) or diffusers' `transformer.`. Updates
-  * not stored as BF16 are converted to it (a rank narrower than the dense
-  * kernels' blocks then runs as a BF16 GEMM).
+  * `lora_down` / `lora_up` (with or without `.weight`), under
+  * `diffusion_model.`, `model.diffusion_model.` (which `WeightNames` drops at
+  * load) or diffusers' `transformer.`. Updates not stored as BF16 are converted
+  * to it (a rank narrower than the dense kernels' blocks then runs as a BF16
+  * GEMM).
+  *
+  * A file may also hold whole weights beside its pairs (alibaba-pai's
+  * step-distilled exports): `whole`, by the weight's own name, for the model
+  * that knows what to make of them — a `[steps, out, in]` stack is one output
+  * layer per sampling step (`stepWeights`), anything else replaces the model's
+  * weight of that name.
   */
 final class Lora private (
     ops: Ops,
     source: WeightSource,
     val pairs: Map[String, LoraPair],
+    val whole: Map[String, Tensor],
+    storedWhole: Map[String, String],
     val unread: Seq[String],
     converted: Seq[Tensor]
 ) extends AutoCloseable {
+
+  /** The whole weights stacked by sampling step, by target. */
+  def stepWeights: Map[String, Tensor] =
+    whole.collect {
+      case (name, tensor)
+          if name.endsWith(".weight") && tensor.shape.dimensions.size == 3 =>
+        name.stripSuffix(".weight") -> tensor
+    }
+
+  /** A whole weight's values, on the host. */
+  def wholeValues(name: String): Array[Float] =
+    source.hostValues(storedWhole(name))
+
+  /** A tensor of the file that is no pair (one of `unread`), as F32 values:
+    * ComfyUI's whole-tensor differences (`.diff` of a weight, `.diff_b` of a
+    * bias), for the models that take them.
+    */
+  def values(name: String): Array[Float] = {
+    val tensor = source(name)
+    if (tensor.dtype == DType.F32) ops.toFloats(tensor)
+    else {
+      val wide = ops.allocate(DType.F32, tensor.shape)
+      try {
+        ops.convert(tensor, wide)
+        ops.toFloats(wide)
+      } finally ops.release(wide)
+    }
+  }
 
   def close(): Unit = {
     converted.foreach(ops.release)
@@ -45,10 +85,57 @@ object Lora {
 
   /** diffusers' prefix; ComfyUI's are gone by the time the names are read. */
   private val DiffusersPrefix = "transformer."
-  private val Down =
-    Seq(".lora_A.weight", ".lora_down.weight", ".lora_A.default.weight")
-  private val Up =
-    Seq(".lora_B.weight", ".lora_up.weight", ".lora_B.default.weight")
+  private val Down = Seq(
+    ".lora_A.weight",
+    ".lora_down.weight",
+    ".lora_A.default.weight",
+    ".lora_down"
+  )
+  private val Up = Seq(
+    ".lora_B.weight",
+    ".lora_up.weight",
+    ".lora_B.default.weight",
+    ".lora_up"
+  )
+
+  /** PEFT's settings as diffusers saves them with a LoRA (`save_lora_weights`:
+    * the safetensors metadata `lora_adapter_metadata`, each key under its
+    * component): the scale of a target's update of `rank`, when they give an
+    * alpha.
+    */
+  final private class AdapterSettings(settings: Map[String, ujson.Value]) {
+    private def setting(name: String) =
+      settings.get(DiffusersPrefix + name).orElse(settings.get(name))
+    private val alpha = setting("lora_alpha").flatMap(_.numOpt)
+    private val alphaByModule = setting("alpha_pattern")
+      .flatMap(_.objOpt)
+      .fold(Map.empty[String, Double])(
+        _.flatMap((module, value) => value.numOpt.map(module -> _)).toMap
+      )
+    private val rankStabilized =
+      setting("use_rslora").flatMap(_.boolOpt).getOrElse(false)
+
+    def scale(target: String, rank: Long): Option[Float] =
+      alphaByModule
+        .collectFirst {
+          case (module, value)
+              if target == module || target.endsWith(s".$module") =>
+            value
+        }
+        .orElse(alpha)
+        .map(value =>
+          (value / (if (rankStabilized) math.sqrt(rank.toDouble)
+                    else rank.toDouble)).toFloat
+        )
+  }
+
+  private def adapterSettings(source: WeightSource): AdapterSettings =
+    new AdapterSettings(
+      source.metadata
+        .get("lora_adapter_metadata")
+        .flatMap(text => scala.util.Try(ujson.read(text).obj.toMap).toOption)
+        .getOrElse(Map.empty)
+    )
 
   def open(ops: Ops, path: Path): Lora = {
     val source = WeightSource.open(ops, path)
@@ -58,6 +145,7 @@ object Lora {
       val downs = source.names.flatMap(name =>
         Down.find(name.endsWith).map(s => strip(name.stripSuffix(s)) -> name)
       )
+      val settings = adapterSettings(source)
       val converted = scala.collection.mutable.ArrayBuffer.empty[Tensor]
       def bf16(tensor: Tensor): Tensor =
         if (tensor.dtype == DType.BF16) tensor
@@ -87,23 +175,39 @@ object Lora {
             )
           )
         val down = source(downName)
-        val alpha =
-          Some(stem + ".alpha").filter(source.has).map(scalar(source, _))
-        target -> LoraPair(
-          bf16(down),
-          bf16(source(upName)),
-          alpha.fold(1f)(_ / down.shape.dimensions.head)
-        )
+        val rank = down.shape.dimensions.head
+        val scale =
+          Some(stem + ".alpha")
+            .filter(source.has)
+            .map(scalar(source, _) / rank)
+            .orElse(settings.scale(target, rank))
+            .getOrElse(1f)
+        target -> LoraPair(bf16(down), bf16(source(upName)), scale)
       }.toMap
       val read = downs.flatMap { (_, downName) =>
         val stem = downName.stripSuffix(Down.find(downName.endsWith).get)
         Seq(downName, stem + ".alpha") ++ Up.map(stem + _)
       }.toSet
+      val storedWhole = source.names
+        .filterNot(read)
+        .filter(name => name.endsWith(".weight") || name.endsWith(".bias"))
+        .map(name => strip(name) -> name)
+        .toMap
       new Lora(
         ops,
         source,
         pairs,
-        source.names.filterNot(read).toSeq.sorted,
+        storedWhole.map((name, stored) =>
+          name -> (if (source.shape(stored).dimensions.size > 1)
+                     bf16(source(stored))
+                   else source(stored))
+        ),
+        storedWhole,
+        source.names
+          .filterNot(read)
+          .filterNot(storedWhole.values.toSet)
+          .toSeq
+          .sorted,
         converted.toSeq
       )
     } catch {
@@ -195,16 +299,22 @@ final class LoraFiles(ops: Ops) extends AutoCloseable {
   private val opened = scala.collection.mutable.Map.empty[Path, Lora]
 
   /** `loras` opened, each with its multiplier, and the problems to report:
-    * tensors that are not LoRA pairs, as `file: name`.
+    * tensors that are not LoRA pairs, as `file: name` — the whole weights among
+    * them too, unless the model answers for those itself (`wholeWeights`).
     */
-  def open(loras: Seq[(Path, Float)]): (Seq[(Lora, Float)], Seq[String]) = {
+  def open(
+      loras: Seq[(Path, Float)],
+      wholeWeights: Boolean = false
+  ): (Seq[(Lora, Float)], Seq[String]) = {
     val files = loras.map((path, multiplier) =>
       (path, opened.getOrElseUpdate(path, Lora.open(ops, path)), multiplier)
     )
     (
       files.map((_, lora, multiplier) => lora -> multiplier),
       files.flatMap((path, lora, _) =>
-        lora.unread.map(name => s"${path.getFileName}: $name (not a LoRA pair)")
+        (lora.unread ++ lora.whole.keys.toSeq.sorted.filterNot(_ =>
+          wholeWeights
+        )).map(name => s"${path.getFileName}: $name (not a LoRA pair)")
       )
     )
   }

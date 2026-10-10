@@ -23,6 +23,32 @@ object FlowScheduleTests extends TestSuite {
       assert(FlowSchedule.firstStep(4, 1f) == 0)
       assert(FlowSchedule.firstStep(4, 0.1f) == 4)
     }
+    test("given levels are nodes, shifted like the schedule's own") {
+      // Viggle's six nodes at 1024 × 1536 (6144 tokens), as its ComfyUI node
+      // and diffusers' pipeline shift them
+      val nodes = FlowSchedule
+        .custom(Seq(1.0, 0.9375, 0.875, 0.75, 0.5, 0.25))
+        .toOption
+        .get
+      assert(
+        close(
+          FlowSchedule.shifted(nodes, FlowSchedule.qwenImage21Shift(6144)),
+          Seq(1.0, 0.970825, 0.939499, 0.869368, 0.689284, 0.425108, 0)
+        )
+      )
+      // a shift of 1 (μ = 0) leaves them as written
+      assert(close(FlowSchedule.shifted(nodes, 0.0), nodes.map(_.toDouble)))
+      // and linear nodes are the schedule itself
+      assert(
+        close(
+          FlowSchedule.shifted(
+            FlowSchedule.custom(Seq(1.0, 0.75, 0.5, 0.25)).toOption.get,
+            1.15
+          ),
+          FlowSchedule.sigmas(4, 1.15).map(_.toDouble)
+        )
+      )
+    }
     test("4 and 8 steps at μ 1.15, as diffusers") {
       assert(
         close(

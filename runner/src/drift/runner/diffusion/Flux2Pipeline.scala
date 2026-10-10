@@ -54,6 +54,10 @@ final class Flux2Pipeline(
   }
   private val autoencoder = FluxVae.open(ops, vae)
   private val loraFiles = new LoraFiles(ops)
+  private val projection = LatentProjection.named(
+    LatentProjection.Flux2,
+    transformer.config.latentChannels
+  )
 
   private val TextTokens = 512
   private val taps = reading.taps
@@ -131,10 +135,7 @@ final class Flux2Pipeline(
       s"${request.width} × ${request.height}: FLUX.2 takes multiples of 16"
     )
     val (loras, problems) = loraFiles.open(request.loras)
-    (problems ++ transformer
-      .useLoras(loras)
-      .map(target => s"a target of no weight: $target"))
-      .foreach(problem => println(s"[WARN] LoRA left unapplied: $problem"))
+    LoraReport.print(loras, problems, transformer.useLoras(loras))
     val grid = Grid(request.height / 16, request.width / 16)
     val features = transformer.config.latentChannels
     val guided = request.cfgScale != 1f
@@ -223,6 +224,20 @@ final class Flux2Pipeline(
           ops.scale(velocity, request.cfgScale, velocity)
           ops.add(velocity, v, velocity)
         }
+        projection.foreach(drawn =>
+          preview(
+            i + 1 - first,
+            steps,
+            () =>
+              drawn.estimate(
+                ops.toFloats(x),
+                ops.toFloats(velocity),
+                sigmas(i),
+                grid.height,
+                grid.width
+              )
+          )
+        )
         ops.scale(velocity, sigmas(i + 1) - sigmas(i), velocity)
         ops.add(x, velocity, x)
         inpainting.foreach(_.restore(x, sigmas(i + 1)))

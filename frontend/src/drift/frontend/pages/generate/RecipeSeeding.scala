@@ -189,7 +189,8 @@ class RecipeSeeding(
           imageParameters = version.imageParameters,
           videoParameters = version.videoParameters,
           importedFileName = None,
-          inputSources = List.empty
+          inputSources = List.empty,
+          warnings = List.empty
         )
       )
     )

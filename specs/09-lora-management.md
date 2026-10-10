@@ -54,6 +54,14 @@ sends paths and weights per request.
   by an architecture, which rebuilds the entity from the sidecar (a folder
   without one adopts its files as they lie, `33`).
 
+- **A LoRA the server leaves unapplied is said on the picture.** The drift
+  runner reports what it could not apply — a file for another model, updates
+  of no weight of this one, tensors it does not read — in the job
+  (`warnings`), the generation keeps it (`Generation.warnings`), and the
+  result shows it in a note above the picture
+  (`GenerationWarningsView`), the gallery as a Warning among the entry's
+  parameters. sd-cpp reports nothing of the kind.
+
 ## Shape
 
 - Layout: `~/.cache/drift/loras/<architectureId>/<sfw|nsfw>/<loraId>/` holding

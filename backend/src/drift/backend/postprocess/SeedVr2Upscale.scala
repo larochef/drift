@@ -1,13 +1,12 @@
 package drift.backend.postprocess
 
 import drift.backend.postprocess.PostProcessImages.*
-import drift.backend.sdserver.{NativeJobs, NativeUpscale}
+import drift.backend.sdserver.*
 import drift.backend.session.SessionManager
 import drift.shared.*
 
 import java.awt.image.BufferedImage
-import java.nio.file.Files
-import java.util.Base64
+import java.nio.file.{Files, StandardCopyOption}
 import javax.imageio.ImageIO
 import scala.util.control.NonFatal
 
@@ -18,9 +17,11 @@ import scala.util.control.NonFatal
   *     each the runner's `upscale` job on its crop, colour-matched to that crop
   *     (`colourMatched`) and blended; it pauses and resumes as the others do.
   *   - **A video** goes whole, as one `upscale` job on a runner the job starts
-  *     and stops: the runner cuts it itself (frames in batches, the VAE in
-  *     tiles). It comes back as the runner encoded it, its frame rate and
-  *     soundtrack kept, and does not pause.
+  *     and stops: the runner reads the source's file and writes the result's, a
+  *     batch of frames at a time (`bugs/54`), so its length is no limit. Its
+  *     frame rate and soundtrack are kept. It does not pause; stopped, or
+  *     failed after its first frames, it leaves the video of the frames made,
+  *     which is saved with a warning saying so.
   */
 final private[postprocess] class SeedVr2Upscale(
     jobs: PostProcessJobs,
@@ -143,7 +144,11 @@ final private[postprocess] class SeedVr2Upscale(
       case NonFatal(e) => Left(s"cannot read the source image: ${e.getMessage}")
     }
 
-  /** A video, whole. */
+  /** A video, whole. A stop is asked of the runner, which ends its video on the
+    * frames made (`NativeJobs.cancel`, through `waitingFor`); a runner that has
+    * not answered it after `StopGraceMillis` is stopped itself, and the frames
+    * are lost with it.
+    */
   private def run(
       job: PostProcessJob,
       src: PostProcessSource,
@@ -152,6 +157,11 @@ final private[postprocess] class SeedVr2Upscale(
   ): Unit = {
     var stopServer: () => Unit = () => ()
     val video = src.output.mimeType.startsWith("video/")
+    // The runner writes here, beside the result's place: the gallery sees the
+    // video once it is whole and has its name.
+    val written = jobs.files
+      .outputFileOf(job, src, "webm")
+      .resolveSibling(s"${job.id}-0.webm.part")
     try {
       Files.createDirectories(jobs.files.logsRoot)
       Files.writeString(
@@ -168,31 +178,46 @@ final private[postprocess] class SeedVr2Upscale(
         )
         .flatMap { server =>
           stopServer = server.stop
-          jobs.runsOn(job, server.stop)
-          NativeJobs.upscale(
-            server.port,
-            NativeUpscale(
-              Base64.getEncoder.encodeToString(Files.readAllBytes(src.file)),
-              request.scale,
-              request.seed
-            ),
-            () => server.exitCode,
-            nativeJob => jobs.waitingFor(job, server.port, nativeJob)
-          )
+          var stopAskedAt = Option.empty[Long]
+          if (jobs.isCancelled(job)) Left("stopped before it started")
+          else
+            NativeJobs.upscaleVideo(
+              server.port,
+              NativeVideoUpscale(
+                src.file.toAbsolutePath.toString,
+                written.toAbsolutePath.toString,
+                request.scale,
+                request.seed
+              ),
+              () => {
+                if (jobs.isCancelled(job)) {
+                  val now = System.currentTimeMillis()
+                  val askedAt = stopAskedAt.getOrElse(now)
+                  stopAskedAt = Some(askedAt)
+                  if (now - askedAt > SeedVr2Upscale.StopGraceMillis)
+                    server.stop()
+                }
+                server.exitCode
+              },
+              nativeJob => jobs.waitingFor(job, server.port, nativeJob)
+            )
         }
       jobs.doneWaiting(job)
       outcome match {
-        case Left(reason)   => jobs.fail(job, reason)
-        case Right(Left(_)) =>
-          jobs.fail(job, "the runner answered a video with a picture")
-        case Right(Right(made)) =>
+        case Left(reason) => jobs.fail(job, reason)
+        case Right(made)  =>
           val outputFile = jobs.files.outputFileOf(job, src, made.format)
-          Files.write(outputFile, made.bytes)
+          Files.move(written, outputFile, StandardCopyOption.REPLACE_EXISTING)
           jobs.complete(
             job,
             src,
             outputFile,
-            derivation(src, request, None, None),
+            derivation(src, request, None, None).copy(warning =
+              made.stopped.map(reason =>
+                SeedVr2Upscale
+                  .partial(made.frameCount, made.sourceFrames, reason)
+              )
+            ),
             OutputMedia(made.mimeType, made.format, made.fps, made.frameCount)
           )
       }
@@ -202,6 +227,8 @@ final private[postprocess] class SeedVr2Upscale(
     } finally {
       jobs.doneWaiting(job)
       stopServer()
+      // what a failed run or a killed runner left half written
+      Files.deleteIfExists(written)
     }
   }
 
@@ -222,4 +249,29 @@ final private[postprocess] class SeedVr2Upscale(
       configurationId = Some(request.runConfigurationId),
       seed = Some(request.seed)
     )
+}
+
+private[postprocess] object SeedVr2Upscale {
+
+  /** How long a runner asked to stop a video has to end it on the frames made:
+    * it stops between two steps, a few seconds apart, then closes its encoder.
+    */
+  val StopGraceMillis: Long = 120_000
+
+  /** The warning on a video that ends before its source does. */
+  def partial(
+      frames: Option[Int],
+      sourceFrames: Option[Int],
+      reason: String
+  ): String = {
+    val made = (frames, sourceFrames) match {
+      case (Some(done), Some(all)) => s"the first $done of $all frames"
+      case (Some(done), None)      => s"the first $done frames"
+      case _                       => "the first frames"
+    }
+    s"partial: $made — ${
+        if (reason == "stopped") "the upscale was stopped"
+        else s"the upscale failed ($reason)"
+      }"
+  }
 }

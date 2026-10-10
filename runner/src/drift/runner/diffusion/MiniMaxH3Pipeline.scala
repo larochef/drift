@@ -162,6 +162,10 @@ final class MiniMaxH3Pipeline(
   private val AudioShift = 3.0
   private val AudioLatentsPerSecond = 40
   private val LatentScale = 16
+  private val projection = LatentProjection.named(
+    LatentProjection.MiniMaxH3,
+    transformer.config.videoWidth
+  )
 
   /** diffusers' `keyframe_encode_seed`, and the conditioning level. */
   private val KeyframeSeed = 42L
@@ -658,6 +662,25 @@ final class MiniMaxH3Pipeline(
               ops.add(velocity, other, velocity)
           }
         }
+        // the estimate of the clean video: x + σ v, the velocity pointing
+        // towards the data
+        projection.foreach(drawn =>
+          preview(
+            1,
+            i + 1,
+            request.steps,
+            () =>
+              drawn.clip(
+                ops.toFloats(video),
+                ops.toFloats(videoVelocity),
+                -videoSigmas(i),
+                latentFrames,
+                latentHeight / 2,
+                latentWidth / 2,
+                frames.toDouble / fps
+              )
+          )
+        )
         // the velocity points towards the data: x += (σ − σ') v
         ops.scale(
           videoVelocity,

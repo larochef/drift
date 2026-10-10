@@ -85,6 +85,8 @@ class GenerationService(statusSocket: StatusSocketService)
   private val cancelFn = ApiClient.stream(cancelGeneration)
   private val keepFn = ApiClient.stream(keepScratchGeneration)
   private val clearScratchFn = ApiClient.stream(drift.shared.clearScratch)
+  private val preferencesFn = ApiClient.stream(getGenerationPreferences)
+  private val savePreferencesFn = ApiClient.stream(setGenerationPreferences)
 
   /** Keyed by session id. A session that is not ready yet simply has no entry;
     * the panel keeps asking until one appears.
@@ -106,6 +108,39 @@ class GenerationService(statusSocket: StatusSocketService)
     */
   private val _previews = Var(Map.empty[String, StepPreview])
   val previews: Signal[Map[String, StepPreview]] = _previews.signal
+
+  /** Whether a video's preview is held on one frame (`StepPreviewView`): the
+    * page's, for as long as it is open, so that it holds across generations.
+    */
+  val stepPreviewPaused: Var[Boolean] = Var(false)
+
+  /** How generations are watched (`GenerationPreferences`): read once from the
+    * backend, which keeps the page's choice.
+    */
+  private val _preferences = Var(GenerationPreferences.Initial)
+  val preferences: Signal[GenerationPreferences] = _preferences.signal
+  preferencesFn(()).recoverToTry.foreach {
+    case Success(stored) => _preferences.set(stored)
+    case Failure(err)    => reportFailure("Reading the preferences", err)
+  }(using unsafeWindowOwner)
+
+  /** Shows or hides the step previews (`specs/54-step-preview.md`), from the
+    * next submission on, and keeps the choice.
+    */
+  def showStepPreview(shown: Boolean): Unit = {
+    val next = _preferences.now().copy(stepPreview = shown)
+    _preferences.set(next)
+    savePreferencesFn(next).recoverToTry.foreach {
+      case Success(_)   => ()
+      case Failure(err) => reportFailure("Saving the preferences", err)
+    }(using unsafeWindowOwner)
+  }
+
+  /** The `preview` a submission carries: asked for while previews are shown,
+    * else absent, and the server draws none.
+    */
+  private def previewAsked: Option[String] =
+    Option.when(_preferences.now().stepPreview)(StepPreview.Mode)
 
   /** Which session `_generations` belongs to — socket pushes for any other
     * session are not this panel's to display.
@@ -242,13 +277,23 @@ class GenerationService(statusSocket: StatusSocketService)
     cmdBus.events
       .collect {
         case Command.SubmitImage(sessionId, parameters, context, scratch) =>
-          (sessionId, context, Some(scratch), parameters)
+          (
+            sessionId,
+            context,
+            Some(scratch),
+            parameters.copy(preview = previewAsked)
+          )
       }
       .flatMapMerge(submitImageFn(_).recoverToTry) --> submissionObserver,
     cmdBus.events
       .collect {
         case Command.SubmitVideo(sessionId, parameters, context, scratch) =>
-          (sessionId, context, Some(scratch), parameters)
+          (
+            sessionId,
+            context,
+            Some(scratch),
+            parameters.copy(preview = previewAsked)
+          )
       }
       .flatMapMerge(submitVideoFn(_).recoverToTry) --> submissionObserver,
     cmdBus.events

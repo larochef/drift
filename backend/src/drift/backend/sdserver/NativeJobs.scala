@@ -43,8 +43,9 @@ private[backend] case class NativeJobResult(
 
 /** The picture a job is sampling, in a job whose request asked for one
   * (`preview`, `specs/54-step-preview.md`), as sd-server and the drift runner
-  * both give it: the sampling pass, from 1 (an image of the batch; on sd-cpp a
-  * hires pass counts too), the step within it, and a PNG or a JPEG.
+  * both give it: the sampling pass, from 1 (an image of the batch, a video's
+  * expert; on sd-cpp a hires pass counts too), the step within it, and a PNG, a
+  * JPEG or, for a video on the drift runner, a GIF that plays it.
   */
 private[backend] case class NativeJobPreview(
     pass: Int = 0,
@@ -53,9 +54,13 @@ private[backend] case class NativeJobPreview(
     @named("b64_json") b64Json: String = ""
 ) {
 
-  /** The picture's type, told from how its base64 starts. */
+  /** The picture's type, told from how its base64 starts: the drift runner's
+    * JPEG, its GIF of a video, else sd-server's PNG.
+    */
   def mimeType: String =
-    if (b64Json.startsWith("/9j/")) "image/jpeg" else "image/png"
+    if (b64Json.startsWith("/9j/")) "image/jpeg"
+    else if (b64Json.startsWith("R0lGOD")) "image/gif"
+    else "image/png"
 }
 private[backend] case class NativeJob(
     id: String = "",

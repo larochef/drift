@@ -48,12 +48,62 @@ final class LatentProjection(
       x.length == gridHeight * gridWidth * channels && velocity.length == x.length,
       s"${x.length} values for $gridHeight × $gridWidth tokens of $channels"
     )
+    frame(x, velocity, sigma, 0, gridHeight, gridWidth)
+  }
+
+  /** A video's estimate while it is sampled, a picture a latent frame: `x` and
+    * `velocity` hold `frames` grids of `gridHeight × gridWidth` tokens one
+    * after the other (and may hold more rows past them), spread over the clip's
+    * `seconds`. The first `clean` latent frames are read as `x` holds them: the
+    * ones a model keeps clean through the steps.
+    */
+  def clip(
+      x: Array[Float],
+      velocity: Array[Float],
+      sigma: Float,
+      frames: Int,
+      gridHeight: Int,
+      gridWidth: Int,
+      seconds: Double,
+      clean: Int = 0
+  ): PreviewClip =
+    PreviewClip(
+      frames,
+      seconds,
+      index =>
+        frame(
+          x,
+          velocity,
+          if (index < clean) 0f else sigma,
+          index,
+          gridHeight,
+          gridWidth
+        )
+    )
+
+  /** `estimate` on the grid of latent frame `index`, the grids one after the
+    * other in `x` and `velocity`.
+    */
+  private def frame(
+      x: Array[Float],
+      velocity: Array[Float],
+      sigma: Float,
+      index: Int,
+      gridHeight: Int,
+      gridWidth: Int
+  ): BufferedImage = {
+    val first = index * gridHeight * gridWidth * channels
+    require(
+      index >= 0 && first + gridHeight * gridWidth * channels <= math
+        .min(x.length, velocity.length),
+      s"${x.length} values hold no frame $index of $gridHeight × $gridWidth tokens of $channels"
+    )
     val width = gridWidth * block
     val image =
       new BufferedImage(width, gridHeight * block, BufferedImage.TYPE_INT_RGB)
     val token = new Array[Float](channels)
     val colours = new Array[Int](3)
-    var at = 0
+    var at = first
     var gridY = 0
     while (gridY < gridHeight) {
       var gridX = 0
@@ -107,7 +157,7 @@ final class LatentProjection(
 object LatentProjection {
 
   /** The Wan 2.1 VAE's latents packed 2 × 2, 64 values a token (Krea 2,
-    * Nucleus-Image).
+    * Nucleus-Image, and each latent frame of Wan 2.2 A14B).
     */
   val Wan21 = "wan-2.1"
 
@@ -119,6 +169,12 @@ object LatentProjection {
 
   /** The Mage-Flow VAE's latents. */
   val MageFlow = "mage-flow"
+
+  /** LTX 2.5's video VAE's latents, 128 values a token of 32 × 32 pixels. */
+  val Ltx25 = "ltx-2.5"
+
+  /** MiniMax H3's video VAE's latents packed 2 × 2, 96 values a token. */
+  val MiniMaxH3 = "minimax-h3"
 
   /** The fitted projection of a VAE family, for tokens of `channels`; none
     * where the runner carries none, and its pictures then have no preview.

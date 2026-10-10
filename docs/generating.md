@@ -174,7 +174,18 @@ Per model, on the drift runner:
   model's latents, not decoded), and it leaves when the picture arrives. A
   batch previews the image being made. On the drift runner FLUX.2, Krea 2,
   Qwen Image 2.1, Mage-Flow, Nucleus-Image and HiDream O1 have one; sd-cpp
-  draws its own for every image model. Videos have none.
+  draws its own for every image model.
+  A video on the drift runner (Wan 2.2, LTX 2.5, MiniMax H3) previews as a
+  clip that plays in a loop at the video's own pace, silent, coarser in
+  time than the video (one picture for every few frames) and smaller on the
+  page than a picture's preview, being rougher; it leaves when the
+  sampling ends, before the decoding. **⏸ Pause**, under it, holds the clip
+  on one frame — the first steps flicker more than they move — and every
+  later step then shows as a still, until **▶ Play**. On sd-cpp a video
+  previews as a still of its first frame.
+  **Preview while generating**, the checkbox over the results, turns all of
+  this off: unticked, drift asks the server for no preview from the next
+  generation on, and hides the one on screen. drift remembers the choice.
   When the server could not apply a LoRA, or only part of it — a file made
   for another model, or named in a way it does not read — the picture is
   still made, and a yellow note above it says what was left out; the gallery

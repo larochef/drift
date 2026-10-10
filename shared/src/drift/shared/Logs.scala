@@ -111,8 +111,9 @@ object BatchProgress {
 
 /** The picture a generation is sampling, as the model's last step estimated it
   * (`specs/54-step-preview.md`): small, never stored, gone with the result.
-  * `image` is the image of the batch it belongs to, from 0; `data` is the
-  * picture in base64, of `mimeType`.
+  * `image` is the sampling pass it belongs to, from 0 (the image of a batch,
+  * the expert of a two-expert video model); `data` is the picture in base64, of
+  * `mimeType` — a video's is a GIF that plays its estimate.
   */
 case class StepPreview(
     image: Int,
@@ -124,6 +125,14 @@ case class StepPreview(
 
   /** The picture as an `<img>` source. */
   def url: String = s"data:$mimeType;base64,$data"
+}
+object StepPreview {
+
+  /** How a server is asked to draw what it is sampling (a request's `preview`):
+    * sd-server's latent projection, the cheapest of its modes and the drift
+    * runner's only one.
+    */
+  val Mode = "proj"
 }
 
 /** Which stage of a video's generation a session is on: `stage` of `total`,

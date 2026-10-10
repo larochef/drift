@@ -21,7 +21,8 @@ import com.typesafe.scalalogging.Logger
   * images prepared for the session's build (`ReferenceImages`); the *recorded*
   * parameters carry URLs of the inputs persisted beside the outputs instead,
   * the references as they were given — a poll of the generation list must not
-  * ship megabytes of base64 every second, and neither should the sidecar.
+  * ship megabytes of base64 every second, and neither should the sidecar. Nor
+  * do they carry `preview`, which says how this one run is watched.
   */
 final private[sdserver] class GenerationSubmissions(
     registry: GenerationRegistry,
@@ -69,7 +70,8 @@ final private[sdserver] class GenerationSubmissions(
           image,
           scratch
         )
-      )
+      ),
+      preview = None
     )
     submit(
       sessionId,
@@ -77,14 +79,13 @@ final private[sdserver] class GenerationSubmissions(
       submittedAt,
       kind = "img_gen",
       path = "/sdcpp/v1/img_gen",
-      // every image is asked with its step previews, drawn the cheap way
-      // (`specs/54-step-preview.md`); a server that knows none ignores it
+      // `preview` goes as the page sent it (`specs/54-step-preview.md`): asked
+      // for or absent; a server that knows none ignores it
       body = writeToString(
         architectureAndRuntimeOf(sessionId)
           .fold(parameters)((architecture, runtime) =>
             ReferenceImages.prepared(parameters, architecture, runtime)
           )
-          .copy(preview = Some(GenerationSubmissions.PreviewMode))
       ),
       context = context,
       scratch = scratch,
@@ -173,7 +174,8 @@ final private[sdserver] class GenerationSubmissions(
       ),
       sourceVideo = parameters.sourceVideo.map(
         files.externalizeInput(generationId, submittedAt, "source", _, scratch)
-      )
+      ),
+      preview = None
     )
     submit(
       sessionId,
@@ -319,15 +321,6 @@ final private[sdserver] class GenerationSubmissions(
           port = port
         )
     }
-}
-
-private[sdserver] object GenerationSubmissions {
-
-  /** How a server is asked to draw the picture being sampled: sd-server's
-    * latent projection, the cheapest of its modes and the drift runner's only
-    * one.
-    */
-  val PreviewMode = "proj"
 }
 
 /** The inputs of one submission that arrive as the URL of a file drift serves —

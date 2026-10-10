@@ -184,8 +184,8 @@ case class ImageGenerationParameters(
     outputCompression: Int = 100,
     /** How the server draws the picture being sampled for whoever polls the job
       * (`specs/54-step-preview.md`): sd-server's `proj`, `tae` or `vae`. None
-      * omits the field — no preview. Set on what drift sends, never on what a
-      * generation records.
+      * omits the field — no preview. The page sets it on what it submits
+      * (`GenerationPreferences`); a generation never records it.
       */
     preview: Option[String] = None
 )
@@ -250,7 +250,12 @@ case class VideoGenerationParameters(
     lora: List[LoraSelection] = List.empty,
     vaeTilingParams: Option[VaeTilingParameters] = None,
     outputFormat: String = "webm",
-    outputCompression: Int = 100
+    outputCompression: Int = 100,
+    /** As an image's (`ImageGenerationParameters.preview`): how the server
+      * draws the video being sampled, the drift runner as a picture that moves,
+      * sd-server as a still of its first frame.
+      */
+    preview: Option[String] = None
 )
 object VideoGenerationParameters {
   given Schema[VideoGenerationParameters] = Schema.derived
@@ -588,6 +593,34 @@ private val submitContextInput =
     .and(query[Option[String]]("version"))
     .and(query[Option[String]]("origin"))
     .mapTo[SubmitContext]
+
+/** How generations are watched, the page's choices kept from a visit to the
+  * next (`settings/generation-preferences.json`). `stepPreview`: whether a
+  * generation is submitted asking for its step previews
+  * (`specs/54-step-preview.md`) and the page shows them.
+  */
+case class GenerationPreferences(stepPreview: Boolean)
+object GenerationPreferences {
+
+  /** What a drift that has stored none runs with: previews shown. */
+  val Initial: GenerationPreferences = GenerationPreferences(stepPreview = true)
+
+  given JsonValueCodec[GenerationPreferences] = JsonCodecMaker.make
+  given Schema[GenerationPreferences] = Schema.derived
+}
+
+val getGenerationPreferences
+    : PublicEndpoint[Unit, Unit, GenerationPreferences, Any] =
+  generationBase.get
+    .in("generation-preferences")
+    .out(jsonBody[GenerationPreferences])
+
+val setGenerationPreferences
+    : PublicEndpoint[GenerationPreferences, Unit, GenerationPreferences, Any] =
+  generationBase.put
+    .in("generation-preferences")
+    .in(jsonBody[GenerationPreferences])
+    .out(jsonBody[GenerationPreferences])
 
 /** Submits an image generation to the session's `sd-server`. Answers with the
   * queued generation, or a `Failed` one naming why it was refused.

@@ -193,7 +193,8 @@ import sttp.tapir.server.netty.sync.*
       assistantEndpoints(assistantProxy, assistantMedia) ++
       generationEndpoints(
         generationManager,
-        OutputPreviews(outputsRoot, locations.cacheRoot)
+        OutputPreviews(outputsRoot, locations.cacheRoot),
+        StoredGenerationPreferences(storage)
       ) ++
       scratchEndpoints(generationManager) ++
       historyEndpoints(generationHistory, generationImports, generationMoves) ++

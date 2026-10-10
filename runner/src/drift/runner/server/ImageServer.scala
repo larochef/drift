@@ -20,14 +20,15 @@ import com.sun.net.httpserver.{HttpExchange, HttpServer}
   * `vid_gen` jobs queued and run one at a time, polled, and cancelled — while
   * queued, or between two steps once generating. A request starts from the
   * launch flags' values and overrides what it sends. Progress goes to the log
-  * as sd-cpp prints it (`| i/n - Xs/it`), which drift parses; an image job
-  * whose request asks for it (`preview`, sd-server's field) also carries the
-  * last step's estimate of its picture (`specs/54-step-preview.md`), and any
-  * job what it went on without (`warnings`: a LoRA left unapplied). Images come
-  * as base64 or data URLs; references are stretched to the output's size first
-  * unless `auto_resize_ref_image` is false, as sd-server does. A generated
-  * video comes back as one webm (`VideoFiles`); an upscaled one is written to
-  * the file its request names (`VideoUpscale`).
+  * as sd-cpp prints it (`| i/n - Xs/it`), which drift parses; an image or video
+  * job whose request asks for it (`preview`, sd-server's field) also carries
+  * the last step's estimate of its picture, or of its video as a picture that
+  * moves (`specs/54-step-preview.md`), and any job what it went on without
+  * (`warnings`: a LoRA left unapplied). Images come as base64 or data URLs;
+  * references are stretched to the output's size first unless
+  * `auto_resize_ref_image` is false, as sd-server does. A generated video comes
+  * back as one webm (`VideoFiles`); an upscaled one is written to the file its
+  * request names (`VideoUpscale`).
   */
 final class ImageServer(
     options: ImageOptions,
@@ -61,8 +62,8 @@ final class ImageServer(
       */
     val warnings = new java.util.concurrent.CopyOnWriteArrayList[String]()
 
-    /** The last step's preview of the image being made, as the job's document
-      * gives it.
+    /** The last step's preview of the image or video being made, as the job's
+      * document gives it.
       */
     @volatile var preview: Option[ujson.Value] = None
   }
@@ -281,7 +282,8 @@ final class ImageServer(
             "lora" -> (video.takesLoras && options.loraDirectory.isDefined),
             "vae_tiling" -> false,
             "cancel_queued" -> true,
-            "cancel_generating" -> true
+            "cancel_generating" -> true,
+            "preview" -> true
           ),
           ujson.Arr("webm")
         )
@@ -309,8 +311,8 @@ final class ImageServer(
       "features_by_mode" -> ujson.Obj(mode -> features),
       "output_formats_by_mode" -> ujson.Obj(mode -> formats),
       "preview_modes" -> (pipeline match {
-        case _: ImagePipeline => ujson.Arr("none", "proj")
-        case _                => ujson.Arr("none")
+        case _: SeedVr2Pipeline => ujson.Arr("none")
+        case _                  => ujson.Arr("none", "proj")
       }),
       "samplers" -> ujson.Arr.from(pipeline match {
         case image: ImagePipeline => image.samplers
@@ -529,16 +531,20 @@ final class ImageServer(
         )
       )
     val count = field("batch_count").map(_.num.toInt).getOrElse(1).max(1)
-    // sd-server's `preview`: a mode (`proj`, `tae`, `vae`) or `none`. The
-    // runner has one way to draw one, whatever the mode asked.
-    val previews = field("preview").flatMap(_.strOpt).exists(_ != "none")
     enqueue(
       exchange,
       "img_gen",
       () => images(pipeline, request, count),
-      previews
+      previewAsked(body)
     )
   }
+
+  /** Whether a request asks for step previews: sd-server's `preview`, a mode
+    * (`proj`, `tae`, `vae`) or `none`. The runner has one way to draw one,
+    * whatever the mode asked.
+    */
+  private def previewAsked(body: ujson.Value): Boolean =
+    body.obj.get("preview").flatMap(_.strOpt).exists(_ != "none")
 
   /** `POST /sdcpp/v1/vid_gen`: a job from the request over the launch flags'
     * values, its frames and sides rounded up to what the model takes; what the
@@ -724,7 +730,12 @@ final class ImageServer(
         400,
         ujson.Obj("error" -> s"no such LoRA: ${missing.mkString(", ")}")
       )
-    enqueue(exchange, "vid_gen", () => video(pipeline, request))
+    enqueue(
+      exchange,
+      "vid_gen",
+      () => video(pipeline, request),
+      previewAsked(body)
+    )
   }
 
   /** `POST /sdcpp/v1/upscale`, the runner's own job, restored at
@@ -1161,17 +1172,18 @@ final class ImageServer(
       ops.onWork = bar.work
       // the picture being made has no estimate yet, whatever the last one had
       generating.foreach(_.preview = None)
-      // One a second at most, and the last step's: a poll comes once a second,
-      // and steps shorter than that would pay for pictures nobody sees.
-      var drawnAt = 0L
+      val publish = previews()
       pipeline.preview = (step, steps, picture) =>
-        generating.filter(_.previewWanted).foreach { job =>
-          val now = System.nanoTime()
-          if (step == steps || now - drawnAt >= PreviewIntervalNanos) {
-            drawnAt = now
-            job.preview = Some(preview(index + 1, step, steps, picture()))
+        publish(
+          index + 1,
+          step,
+          steps,
+          () => {
+            val jpeg = new ByteArrayOutputStream()
+            ImageIO.write(picture(), "jpg", jpeg)
+            jpeg.toByteArray
           }
-        }
+        )
       val image =
         try pipeline.generate(seeded, bar.step)
         finally {
@@ -1200,24 +1212,33 @@ final class ImageServer(
   /** The least time between two previews of a picture. */
   private val PreviewIntervalNanos = 1_000_000_000L
 
-  /** A step's preview in a job's document, as sd-server gives one: the pass
-    * (the image of the batch, from 1), the step it is the estimate of, the
-    * pass' steps and the picture — a JPEG here, a PNG there.
+  /** What a pipeline's `preview` hook hands a step's preview to, for one
+    * picture or video: `publish(pass, step, steps, picture)` puts it in the
+    * document of the job under way when its request asked, as sd-server gives
+    * one — the sampling pass from 1 (an image of the batch, a video's expert),
+    * the step it is the estimate of, the pass' steps and the picture's file, a
+    * JPEG or a GIF here, a PNG there. One a second at most, and a pass' last
+    * step always: a poll comes once a second, and steps shorter than that would
+    * pay for pictures nobody sees.
     */
-  private def preview(
-      pass: Int,
-      step: Int,
-      steps: Int,
-      picture: java.awt.image.BufferedImage
-  ): ujson.Value = {
-    val jpeg = new ByteArrayOutputStream()
-    ImageIO.write(picture, "jpg", jpeg)
-    ujson.Obj(
-      "pass" -> pass,
-      "step" -> step,
-      "total_steps" -> steps,
-      "b64_json" -> Base64.getEncoder.encodeToString(jpeg.toByteArray)
-    )
+  private def previews(): (Int, Int, Int, () => Array[Byte]) => Unit = {
+    var drawnAt = 0L
+    (pass, step, steps, picture) =>
+      generating.filter(_.previewWanted).foreach { job =>
+        val now = System.nanoTime()
+        if (step == steps || now - drawnAt >= PreviewIntervalNanos) {
+          val file = picture()
+          job.preview = Some(
+            ujson.Obj(
+              "pass" -> pass,
+              "step" -> step,
+              "total_steps" -> steps,
+              "b64_json" -> Base64.getEncoder.encodeToString(file)
+            )
+          )
+          drawnAt = now
+        }
+      }
   }
 
   /** A `vid_gen` job's result: one webm. */
@@ -1235,17 +1256,25 @@ final class ImageServer(
     val enter = (name: String) => {
       val index = stages.indexOf(name)
       if (index >= 0) println(s"stage ${index + 1}/${stages.size}: $name")
+      // the estimate stays from a sampling pass to the next, and leaves when
+      // the sampling is over: the decode shows none
+      if (!VideoPipeline.samples(name)) generating.foreach(_.preview = None)
     }
     val bar = new StepBar
+    val publish = previews()
     pipeline.stage = enter
     pipeline.withinStep = bar.within
+    pipeline.preview = (pass, step, steps, clip) =>
+      publish(pass, step, steps, () => PreviewGif.encode(clip()))
     ops.onWork = bar.work
     val video =
       try pipeline.generate(request, bar.step)
       finally {
         pipeline.stage = _ => ()
         pipeline.withinStep = _ => ()
+        pipeline.preview = (_, _, _, _) => ()
         ops.onWork = () => ()
+        generating.foreach(_.preview = None)
       }
     enter(VideoFileStage)
     val webm = VideoFiles.webm(video)

@@ -137,6 +137,16 @@ final case class Video(
     soundtrack: Option[Soundtrack]
 )
 
+/** A video's estimate while it is sampled (`specs/54-step-preview.md`):
+  * `frames` small pictures, a latent frame each, spread evenly over the clip's
+  * `seconds`; `frame(i)` draws one, only when called.
+  */
+final case class PreviewClip(
+    frames: Int,
+    seconds: Double,
+    frame: Int => BufferedImage
+)
+
 /** A video model family end to end, from a prompt to frames. */
 trait VideoPipeline extends AutoCloseable {
 
@@ -207,6 +217,14 @@ trait VideoPipeline extends AutoCloseable {
     */
   var withinStep: Double => Unit = _ => ()
 
+  /** Handed each step's estimate of the finished video, before the step is
+    * counted (`specs/54-step-preview.md`): `preview(pass, step, steps, clip)`,
+    * `pass` the sampling pass from 1 (a two-expert model's second expert is 2),
+    * `clip` read and drawn only if called, there and then. The server's to set
+    * around `generate`; a family that cannot draw one never calls it.
+    */
+  var preview: (Int, Int, Int, () => PreviewClip) => Unit = (_, _, _, _) => ()
+
   /** The video of `request`; `progress(0, steps)` before the first step (of
     * each pass), `progress(step, steps)` after each.
     */
@@ -214,6 +232,11 @@ trait VideoPipeline extends AutoCloseable {
 }
 
 object VideoPipeline {
+
+  /** Whether `stage`, one of a pipeline's `stages`, is a sampling pass: the
+    * stages a preview is drawn through.
+    */
+  def samples(stage: String): Boolean = stage.startsWith("sampling")
 
   private enum Family { case MiniMaxH3, Wan, Ltx }
 

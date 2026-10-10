@@ -201,9 +201,15 @@ class GenerationResult(
             ),
             machine
           ).element,
-          // This generation's own picture: none while it waits behind another.
+          // This generation's own picture: none while it waits behind another,
+          // and none while previews are hidden.
           StepPreviewView(
-            service.previews.map(_.get(generation.id))
+            service.previews
+              .combineWith(service.preferences)
+              .map((previews, preferences) =>
+                previews.get(generation.id).filter(_ => preferences.stepPreview)
+              ),
+            service.stepPreviewPaused
           ).element,
           GenerationCancel.stopButton(
             service,

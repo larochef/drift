@@ -39,6 +39,30 @@ object LatentProjectionTests extends TestSuite {
         projection.estimate(Array(0.5f), Array(1f), 0.5f, 1, 1)
       assert((picture.getRGB(0, 0) & 0xff) == 128)
     }
+    test("a clip draws each latent frame from its own rows") {
+      // 1 channel, a pixel a token: grey = the token
+      val projection =
+        new LatentProjection(1, 1, Array(1f, 0f, 1f, 0f, 1f, 0f))
+      // 3 frames of 1 × 2 tokens, then a row past them that is no frame
+      val x = Array(0f, 0f, 0.5f, 0.5f, 1f, 1f, 9f, 9f)
+      val velocity = Array(1f, 1f, 1f, 1f, 1f, 1f, 0f, 0f)
+      val clip =
+        projection.clip(x, velocity, 0.5f, 3, 1, 2, seconds = 1.5, clean = 1)
+      def grey(frame: Int) = clip.frame(frame).getRGB(1, 0) & 0xff
+      assert(
+        clip.frames == 3,
+        clip.seconds == 1.5,
+        clip.frame(0).getWidth == 2 && clip.frame(0).getHeight == 1,
+        // the first frame is held clean: x itself, 0 → mid grey
+        grey(0) == 128,
+        // the others are x − σ v: 0 and 0.5
+        grey(1) == 128,
+        grey(2) == 191
+      )
+      // a velocity towards the data reads with the sign turned: x + σ v
+      val towards = projection.clip(x, velocity, -0.5f, 3, 1, 2, 1.5)
+      assert((towards.frame(1).getRGB(0, 0) & 0xff) == 255)
+    }
     test("the fit finds the projection the samples were made with") {
       val random = new SplittableRandom(7)
       val (channels, block, height, width) = (5, 2, 6, 4)
@@ -90,6 +114,8 @@ object LatentProjectionTests extends TestSuite {
         named(Flux2, 128).isDefined,
         named(QwenImage21, 64).isDefined,
         named(MageFlow, 128).isDefined,
+        named(Ltx25, 128).isDefined,
+        named(MiniMaxH3, 96).isDefined,
         // another model on the same VAE's name, with other tokens
         named(Flux2, 16).isEmpty,
         named("none", 64).isEmpty

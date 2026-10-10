@@ -13,10 +13,9 @@ import ox.sleep
 
 /** Follows a submitted job to its end: one fork per job polls the native job
   * every second, mirrors its state into the generation, and persists the result
-  * the moment it completes — whether or not a browser is still watching. An
-  * image job's poll finds the step's preview (`specs/54-step-preview.md`),
-  * which the drift runner answers and sd-server, matching the path alone,
-  * ignores.
+  * the moment it completes — whether or not a browser is still watching. A
+  * job's poll finds the step's preview (`specs/54-step-preview.md`) when its
+  * request asked for one.
   */
 final private[sdserver] class GenerationMonitor(
     registry: GenerationRegistry,

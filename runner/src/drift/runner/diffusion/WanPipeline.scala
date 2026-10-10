@@ -48,6 +48,10 @@ final class WanPipeline(
   private val high = highNoiseModel.map(Wan.open(ops, _))
   private val decoder = WanVideoVae.open(ops, vae)
   private val TextTokens = 512
+  private val projection = LatentProjection.named(
+    LatentProjection.Wan21,
+    4 * low.config.outChannels
+  )
 
   require(
     high.forall(_.config == low.config),
@@ -259,6 +263,28 @@ final class WanPipeline(
           ops.scale(other, 1 - scale, other)
           ops.scale(velocity, scale, velocity)
           ops.add(velocity, other, velocity)
+        }
+        // the estimate of the clean video, a pass an expert that runs
+        projection.foreach { drawn =>
+          val (pass, step, steps) =
+            if (high.isEmpty || switch == 0) (1, i + 1, total)
+            else if (highNoise) (1, i + 1, switch)
+            else (2, i + 1 - switch, total - switch)
+          preview(
+            pass,
+            step,
+            steps,
+            () =>
+              drawn.clip(
+                ops.toFloats(latents),
+                ops.toFloats(velocity),
+                schedule(i),
+                latentFrames,
+                gridHeight,
+                gridWidth,
+                frames.toDouble / fps
+              )
+          )
         }
         ops.scale(velocity, schedule(i + 1) - schedule(i), velocity)
         ops.add(latents, velocity, latents)

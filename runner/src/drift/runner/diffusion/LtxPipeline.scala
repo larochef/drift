@@ -97,6 +97,10 @@ final class LtxPipeline(
   private val audioDecoder =
     timed("audio VAE")(audioVae.map(LtxAudio.open(ops, _)))
   private val TextRows = 1024
+  private val projection = LatentProjection.named(
+    LatentProjection.Ltx25,
+    transformer.config.videoChannels
+  )
   private val DistilledSigmas =
     Array(1.0f, 0.99375f, 0.9875f, 0.98125f, 0.975f, 0.909375f, 0.725f,
       0.421875f, 0f)
@@ -318,6 +322,29 @@ final class LtxPipeline(
           }
         }
         val (sigma, next) = (schedule(i), schedule(i + 1))
+        // the estimate of the clean video; a condition in place is clean as held
+        projection.foreach(drawn =>
+          preview(
+            1,
+            i + 1,
+            steps,
+            () =>
+              drawn.clip(
+                ops.toFloats(video),
+                ops.toFloats(videoVelocity),
+                sigma,
+                layout.frames,
+                layout.height,
+                layout.width,
+                frames.toDouble / rate,
+                clean = conditions
+                  .filter(_.positions.isEmpty)
+                  .map(_.latents.size)
+                  .maxOption
+                  .getOrElse(0)
+              )
+          )
+        )
         if (!request.ancestral || next == 0f)
           Seq(video -> videoVelocity, audio -> audioVelocity).foreach {
             (x, velocity) =>

@@ -1,6 +1,6 @@
 package drift.backend.routes
 
-import drift.backend.sdserver.{GenerationManager, OutputPreviews}
+import drift.backend.sdserver.*
 import drift.shared.*
 
 import java.nio.file.Files
@@ -12,9 +12,14 @@ import sttp.tapir.server.ServerEndpoint
 
 def generationEndpoints(
     manager: GenerationManager,
-    previews: OutputPreviews
+    previews: OutputPreviews,
+    preferences: StoredGenerationPreferences
 ): List[ServerEndpoint[Any, Identity]] = List(
   getSessionCapabilities.serverLogicSuccess[Identity](manager.capabilities),
+  getGenerationPreferences.serverLogicSuccess[Identity](_ =>
+    preferences.current
+  ),
+  setGenerationPreferences.serverLogicSuccess[Identity](preferences.save),
   submitImageGeneration.serverLogicSuccess[Identity] {
     (sessionId, context, scratch, parameters) =>
       manager.submitImage(

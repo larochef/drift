@@ -610,6 +610,7 @@ class GenerationPanel(
             div(
               cls := "column is-7",
               freePlayNotice,
+              StepPreviewToggle(service).element,
               // Everything the session still owes that the result does not
               // already show — jobs queued behind this one, and jobs queued
               // from another project, which hold this one up just the same.

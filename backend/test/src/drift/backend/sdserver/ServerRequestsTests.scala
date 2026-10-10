@@ -42,6 +42,8 @@ object ServerRequestsTests extends TestSuite {
         // the runner's JPEG and sd-server's PNG, told apart by their start
         job.preview.exists(_.mimeType == "image/jpeg"),
         NativeJobPreview(1, 1, 8, "iVBORw0KGgo").mimeType == "image/png",
+        // a video's, on the runner: a GIF ("GIF89a")
+        NativeJobPreview(2, 1, 4, "R0lGODlhAAEA").mimeType == "image/gif",
         job.warnings == List("LoRA left unapplied: x"),
         bare.preview.isEmpty && bare.warnings.isEmpty
       )
@@ -52,6 +54,29 @@ object ServerRequestsTests extends TestSuite {
         ImageGenerationParameters(prompt = "x", preview = Some("proj"))
       )
       assert(!plain.contains("preview"), asked.contains(""""preview":"proj""""))
+    }
+    test("a video request asks for its previews only when told to") {
+      val plain = writeToString(VideoGenerationParameters(prompt = "x"))
+      val asked = writeToString(
+        VideoGenerationParameters(
+          prompt = "x",
+          preview = Some(StepPreview.Mode)
+        )
+      )
+      assert(
+        !plain.contains("preview"),
+        asked.contains(""""preview":"proj""""),
+        readFromString[VideoGenerationParameters](asked).preview
+          .contains("proj")
+      )
+    }
+    test("the preferences say whether previews are shown, and start shown") {
+      val hidden = GenerationPreferences(stepPreview = false)
+      assert(
+        GenerationPreferences.Initial.stepPreview,
+        writeToString(hidden) == """{"stepPreview":false}""",
+        readFromString[GenerationPreferences](writeToString(hidden)) == hidden
+      )
     }
     test("a video request does too") {
       val json = writeToString(VideoGenerationParameters(prompt = "x"))

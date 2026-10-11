@@ -14,5 +14,6 @@
   "013-edit-models.json",
   "014-mage-flow-runner.json",
   "015-qwen-turbo-lora-levels.json",
-  "016-hidream-o1-references.json"
+  "016-hidream-o1-references.json",
+  "017-mage-flow-one-architecture.json"
 ]

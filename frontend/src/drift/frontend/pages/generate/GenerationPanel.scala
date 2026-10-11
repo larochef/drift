@@ -265,14 +265,22 @@ class GenerationPanel(
       )
   }
 
-  /** What the result shows: the job under way while there is one, else the
-    * newest. Showing the newest submission meant that cancelling a queued job
-    * replaced a running generation on screen with that cancellation (François,
-    * 2026-09-18).
+  /** What the result shows: the job generating while there is one, else the
+    * next one waiting, else the newest. Showing the newest submission meant
+    * that cancelling a queued job replaced a running generation on screen with
+    * that cancellation (François, 2026-09-18) — and showing the newest job
+    * still to do, waiting ones included, that queueing a job took the running
+    * one's step preview and Stop away for a job with nothing to show yet
+    * (François, 2026-10-10). A queued job is in the list above the result.
     */
   private val shownGeneration: Signal[Option[Generation]] =
     panelGenerations
-      .map(all => all.findLast(_.status.isActive).orElse(all.lastOption))
+      .map(all =>
+        all
+          .find(_.status == GenerationStatus.Generating)
+          .orElse(all.find(_.status.isActive))
+          .orElse(all.lastOption)
+      )
       .distinct
 
   private val seeded = Var(carried.isDefined)
@@ -348,6 +356,15 @@ class GenerationPanel(
         state.mode.now(),
         selectedSampling,
         force
+      )
+    }
+
+  private def resetGenerationParameters(): Unit =
+    service.capabilitiesOf(sessionId).foreach { capabilities =>
+      seeding.resetGenerationParameters(
+        capabilities,
+        state.mode.now(),
+        selectedSampling
       )
     }
 
@@ -600,6 +617,7 @@ class GenerationPanel(
                     loraPicker,
                     samplingLoras,
                     () => applyLoraSampling(force = true),
+                    () => resetGenerationParameters(),
                     switchMode,
                     () => handleSubmit(),
                     inputTools

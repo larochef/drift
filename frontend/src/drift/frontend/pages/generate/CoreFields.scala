@@ -13,7 +13,8 @@ class CoreFields(
     state: GenerationFormState,
     capabilities: SessionCapabilities,
     onSwitchMode: String => Unit,
-    onGenerate: () => Unit
+    onGenerate: () => Unit,
+    onResetParameters: () => Unit
 ) extends Component {
   import state.*
   import FormFields.{field, numberField}
@@ -166,7 +167,19 @@ class CoreFields(
             numberField("FPS", fpsVar, Some(1), digits = Some(3))
           )
         case _ => emptyNode
-      }
+      },
+      div(
+        cls := "field mb-4",
+        button(
+          cls := "button is-small",
+          "↺ Reset parameters",
+          title := "Puts the size, steps, CFG, sampler, schedule and guidance " +
+            "— a video's frames and FPS too — back to what this " +
+            "configuration and the selected LoRAs set. The prompts, " +
+            "the seed, the inputs and the LoRAs stay as they are.",
+          onClick --> (_ => onResetParameters())
+        )
+      )
     )
   }
 }

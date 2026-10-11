@@ -105,6 +105,8 @@ import sttp.tapir.server.netty.sync.*
     lorasRoot = locations.lorasRoot,
     background = background
   )
+  // before anything is fetched again: a folder that only has to move
+  loraManager.settleFolders()
   loraManager.resumeInterrupted()
   val upscalerManager = UpscalerManager(
     storage = storage,

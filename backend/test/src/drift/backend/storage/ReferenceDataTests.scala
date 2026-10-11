@@ -24,8 +24,6 @@ object ReferenceDataTests extends TestSuite {
           "krea2",
           "mage-flow",
           "mage-flow-edit",
-          "mage-flow-turbo",
-          "mage-flow-edit-turbo",
           "nucleus-image",
           "llada-image",
           "llada-image-turbo",
@@ -36,6 +34,16 @@ object ReferenceDataTests extends TestSuite {
       assert(starters.exists(_.id == "starter-llada-image-turbo"))
       assert(starters.exists(_.id == "starter-grn-2b"))
       assert(starters.exists(_.id == "starter-mage-flow"))
+      // Turbo is a checkpoint of Mage-Flow, with its own steps and CFG
+      assert(
+        models
+          .find(_.id == "mage-flow-turbo-bf16")
+          .exists(turbo =>
+            turbo.familyId == "mage-flow-diffusion" &&
+              turbo.parameters.get("--steps").contains("4") &&
+              turbo.parameters.get("--cfg-scale").contains("1.0")
+          )
+      )
       // a starter names an architecture and models that exist
       val known = models.map(_.id).toSet
       val broken = starters.filter(starter =>

@@ -17,6 +17,10 @@ class GenerationForm(
     /** The selected LoRAs that carry sampling settings (`specs/49`). */
     samplingLoras: Signal[List[Lora]],
     onApplyLoraSampling: () => Unit,
+    /** Size, sampling and guidance back to the configuration's and the selected
+      * LoRAs' own.
+      */
+    onResetParameters: () => Unit,
     onSwitchMode: String => Unit,
     onGenerate: () => Unit,
     /** The gallery and the assistant, for the input slots (`specs/50`). */
@@ -29,7 +33,13 @@ class GenerationForm(
       .getOrElse("lora", false)
 
   lazy val element: HtmlElement = div(
-    CoreFields(state, capabilities, onSwitchMode, onGenerate).element,
+    CoreFields(
+      state,
+      capabilities,
+      onSwitchMode,
+      onGenerate,
+      onResetParameters
+    ).element,
     child <-- state.mode.signal.map(m =>
       if (takesLoras(m))
         div(

@@ -47,8 +47,10 @@ built from what the loaded model reports it supports, not from hardcoded lists.
   is the session's, not the project's: a job queued from elsewhere holds this
   one up just the same, and is nowhere else on screen. One active job that *is*
   the shown one lists nothing, its stop being right below.
-- The result follows the **running** generation, falling back to the newest
-  when none is: showing the newest submission meant cancelling a queued job
+- The result follows the **running** generation — the one generating, not a
+  job waiting behind it, so queueing a job leaves the step preview, the bars
+  and the Stop where they are —, then the next one waiting, falling back to
+  the newest when none is: showing the newest submission meant cancelling a queued job
   replaced a live generation on screen with that cancellation, which read as
   the running job having been cancelled too (François, 2026-09-18).
 - **⏹ Cancel is always offered** while a job is active. Where the server says
@@ -80,6 +82,15 @@ built from what the loaded model reports it supports, not from hardcoded lists.
 - Size, steps, CFG and seed sit side by side, wrapping, each input as wide as
   what it holds (`FormFields.numberField(digits)`: 4, 3, 4 and 11
   characters), not two per row across the form.
+- **↺ Reset parameters**, under those fields, puts back what the configuration
+  and the selected LoRAs give for the current mode
+  (`RecipeSeeding.resetGenerationParameters`): size, steps and CFG — the
+  high-noise pair too —, sampler, scheduler, noise levels, flow shift, image
+  CFG, distilled guidance, skip-layer guidance, and a video's frames and FPS.
+  It is the mode's seeding without what is asked for: prompts, inputs and
+  their strength, seed, LoRA selection, batch, hires and VAE tiling stay. The
+  sampling fields count as defaults again, so the LoRAs' layer
+  ([`49`](49-lora-sampling-settings.md)) lands on them.
 - Random seed: with Random ticked the panel draws a 31-bit seed per
   submission and shows it; the backend draws one for any request that still
   arrives negative, so the sidecar always records the seed actually used.

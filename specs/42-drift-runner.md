@@ -310,7 +310,7 @@ quantizer: the fork's, or one of drift's own.
 | qwen3.6-35b-a3b | gated linear attention, MoE, MTP in the file, vision |
 | Qwen 3.8 Flash Next | the above, plus sparse attention with an indexer, the gated 4-stream residual, n-gram embeddings, mRoPE, video input |
 | gemma-4-26b-a4b | sliding-window attention, MoE, MTP sidecar, vision |
-| flux.2-*, z-image-turbo, krea2, qwen-image(-2.1), ideogram-4, ernie-image, boogu-image(-edit), mage-flow(-edit)-turbo | DiT with 2-D RoPE, image VAE, LLM text encoder, reference images for edit |
+| flux.2-*, z-image-turbo, krea2, qwen-image(-2.1), ideogram-4, ernie-image, boogu-image(-edit), mage-flow(-edit) | DiT with 2-D RoPE, image VAE, LLM text encoder, reference images for edit |
 | hidream-o1, sensenova-u1.5 | single-file unified models: map their tensors onto the blocks |
 | wan-2.2-*, hunyuanvideo-1.5, ltx-2.3/2.5, minimax-h3 | 3-D RoPE, causal conv3d video VAE, audio VAE, two-expert switching (Wan 14B) |
 | pid-* | the PiD decoder over the DiT blocks, tiling ([`26`](26-tiled-pid.md)) |

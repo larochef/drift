@@ -9,7 +9,10 @@
       "filename": "z-image-turbo-Q4_K_M.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--steps": "8",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -35,7 +38,11 @@
       "filename": "flux-2-klein-4b-Q4_K_M.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--steps": "4",
+      "--cfg-scale": "1.0",
+      "--guidance": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -48,7 +55,11 @@
       "filename": "flux-2-klein-9b-Q4_K_M.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--steps": "4",
+      "--cfg-scale": "1.0",
+      "--guidance": "3.0"
+    },
     "builtIn": true
   },
   {
@@ -61,7 +72,11 @@
       "filename": "flux2-dev-Q4_K_M.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--steps": "28",
+      "--cfg-scale": "1.0",
+      "--guidance": "4.0"
+    },
     "builtIn": true
   },
   {
@@ -87,7 +102,10 @@
       "filename": "TURBO/Krea-2-Turbo-Q4_K_M.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--steps": "4",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -100,7 +118,11 @@
       "filename": "qwen-image-2512-Q4_K_M.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--steps": "20",
+      "--cfg-scale": "1.0",
+      "--guidance": "4.0"
+    },
     "builtIn": true
   },
   {
@@ -191,7 +213,10 @@
       "filename": "LowNoise/Wan2.2-T2V-A14B-LowNoise-Q4_K_M.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--steps": "10",
+      "--cfg-scale": "3.5"
+    },
     "builtIn": true
   },
   {
@@ -204,7 +229,10 @@
       "filename": "HighNoise/Wan2.2-T2V-A14B-HighNoise-Q4_K_M.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--high-noise-steps": "8",
+      "--high-noise-cfg-scale": "3.5"
+    },
     "builtIn": true
   },
   {
@@ -217,7 +245,10 @@
       "filename": "Wan2.2-TI2V-5B-Q4_K_M.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--cfg-scale": "1.0",
+      "--guidance": "3.5"
+    },
     "builtIn": true
   },
   {
@@ -269,7 +300,10 @@
       "filename": "distilled-1.1/ltx-2.3-22b-distilled-1.1-UD-Q4_K_M.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--steps": "8",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -334,7 +368,10 @@
       "filename": "distilled/ltx-2.5-22b-distilled-transformer-Q4_K_M.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--steps": "8",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -386,7 +423,10 @@
       "filename": "minimax_h3_fl2va_pruned-Q4_K.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--cfg-scale": "1.0",
+      "--flow-shift": "12.0"
+    },
     "builtIn": true
   },
   {
@@ -399,7 +439,10 @@
       "filename": "minimax_h3_ref2va_pruned-Q4_K.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--cfg-scale": "1.0",
+      "--flow-shift": "12.0"
+    },
     "builtIn": true
   },
   {
@@ -490,7 +533,10 @@
       "filename": "diffusion_models/pid_1.5_flux2_1024_to_4096_4step_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "4",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -503,7 +549,10 @@
       "filename": "diffusion_models/pid_flux2_512_to_2048_4step_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "4",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -516,7 +565,10 @@
       "filename": "diffusion_models/pid_1.5_flux1_1024_to_4096_4step_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "4",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -529,7 +581,10 @@
       "filename": "diffusion_models/pid_1.5_qwenimage_1024_to_4096_4step_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "4",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -646,7 +701,10 @@
       "filename": "diffusion_models/ideogram4_fp8_scaled.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "20",
+      "--cfg-scale": "7.0"
+    },
     "builtIn": true
   },
   {
@@ -659,7 +717,10 @@
       "filename": "diffusion_models/ideogram4_int8_convrot.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "20",
+      "--cfg-scale": "7.0"
+    },
     "builtIn": true
   },
   {
@@ -698,7 +759,10 @@
       "filename": "diffusion_models/mage_flow_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "20",
+      "--cfg-scale": "5.0"
+    },
     "builtIn": true
   },
   {
@@ -711,7 +775,10 @@
       "filename": "diffusion_models/mage_flow_base_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "30",
+      "--cfg-scale": "5.0"
+    },
     "builtIn": true
   },
   {
@@ -724,7 +791,10 @@
       "filename": "diffusion_models/mage_flow_edit_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "30",
+      "--cfg-scale": "5.0"
+    },
     "builtIn": true
   },
   {
@@ -737,12 +807,15 @@
       "filename": "diffusion_models/mage_flow_edit_base_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "30",
+      "--cfg-scale": "5.0"
+    },
     "builtIn": true
   },
   {
     "id": "mage-flow-turbo-bf16",
-    "familyId": "mage-flow-turbo-diffusion",
+    "familyId": "mage-flow-diffusion",
     "label": "mage_flow_turbo_bf16",
     "source": {
       "type": "huggingface",
@@ -750,12 +823,15 @@
       "filename": "diffusion_models/mage_flow_turbo_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "4",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
     "id": "mage-flow-edit-turbo-bf16",
-    "familyId": "mage-flow-edit-turbo-diffusion",
+    "familyId": "mage-flow-edit-diffusion",
     "label": "mage_flow_edit_turbo_bf16",
     "source": {
       "type": "huggingface",
@@ -763,7 +839,10 @@
       "filename": "diffusion_models/mage_flow_edit_turbo_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "4",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -789,7 +868,11 @@
       "filename": "transformer/diffusion_pytorch_model.safetensors.index.json"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "4",
+      "--cfg-scale": "1.0",
+      "--flow-shift": "3.0"
+    },
     "builtIn": true
   },
   {
@@ -841,7 +924,10 @@
       "filename": "transformer/diffusion_pytorch_model.safetensors.index.json"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "50",
+      "--cfg-scale": "5.0"
+    },
     "builtIn": true
   },
   {
@@ -919,7 +1005,10 @@
       "filename": "grn-t2i-2b-bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "50",
+      "--cfg-scale": "3.0"
+    },
     "builtIn": true
   },
   {
@@ -958,7 +1047,10 @@
       "filename": "transformer/diffusion_pytorch_model.safetensors.index.json"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "50",
+      "--cfg-scale": "4.0"
+    },
     "builtIn": true
   },
   {
@@ -984,7 +1076,11 @@
       "filename": "SenseNova-U1.5-8B-MoT-Q5_K_M.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--steps": "50",
+      "--cfg-scale": "4.0",
+      "--flow-shift": "3.0"
+    },
     "builtIn": true
   },
   {
@@ -997,7 +1093,11 @@
       "filename": "model.safetensors.index.json"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "50",
+      "--cfg-scale": "4.0",
+      "--flow-shift": "3.0"
+    },
     "builtIn": true
   },
   {
@@ -1012,7 +1112,8 @@
     "format": "safetensors",
     "parameters": {
       "--steps": "8",
-      "--cfg-scale": "1.0"
+      "--cfg-scale": "1.0",
+      "--flow-shift": "3.0"
     },
     "builtIn": true
   },
@@ -1026,7 +1127,9 @@
       "filename": "split_files/diffusion_models/hunyuanvideo1.5_720p_t2v_fp16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--cfg-scale": "6.0"
+    },
     "builtIn": true
   },
   {
@@ -1082,7 +1185,10 @@
       "filename": "diffusion_models/boogu_image_turbo_fp8_scaled.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "4",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -1095,7 +1201,10 @@
       "filename": "diffusion_models/boogu_image_turbo_hotfix_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "4",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -1150,7 +1259,10 @@
       "filename": "diffusion_models/ernie-image-turbo.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "8",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -1163,7 +1275,10 @@
       "filename": "ernie-image-turbo-UD-Q4_K_M.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--steps": "8",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -1231,7 +1346,11 @@
       "filename": "checkpoints/hidream_o1_image_dev_fp8_scaled.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "28",
+      "--cfg-scale": "1.0",
+      "--flow-shift": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -1244,7 +1363,11 @@
       "filename": "checkpoints/hidream_o1_image_dev_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "28",
+      "--cfg-scale": "1.0",
+      "--flow-shift": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -1274,7 +1397,10 @@
       "filename": "diffusion_models/boogu_image_edit_turbo_hotfix_1k_20260708_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "4",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -1287,7 +1413,10 @@
       "filename": "diffusion_models/boogu_image_edit_turbo_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "4",
+      "--cfg-scale": "1.0"
+    },
     "builtIn": true
   },
   {
@@ -1342,7 +1471,11 @@
       "filename": "qwen_image_2.1-Q4_K.gguf"
     },
     "format": "gguf",
-    "parameters": {},
+    "parameters": {
+      "--steps": "40",
+      "--cfg-scale": "1.0",
+      "--sampling-method": "euler"
+    },
     "builtIn": true
   },
   {
@@ -1368,7 +1501,11 @@
       "filename": "diffusion_models/qwen_image_2.1_bf16.safetensors"
     },
     "format": "safetensors",
-    "parameters": {},
+    "parameters": {
+      "--steps": "40",
+      "--cfg-scale": "1.0",
+      "--sampling-method": "euler"
+    },
     "builtIn": true
   },
   {

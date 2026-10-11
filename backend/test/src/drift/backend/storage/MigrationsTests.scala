@@ -580,6 +580,75 @@ object MigrationsTests extends TestSuite {
       assert(sampling("style") == ujson.read("""{"sampler": "euler"}"""))
     }
 
+    test("17: Mage-Flow Turbo is a checkpoint of Mage-Flow (specs/23)") {
+      val dir = Files.createTempDirectory("drift-mage-flow-one-architecture")
+      Files.writeString(dir.resolve("schema.json"), """{"version": 16}""")
+      def write(collection: String, id: String, json: String): Unit = {
+        Files.createDirectories(dir.resolve(collection))
+        Files.writeString(
+          dir.resolve(collection).resolve(s"$id.json"),
+          json,
+          StandardCharsets.UTF_8
+        )
+      }
+      def field(collection: String, id: String, name: String): String =
+        ujson
+          .read(Files.readString(dir.resolve(collection).resolve(s"$id.json")))(
+            name
+          )
+          .str
+      write(
+        "models",
+        "own-turbo",
+        """{"id": "own-turbo", "familyId": "mage-flow-turbo-diffusion"}"""
+      )
+      write(
+        "models",
+        "own-edit-turbo",
+        """{"id": "own-edit-turbo", "familyId": "mage-flow-edit-turbo-diffusion"}"""
+      )
+      write("models", "vae", """{"id": "vae", "familyId": "mage-flow-vae"}""")
+      write(
+        "run-configurations",
+        "turbo",
+        """{"id": "turbo", "architectureId": "mage-flow-turbo"}"""
+      )
+      write(
+        "run-configurations",
+        "edit-turbo",
+        """{"id": "edit-turbo", "architectureId": "mage-flow-edit-turbo"}"""
+      )
+      write(
+        "run-configurations",
+        "krea",
+        """{"id": "krea", "architectureId": "krea2"}"""
+      )
+      write(
+        "loras",
+        "mage-flow-turbo-style",
+        """{"id": "mage-flow-turbo-style", "architectureId": "mage-flow-turbo"}"""
+      )
+      Migrations(dir).run()
+      assert(field("models", "own-turbo", "familyId") == "mage-flow-diffusion")
+      assert(
+        field("models", "own-edit-turbo", "familyId") ==
+          "mage-flow-edit-diffusion"
+      )
+      assert(field("models", "vae", "familyId") == "mage-flow-vae")
+      assert(
+        field("run-configurations", "turbo", "architectureId") == "mage-flow"
+      )
+      assert(
+        field("run-configurations", "edit-turbo", "architectureId") ==
+          "mage-flow-edit"
+      )
+      assert(field("run-configurations", "krea", "architectureId") == "krea2")
+      // the id stays: it names the folder and is what recipes recorded
+      assert(
+        field("loras", "mage-flow-turbo-style", "architectureId") == "mage-flow"
+      )
+    }
+
     test(
       "a LoRA's sampling over a session's, the later LoRA over the earlier"
     ) {

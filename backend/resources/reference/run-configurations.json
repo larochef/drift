@@ -131,7 +131,7 @@
   {
     "id": "starter-mage-flow-turbo",
     "label": "Mage-Flow Turbo",
-    "architectureId": "mage-flow-turbo",
+    "architectureId": "mage-flow",
     "assignments": {
       "diffusion": "mage-flow-turbo-bf16",
       "vae": "mage-flow-vae-bf16",
@@ -147,7 +147,7 @@
   {
     "id": "starter-mage-flow-edit-turbo",
     "label": "Mage-Flow Edit Turbo",
-    "architectureId": "mage-flow-edit-turbo",
+    "architectureId": "mage-flow-edit",
     "assignments": {
       "diffusion": "mage-flow-edit-turbo-bf16",
       "vae": "mage-flow-vae-bf16",

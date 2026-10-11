@@ -47,9 +47,9 @@ there). The architecture editor sets it per slot: every runner, or one only.
 - Reference: `backend/resources/reference/architectures.json`, 27 built-ins
   (image: `flux.2-dev`, `flux.2-klein-9B`, `flux.2-klein-4B`, `z-image-turbo`,
   `krea2`, `qwen-image`, `qwen-image-2.1` (tagged edit too — one checkpoint
-  generates and edits), `ideogram-4`, `mage-flow-turbo`, `sensenova-u1.5`,
+  generates and edits), `ideogram-4`, `mage-flow` (its Turbo is a checkpoint, [`23`](23-seeded-vendor-models.md)), `sensenova-u1.5`,
   `boogu-image`, `ernie-image`, `hidream-o1`;
-  edit: `mage-flow-edit-turbo`, `boogu-image-edit`; video: `wan-2.2-14B`, `wan-2.2-5B`, `ltx-2.3`, `ltx-2.5`,
+  edit: `mage-flow-edit`, `boogu-image-edit`; video: `wan-2.2-14B`, `wan-2.2-5B`, `ltx-2.3`, `ltx-2.5`,
   `minimax-h3`, `hunyuanvideo-1.5`; upscale: `pid-flux2`, `pid-flux2-2048`, `pid-flux1`,
   `pid-qwen-image`; llm: `qwen3.6-35b-a3b`, `gemma-4-26b-a4b`).
 - Seeding: `StorageService.seedFromResource` rewrites every built-in from the

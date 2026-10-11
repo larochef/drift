@@ -142,6 +142,44 @@ final class LoraManager(
     }
   }
 
+  /** Brings to its place the folder of every LoRA whose entity moved without
+    * it. A migration that makes one architecture of two rewrites the entities
+    * and cannot reach the cache (`specs/38-entity-migrations.md`), and the
+    * files would otherwise be fetched again. The id names the folder whatever
+    * the architecture, so it is looked for under each of them.
+    */
+  def settleFolders(): Unit =
+    if (Files.isDirectory(lorasRoot)) {
+      val architectureIds = Files
+        .list(lorasRoot)
+        .iterator()
+        .asScala
+        .filter(Files.isDirectory(_))
+        .map(_.getFileName.toString)
+        .toList
+      list
+        .filterNot(lora =>
+          Files.isDirectory(lorasRoot.resolve(lora.folderRelativePath))
+        )
+        .foreach { lora =>
+          val placements = for {
+            architectureId <- architectureIds
+            nsfw <- List(lora.nsfw, !lora.nsfw)
+          } yield lora.copy(architectureId = architectureId, nsfw = nsfw)
+          placements
+            .find(placed =>
+              Files.isDirectory(lorasRoot.resolve(placed.folderRelativePath))
+            )
+            .foreach { placed =>
+              logger.info(
+                s"LoRA '${lora.id}' is in '${placed.folderRelativePath}': " +
+                  s"moving it to '${lora.folderRelativePath}'"
+              )
+              moveFolder(placed, lora)
+            }
+        }
+    }
+
   // ------------------------------------------------------------------ delete
 
   /** Deletes the entity and the cache folder — both placements, in case the

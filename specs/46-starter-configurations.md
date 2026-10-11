@@ -31,11 +31,12 @@ missing runtime or download is offered in place of the launch.
   runs them on (Nucleus-Image, LLaDA-Image, GRN) or the one worth using (Mage-Flow:
   an edit in 10 s against sd-cpp's 150):
   - `starter-mage-flow-turbo`, `starter-mage-flow-edit-turbo` — Mage-Flow's
-    BF16 checkpoints with Qwen3-VL-4B, the Edit one with the vision projector
+    BF16 Turbo checkpoints with Qwen3-VL-4B, the Edit one with the vision
+    projector; on the `mage-flow` and `mage-flow-edit` architectures, the
+    checkpoint carrying its 4 steps at CFG 1
   - `starter-mage-flow`, `starter-mage-flow-edit` — the RL-aligned,
     guided checkpoints (20 and 30 steps at CFG 5), on the `mage-flow` and
-    `mage-flow-edit` architectures; the Base checkpoints sit in the same
-    families
+    same two architectures; the Base checkpoints sit in the same families
   - `starter-nucleus-image` — Nucleus-Image, the official BF16 shards
   - `starter-llada-image-turbo`, `starter-llada-image` — LLaDA-Image, each with
     its own transformer, LLaDA2 text encoder, QueryFormer and text projection,

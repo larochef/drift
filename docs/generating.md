@@ -50,6 +50,10 @@ Always visible:
 - **Prompt** and **negative prompt**, then **✨ Generate** right under them.
 - **Width**, **height**, **steps**, **CFG**; on two-expert video models (wan
   2.2) also **high-noise steps** and **high-noise CFG**; **frames** on video.
+- **↺ Reset parameters** puts the size, steps, CFG, sampler, schedule, flow
+  shift and guidance — a video's frames and FPS too — back to what the
+  configuration and the selected LoRAs set, after a reused recipe or your own
+  changes. Prompts, seed, inputs and LoRAs stay.
 - **Seed** with a **Random** toggle: drift draws the seed itself and shows it,
   so every result is reproducible. Untick Random to keep a seed.
 - The LoRA picker, prefilled with the configuration's default LoRAs, with

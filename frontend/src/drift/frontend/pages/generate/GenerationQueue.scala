@@ -9,11 +9,10 @@ import com.raquo.laminar.api.L.*
 /** What the session still has to do (`specs/08-inference-ui.md`): the job under
   * way and the ones waiting behind it, each with a stop of its own.
   *
-  * The result under the form shows the newest submission, which is not
-  * necessarily the one running — submit three and the panel shows the third,
-  * queued, while the first is generating. Without this list the running job has
-  * no button, and the waiting ones cannot be dropped at all, though that is the
-  * cheapest cancel sd-cpp offers.
+  * The result under the form shows the job generating — submit three and the
+  * panel stays on the first while the other two wait. Without this list the
+  * waiting ones are nowhere on screen and cannot be dropped at all, though that
+  * is the cheapest cancel sd-cpp offers.
   *
   * The jobs listed are the **session's**, not the project's: a job queued from
   * another project holds this one up just the same, and dropping it is how the

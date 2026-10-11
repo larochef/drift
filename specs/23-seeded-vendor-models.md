@@ -1,11 +1,10 @@
 # 23 — Seeded vendor models
 
-**Status:** done — 80 models fill every checkpoint slot of all 27 built-in
-architectures; seven seeded models carry per-model parameters (SenseNova's turbo
-merge, HunyuanVideo's 480p cfg-distilled checkpoint, and the full — non-turbo,
-non-dev — checkpoints of Boogu Image, ERNIE Image and HiDream O1, whose step
-count and CFG differ from their architecture's distilled defaults), the others
-take the architecture defaults. Mage-Flow Turbo, Mage-Flow Edit Turbo,
+**Status:** done — 108 models fill the checkpoint slots of the 33 built-in
+architectures; every seeded diffusion checkpoint carries its own sampling
+parameters (steps and CFG, plus the guidance, flow shift or sampling method its
+architecture sets), so a checkpoint's numbers no longer depend on which of its
+family the architecture defaults were written for. Mage-Flow Turbo, Mage-Flow Edit Turbo,
 HunyuanVideo 1.5, Boogu Image, ERNIE Image and HiDream O1 are seeded but not
 yet run live; Qwen Image 2.1 is seeded ahead of the sd-cpp release that runs it
 (2026-09-20), so it cannot be run at all until that binary lands
@@ -108,12 +107,33 @@ slot of every built-in architecture of both tools.
   is one flag away if one of them ever comes out white. HiDream O1 is
   one file loaded with `--model`, VAE and text encoder included, like
   SenseNova's.
-- Their distilled checkpoints set the architecture defaults (Boogu Turbo and
-  Edit Turbo: 4 steps, CFG 1; ERNIE Turbo: 8 steps, CFG 1; HiDream O1 Dev: 28
-  steps, CFG 1, flow shift 1), and the full checkpoints carry their own
-  parameters (Boogu Base: 25 steps at CFG 4; Boogu Edit: 25 at CFG 5; ERNIE:
-  50 at CFG 5; HiDream O1: 50 at CFG 5, flow shift 3). CFG 1 in sd-cpp is what "guidance 0" is on the vendors' cards: no
-  classifier-free guidance.
+- **Every diffusion checkpoint carries its own numbers** as model parameters:
+  steps and CFG, plus what is particular to it — `--guidance` (FLUX.2, Qwen
+  Image, Wan 2.2 5B), `--flow-shift` (HiDream O1, SenseNova, LLaDA-Image Turbo,
+  MiniMax-H3), `--sampling-method` (Qwen Image 2.1), and `--high-noise-steps`
+  with `--high-noise-cfg-scale` on Wan 2.2's high-noise checkpoint. Distilled
+  and full checkpoints of one family differ only there (Boogu Turbo and Edit
+  Turbo: 4 steps, CFG 1, Base: 25 at CFG 4, Edit: 25 at CFG 5; ERNIE Turbo: 8
+  at CFG 1, full: 50 at CFG 5; HiDream O1 Dev: 28 at CFG 1, flow shift 1, full:
+  50 at CFG 5, flow shift 3; Mage-Flow: 20 at CFG 5, Base: 30). The
+  architecture defaults stay as they were: they are what a model registered
+  without parameters falls back to. Text encoders, VAEs, tokenizers, the
+  unconditional Ideogram models, SeedVR2 and the chat models carry none. No
+  step count where neither the architecture nor the sd-cpp doc gives one
+  (HunyuanVideo 1.5 720p, MiniMax-H3, Wan 2.2 5B). CFG 1 in sd-cpp is what
+  "guidance 0" is on the vendors' cards: no classifier-free guidance.
+- **Turbo is a checkpoint, not an architecture**, wherever the slots are the
+  same: Mage-Flow's three checkpoints (RL-aligned, Base, Turbo) share
+  `mage-flow-diffusion`, Mage-Flow Edit's three `mage-flow-edit-diffusion`,
+  and the numbers on each are what tells them apart. Migration 17 moved the
+  stored records of the two retired architectures (`mage-flow-turbo`,
+  `mage-flow-edit-turbo`): models by family, run configurations and LoRAs by
+  architecture. A LoRA's folder is under its architecture's
+  ([`09`](09-lora-management.md)), which a migration cannot reach, so
+  `LoraManager.settleFolders` moves at start any folder its entity left
+  behind — found by the LoRA's id, which keeps the old architecture's name and
+  is what recorded recipes carry. LLaDA-Image and its Turbo stay two: their
+  text encoder, QueryFormer and text projection differ with the transformer.
 - Browsing for their LoRAs works on all three sites: Civitai files them under
   `Boogu`, `Ernie` and `HiDream-O1`; HuggingFace under the vendors'
   repositories (`Boogu/Boogu-Image-0.1-*`, `baidu/ERNIE-Image*`,
@@ -188,6 +208,5 @@ slot of every built-in architecture of both tools.
 
 - A `sha256` and a size per seeded model, so the cache can verify without a
   lookup and the UI can say how much a slot will download.
-- Per-model `parameters` on the other seeded turbo checkpoints (Z-Image, Krea 2,
-  Mage-Flow), so a first generation uses the right numbers without relying on
-  the architecture defaults.
+- The base checkpoints the turbo-named architectures have no row for (Krea 2
+  Raw, Z-Image, FLUX.2 [klein] base), each with its own numbers.

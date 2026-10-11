@@ -35,9 +35,27 @@ class RecipeSeeding(
   ): Unit = {
     val defaults =
       capabilities.defaultsByMode.getOrElse(newMode, GenerationDefaults())
+    seedFor(newMode)
+    seedGenerationParameters(defaults)
+    seedVar.set(if (defaults.seed < 0) "" else defaults.seed.toString)
+    strengthVar.set(defaults.strength.toString)
+    batchCountVar.set(defaults.batchCount.toString)
+    applyHires(defaults.hires.getOrElse(HiresParameters()))
+    applyVaeTiling(defaults.vaeTilingParams.getOrElse(VaeTilingParameters()))
+    if (promptVar.now().isEmpty && defaults.prompt.nonEmpty)
+      promptVar.set(defaults.prompt)
+    if (negativePromptVar.now().isEmpty && defaults.negativePrompt.nonEmpty)
+      negativePromptVar.set(defaults.negativePrompt)
+  }
+
+  /** How the model runs, from a mode's defaults: size, steps and CFG — the
+    * high-noise expert's too —, the guidance beyond CFG, the sampler and its
+    * schedule, and a video's frames and FPS. Each sampling field holds a
+    * default again afterwards, so the LoRAs' layer may write over it.
+    */
+  private def seedGenerationParameters(defaults: GenerationDefaults): Unit = {
     val sample = cleanse(defaults.sampleParams)
     untouchSampling()
-    seedFor(newMode)
     widthVar.set(defaults.width.toString)
     heightVar.set(defaults.height.toString)
     stepsVar.set(sample.sampleSteps.toString)
@@ -48,17 +66,26 @@ class RecipeSeeding(
     schedulerVar.set(sample.scheduler.getOrElse(""))
     sigmasVar.set(GenerationFormState.sigmasText(sample.customSigmas))
     flowShiftVar.set(sample.flowShift.fold("")(_.toString))
-    seedVar.set(if (defaults.seed < 0) "" else defaults.seed.toString)
     videoFramesVar.set(defaults.videoFrames.toString)
     fpsVar.set(defaults.fps.toString)
-    strengthVar.set(defaults.strength.toString)
-    batchCountVar.set(defaults.batchCount.toString)
-    applyHires(defaults.hires.getOrElse(HiresParameters()))
-    applyVaeTiling(defaults.vaeTilingParams.getOrElse(VaeTilingParameters()))
-    if (promptVar.now().isEmpty && defaults.prompt.nonEmpty)
-      promptVar.set(defaults.prompt)
-    if (negativePromptVar.now().isEmpty && defaults.negativePrompt.nonEmpty)
-      negativePromptVar.set(defaults.negativePrompt)
+  }
+
+  /** Puts the generation parameters back to what this configuration and the
+    * selected LoRAs give (`specs/08-inference-ui.md`), whatever a recipe or
+    * the user left in them. What is asked for stays: the prompts, the inputs
+    * and their strength, the seed, the LoRA selection, the batch, and the
+    * hires and VAE tiling passes.
+    */
+  def resetGenerationParameters(
+      capabilities: SessionCapabilities,
+      currentMode: String,
+      sampling: LoraSampling
+  ): Unit = {
+    seedFor(currentMode)
+    seedGenerationParameters(
+      capabilities.defaultsByMode.getOrElse(currentMode, GenerationDefaults())
+    )
+    applyLoraSampling(capabilities, currentMode, sampling, force = false)
   }
 
   private def applyHires(hires: HiresParameters): Unit = {

@@ -3,8 +3,6 @@ package drift.backend.generation
 import drift.backend.session.SessionManager
 import drift.shared.*
 
-import java.net.URI
-import java.net.http.*
 import java.util.concurrent.ConcurrentHashMap
 import scala.jdk.CollectionConverters.*
 
@@ -33,11 +31,6 @@ final private[backend] class GenerationRegistry(
 ) {
   private val entries = ConcurrentHashMap[String, GenerationEntry]()
 
-  private val client = HttpClient
-    .newBuilder()
-    .connectTimeout(java.time.Duration.ofSeconds(3))
-    .build()
-
   def get(generationId: String): Option[GenerationEntry] =
     Option(entries.get(generationId))
 
@@ -61,10 +54,4 @@ final private[backend] class GenerationRegistry(
             Left(s"the session is ${session.status.toString.toLowerCase}")
         }
     }
-
-  def uri(port: Int, path: String): URI =
-    URI.create(s"http://127.0.0.1:$port$path")
-
-  def send(request: HttpRequest): HttpResponse[String] =
-    client.send(request, HttpResponse.BodyHandlers.ofString())
 }

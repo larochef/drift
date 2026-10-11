@@ -95,14 +95,12 @@ case class NativeJob(
 )
 
 object NativeJob {
-  given JsonValueCodec[NativeJob] = JsonCodecMaker.make(
-    CodecMakerConfig.withFieldNameMapper(JsonCodecMaker.enforce_snake_case)
-  )
 
-  /** As a server writes it: every field that has a value, one equal to its
-    * default included — a queue position of 0 is still said.
+  /** Written with every field that has a value, one equal to its default
+    * included — a queue position of 0 is still said, as sd-server says it — and
+    * read with the defaults for what a server leaves out.
     */
-  val written: JsonValueCodec[NativeJob] = JsonCodecMaker.make(
+  given JsonValueCodec[NativeJob] = JsonCodecMaker.make(
     CodecMakerConfig
       .withFieldNameMapper(JsonCodecMaker.enforce_snake_case)
       .withTransientDefault(false)

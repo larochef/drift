@@ -1,5 +1,6 @@
 package drift.runner
 
+import ox.*
 import java.net.URI
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 
@@ -56,7 +57,7 @@ object ServerSmoke {
       "chat_template_kwargs" -> ujson.Obj("enable_thinking" -> thinking)
     )
 
-  def main(arguments: Array[String]): Unit = {
+  def main(arguments: Array[String]): Unit = supervised {
     val options = ServerOptions
       .parse(
         Seq(

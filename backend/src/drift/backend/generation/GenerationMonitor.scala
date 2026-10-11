@@ -1,18 +1,14 @@
 package drift.backend.generation
 
 import drift.backend.Background
-import drift.backend.nativejobs.NativeJobs
+import drift.backend.nativejobs.NativeJobClient
 import drift.backend.outputs.GenerationFiles
 import drift.protocol.*
 import drift.shared.*
 
-import java.net.http.*
-import scala.concurrent.duration.DurationInt
 import scala.util.control.NonFatal
 
-import com.github.plokhotnyuk.jsoniter_scala.core.*
 import com.typesafe.scalalogging.Logger
-import ox.sleep
 
 /** Follows a submitted job to its end: one fork per job polls the native job
   * every second, mirrors its state into the generation, and persists the result
@@ -27,95 +23,22 @@ final private[backend] class GenerationMonitor(
 ) {
   private val logger = Logger[GenerationMonitor]
 
-  /** A completed video job is one giant base64 string — a 3-second webm already
-    * blows jsoniter's default 4M-char buffer cap (a real job failed at 5.9 MB).
-    * 256M chars covers any clip drift plausibly handles.
+  /** Follows the generation's job to its end (`NativeJobClient.follow`),
+    * mirroring each document it reads into the generation.
     */
-  private val nativeJobReaderConfig =
-    ReaderConfig.withMaxCharBufSize(256 * 1024 * 1024)
-
-  def watch(entry: GenerationEntry): Unit = {
+  def watch(entry: GenerationEntry): Unit =
     background.start(s"drift-generation-${entry.generation.id}") {
-      var consecutiveFailures = 0
-      // When sd-server last answered a poll. A hires/ESRGAN pass (or any
-      // compute saturating the GPU and every core) can starve the HTTP
-      // loop for minutes while the job is still running, so timeouts are
-      // judged by how long the silence has lasted, not how many polls
-      // sampled it — five timed-out polls used to abandon a healthy job
-      // after less than a minute.
-      var lastAnswerAt = System.currentTimeMillis()
-      def silentMillis: Long = System.currentTimeMillis() - lastAnswerAt
-      while (entry.generation.status.isActive) {
-        try {
-          val response = registry.send(
-            HttpRequest
-              .newBuilder(
-                registry.uri(
-                  entry.port,
-                  s"/sdcpp/v1/jobs/${entry.nativeJobId}"
-                )
-              )
-              .timeout(java.time.Duration.ofSeconds(10))
-              .GET()
-              .build()
-          )
-          response.statusCode match {
-            case 200 =>
-              mirror(
-                entry,
-                readFromString[NativeJob](
-                  response.body,
-                  nativeJobReaderConfig
-                )
-              )
-              // Only after the document was decoded AND applied: resetting
-              // on the bare 200 let a repeatable decode failure poll
-              // forever — the completed job was re-fetched every second
-              // until sd-server's TTL evicted it, which then surfaced as
-              // the misleading "no longer knows the job".
-              consecutiveFailures = 0
-              lastAnswerAt = System.currentTimeMillis()
-            case 404 | 410 =>
-              fail(entry, "sd-server no longer knows the job")
-            case other =>
-              consecutiveFailures += 1
-              if (consecutiveFailures >= 5)
-                fail(entry, s"polling the job kept failing (HTTP $other)")
-          }
-        } catch {
-          // A timeout means busy, not dead: the process dying turns polls
-          // into instant connection refusals, which the branch below
-          // fails fast. Tolerate silence for as long as a heavy pass can
-          // plausibly last, and let Stop/Cancel remain the way out of a
-          // genuinely wedged server.
-          case err: HttpTimeoutException =>
-            logger.warn(
-              s"Generation ${entry.generation.id}: poll timed out " +
-                s"(server silent for ${silentMillis / 1000}s)"
-            )
-            if (silentMillis > NativeJobs.SilenceGraceMillis)
-              fail(
-                entry,
-                s"sd-server answered nothing for ${silentMillis / 60000} " +
-                  "minutes — giving up on the job"
-              )
-          case NonFatal(err) =>
-            consecutiveFailures += 1
-            logger.warn(
-              s"Generation ${entry.generation.id}: poll failed " +
-                s"($consecutiveFailures/5): ${firstLine(err)}"
-            )
-            if (consecutiveFailures >= 5)
-              fail(
-                entry,
-                s"handling the job kept failing: ${firstLine(err)}"
-              )
-        }
-        if (entry.generation.status.isActive) sleep(1.second)
+      NativeJobClient.follow(
+        entry.port,
+        entry.nativeJobId,
+        label = s"Generation ${entry.generation.id}",
+        stillWanted = () => entry.generation.status.isActive
+      )(mirror(entry, _)) match {
+        case Left(reason) => fail(entry, reason)
+        case Right(_)     => ()
       }
       entry.preview = None
     }
-  }
 
   /** Mirrors one native job document into the drift generation. */
   private def mirror(entry: GenerationEntry, job: NativeJob): Unit = {
@@ -177,18 +100,6 @@ final private[backend] class GenerationMonitor(
       case other =>
         logger.warn(s"Generation ${base.id}: unknown job status '$other'")
     }
-  }
-
-  /** The first line of an exception message, bounded — jsoniter's parse errors
-    * append a multi-line hex dump that has no business in the UI.
-    */
-  private def firstLine(err: Throwable): String = {
-    val line = Option(err.getMessage)
-      .getOrElse(err.toString)
-      .linesIterator
-      .nextOption()
-      .getOrElse("")
-    if (line.length > 200) line.take(200) + "…" else line
   }
 
   /** A generation that has already ended is left alone: a forced cancel takes

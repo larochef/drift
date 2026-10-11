@@ -71,6 +71,8 @@ object shared extends Module {
   */
 object protocol extends BaseScala {
   def mvnDeps: T[Seq[Dep]] = Seq(
+    mvn"com.softwaremill.sttp.tapir::tapir-core:$tapirV",
+    mvn"com.softwaremill.sttp.tapir::tapir-jsoniter-scala:$tapirV",
     mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core:$jsoniterV"
   )
   override def compileMvnDeps: T[Seq[Dep]] = Seq(
@@ -234,7 +236,16 @@ object runner extends BaseScala with RunnerJvm {
     mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:$jsoniterV"
   )
 
-  def mvnDeps: T[Seq[Dep]] = Seq(mvn"com.lihaoyi::ujson:4.4.3")
+  // Served as the backend serves its own API: tapir on Netty, on ox.
+  def mvnDeps: T[Seq[Dep]] = Seq(
+    mvn"com.lihaoyi::ujson:4.4.3",
+    mvn"com.softwaremill.sttp.tapir::tapir-netty-server-sync:$tapirV",
+    mvn"com.softwaremill.ox::core:1.0.8",
+    // The server's libraries log through SLF4J; the runner's log is what it
+    // prints itself, so theirs goes nowhere rather than to a warning that no
+    // logger is bound.
+    mvn"org.slf4j:slf4j-nop:2.0.19"
+  )
 
   /** The TheRock tree: `DRIFT_ROCM_ROOT`, else the newest stable gfx1151 build
     * drift installed under its runtimes (`specs/06`). A path, not a `PathRef`:

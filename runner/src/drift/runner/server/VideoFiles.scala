@@ -8,6 +8,8 @@ import java.nio.{ByteBuffer, ByteOrder}
 import java.nio.file.*
 import javax.imageio.ImageIO
 
+import ox.*
+
 /** A frame rate as a file states it, a fraction: 30000/1001 stays what it is
   * from the source to the video made of it, where a rounded 30 runs the frames
   * 0.1 % fast against their soundtrack.
@@ -490,12 +492,14 @@ object VideoFiles {
           )
       }
     val errorBytes = new java.io.ByteArrayOutputStream()
-    val drain = new Thread(() => {
-      process.getErrorStream.transferTo(errorBytes); ()
-    })
-    drain.start()
-    val out = new BufferedInputStream(process.getInputStream).readAllBytes()
-    drain.join()
+    // Both streams are read at once: a tool blocked on a full error stream
+    // would never finish its output.
+    val out = supervised {
+      val drain = fork(process.getErrorStream.transferTo(errorBytes).discard)
+      val read = new BufferedInputStream(process.getInputStream).readAllBytes()
+      drain.join()
+      read
+    }
     val status = process.waitFor()
     if (status != 0)
       throw new IllegalArgumentException(

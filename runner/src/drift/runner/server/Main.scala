@@ -4,6 +4,8 @@ import drift.runner.decode.ChatEngine
 import drift.runner.native.HipRuntime
 import drift.runner.ops.{HipOps, MatVecInputs}
 
+import ox.*
+
 /** The runner as drift launches it: `llama-server`'s flags and API (`specs/42`,
   * step 7). drift installs a folder whose `llama-server` starts this main (the
   * backend's `RunnerFiles`, `specs/43`).
@@ -58,10 +60,15 @@ object Main {
             engine
           }
         )
-        server.start()
-        println(
-          s"server is listening on http://${options.host}:${options.port}"
-        )
+        // The server and the model's loading are forks of one scope: neither
+        // outlives the other.
+        supervised {
+          server.start()
+          println(
+            s"server is listening on http://${options.host}:${options.port}"
+          )
+          never
+        }
     }
   }
 }

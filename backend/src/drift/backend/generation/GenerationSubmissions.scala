@@ -1,15 +1,12 @@
 package drift.backend.generation
 
-import drift.backend.nativejobs.ReferenceImages
+import drift.backend.nativejobs.{NativeJobClient, ReferenceImages}
 import drift.backend.nativejobs.ServerRequests.given
 import drift.backend.outputs.GenerationFiles
 import drift.backend.projects.ProjectManager
-import drift.protocol.*
 import drift.shared.*
 
-import java.net.http.*
 import java.util.concurrent.atomic.AtomicLong
-import scala.util.control.NonFatal
 
 import com.github.plokhotnyuk.jsoniter_scala.core.*
 import com.typesafe.scalalogging.Logger
@@ -285,40 +282,19 @@ final private[backend] class GenerationSubmissions(
       body: String,
       port: Int
   ): Generation =
-    try {
-      val response = registry.send(
-        HttpRequest
-          .newBuilder(registry.uri(port, path))
-          .timeout(java.time.Duration.ofSeconds(15))
-          .header("Content-Type", "application/json")
-          .POST(HttpRequest.BodyPublishers.ofString(body))
-          .build()
-      )
-      if (response.statusCode == 202) {
-        val job = readFromString[NativeJob](response.body)
+    NativeJobClient.submit(port, path, body) match {
+      case Right(job) =>
         logger.info(
           s"Generation ${generation.id}: submitted ${generation.kind} as job ${job.id} on :$port"
         )
         val recorded = record(generation, job.id, port)
         registry.get(generation.id).foreach(monitor.watch)
         recorded
-      } else
+      case Left(reason) =>
         record(
           generation.copy(
             status = GenerationStatus.Failed,
-            error = Some(
-              s"sd-server refused the job (${response.statusCode}): ${response.body.trim.take(500)}"
-            )
-          ),
-          nativeJobId = "",
-          port = port
-        )
-    } catch {
-      case NonFatal(err) =>
-        record(
-          generation.copy(
-            status = GenerationStatus.Failed,
-            error = Some(s"submitting the job failed: ${err.getMessage}")
+            error = Some(reason)
           ),
           nativeJobId = "",
           port = port

@@ -41,13 +41,14 @@ runs on the GPU are checked there (`gpuTest`), at night.
    - **Done: the launch flags** of the image server (`ImageServerFlags`): one
      list the runner parses with, and a test that every flag the reference
      data gives a runner launch is one it takes.
+   - **Done: the routes** (`JobEndpoints`): the job protocol as endpoints in
+     the module, served by the runner as they are.
    - Left: the capabilities document as a type, carrying what the backend
      infers today (the largest tile, whether references keep their size, a
      family's size multiple, frame rate and default steps) — it holds the
      form's sampling types, so it moves with them, and the module becomes one
-     the page builds on too; the routes as endpoints both sides build from,
-     with the runner's server on the backend's stack (23); the chat server's
-     flags and requests.
+     the page builds on too; the backend's calls built from the endpoints
+     (8); the chat server's flags and requests.
 2. **The runner's own progress report** on the job document (44), replacing
    the bar patterns kept in step on both sides.
 3. **One ffmpeg wrapper per side**, a check at startup shown with the
@@ -75,9 +76,15 @@ runs on the GPU are checked there (`gpuTest`), at night.
    upscale and of a conversion, runtime validation, archive unpacking and
    video stills all go through it. Left: sessions and job servers still
    write their log header and wait for readiness each in their own way.
-8. **One client of the job protocol**: submit, follow (one policy for
-   silence, failures and a server that forgot the job), cancel, capabilities
-   — used by a generation and by the post-processing jobs.
+8. **One client of the job protocol** — done 2026-10-11
+   (`nativejobs/NativeJobClient`): submit, follow, cancel and capabilities,
+   used by a generation and by the jobs a post-processing drives. One policy
+   for following a job — a silent server is given time, five failures in a
+   row are not, a document is counted only once it has been read and taken, a
+   dead or forgetful server ends it at once — tested against a stub server.
+   Run through drift on a copy of the configuration: a session on the
+   runner, a generation of two pictures, a SeedVR2 upscale through a job
+   server.
 9. **One download queue**, for models, LoRAs and upscalers, with one job
    type and one status topic; runtime installs reuse its queue and cancel.
 10. **A package per site** — done 2026-10-11: `civitai` (its client, which
@@ -152,7 +159,13 @@ runs on the GPU are checked there (`gpuTest`), at night.
     measured: a long LTX decode under memory pressure, which is what it is
     for (`bugs/README.md`, bug 4). Left: one scope type for what a step or a
     frame allocates, in place of the lists kept by hand.
-23. **Concurrency on ox**, as the backend.
+23. **The runner on the backend's stack** — done 2026-10-11: its image
+    server and its chat server are tapir endpoints on Netty, on ox; the jobs'
+    worker, the model's loading and the reading of a tool's two streams are
+    forks of a scope. No thread pool and no thread of its own is left, but
+    the one the JVM asks for at shutdown. Seen live on both: jobs, previews
+    and refusals on Mage-Flow Turbo, from the packaged jar too; a chat whole
+    and streamed, and a stream dropped by its reader ending the reply.
 24. **No cycle** — done 2026-10-11: `lora` (the reader, the updates, the
     report) and `weights` (`WeightSource`, `WeightNames`) are packages of
     their own under the models, the cache descriptor is with the ops, the

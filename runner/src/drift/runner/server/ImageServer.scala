@@ -1,22 +1,24 @@
 package drift.runner.server
 
 import drift.protocol.*
-import drift.protocol.Requests.given
+import drift.protocol.JobEndpoints.Asked
 import drift.runner.diffusion.*
 import drift.runner.lora.LoraReport
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
-import java.net.InetSocketAddress
-import java.nio.charset.StandardCharsets
 import java.nio.file.*
 import java.util.{Base64, UUID}
 import java.util.concurrent.*
 import javax.imageio.ImageIO
 import scala.jdk.CollectionConverters.*
 import scala.util.Random
+import scala.util.control.NonFatal
 
-import com.github.plokhotnyuk.jsoniter_scala.core.*
-import com.sun.net.httpserver.{HttpExchange, HttpServer}
+import ox.*
+import sttp.model.StatusCode
+import sttp.shared.Identity
+import sttp.tapir.server.ServerEndpoint
+import sttp.tapir.server.netty.sync.NettySyncServer
 
 /** `sd-server`'s native API (`/sdcpp/v1`) on the runner's image or video
   * pipeline, as drift drives it (`specs/42`, steps 12 and 14): the capabilities
@@ -113,63 +115,59 @@ final class ImageServer(
   private val jobs = new ConcurrentHashMap[String, Job]()
   private val queue = new LinkedBlockingQueue[Job]()
 
-  private val server =
-    HttpServer.create(new InetSocketAddress(options.host, options.port), 64)
-  server.setExecutor(Executors.newFixedThreadPool(4))
+  /** An answer to a job's submission, poll or cancel: its document, or the
+    * status and reason it is refused with.
+    */
+  private type Answer = Either[(StatusCode, JobError), NativeJob]
 
-  def start(): Unit = {
-    route("/sdcpp/v1/capabilities")(exchange =>
-      json(exchange, 200, capabilities)
-    )
-    route("/sdcpp/v1/img_gen")(exchange =>
-      pipeline match {
-        case image: ImagePipeline => submit(exchange, image)
-        case _                    => wrongMode(exchange)
-      }
-    )
-    route("/sdcpp/v1/vid_gen")(exchange =>
-      pipeline match {
-        case video: VideoPipeline => submitVideo(exchange, video)
-        case _                    => wrongMode(exchange)
-      }
-    )
-    route("/sdcpp/v1/upscale")(exchange =>
-      pipeline match {
-        case upscaler: SeedVr2Pipeline => submitUpscale(exchange, upscaler)
-        case _                         => wrongMode(exchange)
-      }
-    )
-    route("/sdcpp/v1/jobs/")(job)
-    server.start()
-    val worker = new Thread(() => work(), "image-worker")
-    worker.setDaemon(true)
-    worker.start()
-  }
+  private def failed(status: Int, reason: String): Answer =
+    Left(StatusCode(status) -> JobError(reason))
 
-  private def route(path: String)(handle: HttpExchange => Unit): Unit =
-    server.createContext(
-      path,
-      exchange =>
-        try handle(exchange)
-        catch {
-          case error: Throwable =>
-            json(
-              exchange,
-              500,
-              ujson.Obj("error" -> String.valueOf(error.getMessage))
-            )
-        } finally exchange.close()
-    )
+  /** Whatever a request throws is the answer's reason, not a silent 500. */
+  private def answered(answer: => Answer): Answer =
+    try answer
+    catch {
+      case NonFatal(error) => failed(500, String.valueOf(error.getMessage))
+    }
 
-  private def json(
-      exchange: HttpExchange,
-      status: Int,
-      body: ujson.Value
-  ): Unit = {
-    val bytes = ujson.write(body).getBytes(StandardCharsets.UTF_8)
-    exchange.getResponseHeaders.set("Content-Type", "application/json")
-    exchange.sendResponseHeaders(status, bytes.length)
-    exchange.getResponseBody.write(bytes)
+  private val endpoints: List[ServerEndpoint[Any, Identity]] = List(
+    JobEndpoints.capabilities
+      .serverLogicSuccess[Identity](_ => ujson.write(capabilities)),
+    JobEndpoints.submitImage.serverLogic[Identity](asked =>
+      answered(pipeline match {
+        case image: ImagePipeline => submit(image, asked)
+        case _                    => wrongMode
+      })
+    ),
+    JobEndpoints.submitVideo.serverLogic[Identity](asked =>
+      answered(pipeline match {
+        case video: VideoPipeline => submitVideo(video, asked)
+        case _                    => wrongMode
+      })
+    ),
+    JobEndpoints.submitUpscale.serverLogic[Identity](asked =>
+      answered(pipeline match {
+        case upscaler: SeedVr2Pipeline => submitUpscale(upscaler, asked)
+        case _                         => wrongMode
+      })
+    ),
+    JobEndpoints.job.serverLogic[Identity](id => answered(polled(id))),
+    JobEndpoints.cancel.serverLogic[Identity](id => answered(cancelled(id)))
+  )
+
+  /** Serves until the process ends: the jobs' worker and the server are forks
+    * of one scope, so neither outlives the other.
+    */
+  def serve(): Unit = supervised {
+    forkUser(work()).discard
+    NettySyncServer()
+      .addEndpoints(endpoints)
+      .host(options.host)
+      .port(options.port)
+      .start()
+      .discard
+    println(s"listening on http://${options.host}:${options.port}")
+    never
   }
 
   /** The LoRA files under `--lora-model-dir`, relative to it. */
@@ -188,12 +186,8 @@ final class ImageServer(
         finally walk.close()
     }
 
-  private def wrongMode(exchange: HttpExchange): Unit =
-    json(
-      exchange,
-      400,
-      ujson.Obj("error" -> s"$family generates with $mode only")
-    )
+  private def wrongMode: Answer =
+    failed(400, s"$family generates with $mode only")
 
   /** The flow shift a request starts from: the launch's, else sd-server's
     * default — or none for a family that derives its own.
@@ -216,20 +210,6 @@ final class ImageServer(
     options.sampler.filter(pipeline.samplers.contains)
 
   /** A request's `sample_params.custom_sigmas`. */
-  /** A request's body through the protocol's types (`drift.protocol`), or why
-    * it is refused: malformed, or naming a field the protocol lacks — the
-    * reason says which.
-    */
-  private def asked[A: JsonValueCodec](
-      exchange: HttpExchange
-  ): Either[String, A] =
-    try Right(readFromArray[A](exchange.getRequestBody.readAllBytes()))
-    catch {
-      case error: JsonReaderException =>
-        // jsoniter's message ends with where in the bytes, and a dump of them
-        Left(error.getMessage.split(", offset: ").head)
-    }
-
   /** What a request sets that the runner does not read: said in the job's
     * warnings rather than dropped. A field at the value that means "nothing
     * asked" is not one.
@@ -418,13 +398,14 @@ final class ImageServer(
   /** `POST /sdcpp/v1/img_gen`: a job from the request over the launch flags'
     * values; what the runner cannot do yet is refused (400).
     */
-  private def submit(exchange: HttpExchange, pipeline: ImagePipeline): Unit = {
-    if (exchange.getRequestMethod != "POST")
-      return json(exchange, 405, ujson.Obj("error" -> "POST only"))
-    val body = asked[ImageJobRequest](exchange) match {
+  private def submit(
+      pipeline: ImagePipeline,
+      asked: Asked[ImageJobRequest]
+  ): Answer = {
+    val body = asked match {
       case Right(read)   => read
       case Left(problem) =>
-        return json(exchange, 400, ujson.Obj("error" -> problem))
+        return failed(400, problem)
     }
     val sample = body.sampleParams.getOrElse(SampleRequest.none)
     val guidance = sample.guidance
@@ -453,12 +434,9 @@ final class ImageServer(
       )
     ).flatten
     if (unsupported.nonEmpty)
-      return json(
-        exchange,
+      return failed(
         400,
-        ujson.Obj(
-          "error" -> s"not supported by the drift runner for ${pipeline.family} yet: ${unsupported.mkString(", ")}"
-        )
+        s"not supported by the drift runner for ${pipeline.family} yet: ${unsupported.mkString(", ")}"
       )
     val seed = body.seed.getOrElse(options.seed)
     val width = body.width.getOrElse(options.width)
@@ -476,7 +454,7 @@ final class ImageServer(
     val (init, mask, references) = decoded match {
       case Right(images) => images
       case Left(problem) =>
-        return json(exchange, 400, ujson.Obj("error" -> problem))
+        return failed(400, problem)
     }
     val stretch = body.autoResizeRefImage.getOrElse(true)
     // a sampler the family does not run is not refused: it runs its own
@@ -499,7 +477,7 @@ final class ImageServer(
       .orElse(Some(launchSigmas).filter(_.nonEmpty))
       .map(FlowSchedule.custom) match {
       case Some(Left(problem)) =>
-        return json(exchange, 400, ujson.Obj("error" -> problem))
+        return failed(400, problem)
       case Some(Right(schedule)) => Some(schedule)
       case None                  => None
     }
@@ -546,28 +524,16 @@ final class ImageServer(
     )
     val missing = request.loras.map(_._1).filterNot(Files.isRegularFile(_))
     if (missing.nonEmpty)
-      return json(
-        exchange,
-        400,
-        ujson.Obj("error" -> s"no such LoRA: ${missing.mkString(", ")}")
-      )
+      return failed(400, s"no such LoRA: ${missing.mkString(", ")}")
     if (request.shift.exists(_ <= 0))
-      return json(
-        exchange,
-        400,
-        ujson.Obj("error" -> s"a flow shift of ${request.shift.get}: above 0")
-      )
+      return failed(400, s"a flow shift of ${request.shift.get}: above 0")
     if (request.width % 16 != 0 || request.height % 16 != 0)
-      return json(
-        exchange,
+      return failed(
         400,
-        ujson.Obj(
-          "error" -> s"${request.width} × ${request.height}: ${pipeline.family} takes multiples of 16"
-        )
+        s"${request.width} × ${request.height}: ${pipeline.family} takes multiples of 16"
       )
     val count = body.batchCount.getOrElse(1).max(1)
     enqueue(
-      exchange,
       "img_gen",
       () => images(pipeline, request, count),
       previewAsked(body.preview),
@@ -587,15 +553,13 @@ final class ImageServer(
     * runner cannot do yet is refused (400).
     */
   private def submitVideo(
-      exchange: HttpExchange,
-      pipeline: VideoPipeline
-  ): Unit = {
-    if (exchange.getRequestMethod != "POST")
-      return json(exchange, 405, ujson.Obj("error" -> "POST only"))
-    val body = asked[VideoJobRequest](exchange) match {
+      pipeline: VideoPipeline,
+      asked: Asked[VideoJobRequest]
+  ): Answer = {
+    val body = asked match {
       case Right(read)   => read
       case Left(problem) =>
-        return json(exchange, 400, ujson.Obj("error" -> problem))
+        return failed(400, problem)
     }
     def text(value: Option[String]) = value.filter(_.nonEmpty)
     def some[A](values: Option[List[A]]) = values.getOrElse(Nil)
@@ -627,12 +591,9 @@ final class ImageServer(
       )
     ).flatten
     if (unsupported.nonEmpty)
-      return json(
-        exchange,
+      return failed(
         400,
-        ujson.Obj(
-          "error" -> s"not supported by the drift runner for ${pipeline.family} yet: ${unsupported.mkString(", ")}"
-        )
+        s"not supported by the drift runner for ${pipeline.family} yet: ${unsupported.mkString(", ")}"
       )
     val seed = body.seed.getOrElse(options.seed)
     val highNoise = body.highNoiseSampleParams
@@ -681,7 +642,7 @@ final class ImageServer(
     val (initImage, endImage, references, guides, control) = inputs match {
       case Right(decoded) => decoded
       case Left(problem)  =>
-        return json(exchange, 400, ujson.Obj("error" -> problem))
+        return failed(400, problem)
     }
     def rounded(side: Int) =
       (side + pipeline.sizeMultiple - 1) / pipeline.sizeMultiple * pipeline.sizeMultiple
@@ -743,13 +704,8 @@ final class ImageServer(
     )
     val missing = request.loras.map(_.path).filterNot(Files.isRegularFile(_))
     if (missing.nonEmpty)
-      return json(
-        exchange,
-        400,
-        ujson.Obj("error" -> s"no such LoRA: ${missing.mkString(", ")}")
-      )
+      return failed(400, s"no such LoRA: ${missing.mkString(", ")}")
     enqueue(
-      exchange,
       "vid_gen",
       () => video(pipeline, request),
       previewAsked(body.preview),
@@ -779,15 +735,13 @@ final class ImageServer(
     *     same: the file is the video of the frames made.
     */
   private def submitUpscale(
-      exchange: HttpExchange,
-      pipeline: SeedVr2Pipeline
-  ): Unit = {
-    if (exchange.getRequestMethod != "POST")
-      return json(exchange, 405, ujson.Obj("error" -> "POST only"))
-    val body = asked[UpscaleJobRequest](exchange) match {
+      pipeline: SeedVr2Pipeline,
+      asked: Asked[UpscaleJobRequest]
+  ): Answer = {
+    val body = asked match {
       case Right(read)   => read
       case Left(problem) =>
-        return json(exchange, 400, ujson.Obj("error" -> problem))
+        return failed(400, problem)
     }
     def text(value: Option[String]) = value.filter(_.nonEmpty)
     val scale = body.scale.getOrElse(SeedVr2Pipeline.DefaultScale)
@@ -810,12 +764,11 @@ final class ImageServer(
         )
       catch {
         case error: IllegalArgumentException =>
-          return json(exchange, 400, ujson.Obj("error" -> error.getMessage))
+          return failed(400, error.getMessage)
       }
     (text(body.source), text(body.sourceFile), text(body.outputFile)) match {
       case (Some(encoded), None, None) =>
         submitPictureUpscale(
-          exchange,
           pipeline,
           encoded,
           target,
@@ -824,7 +777,6 @@ final class ImageServer(
         )
       case (None, Some(source), Some(output)) =>
         submitVideoUpscale(
-          exchange,
           pipeline,
           Paths.get(source),
           Paths.get(output),
@@ -833,38 +785,26 @@ final class ImageServer(
           upscaleOptions
         )
       case _ =>
-        json(
-          exchange,
+        failed(
           400,
-          ujson.Obj(
-            "error" -> "a picture as `source`, or a video as `source_file` and `output_file`"
-          )
+          "a picture as `source`, or a video as `source_file` and `output_file`"
         )
     }
   }
 
   /** A video's `upscale` job, from a file into a file (`VideoUpscale`). */
   private def submitVideoUpscale(
-      exchange: HttpExchange,
       pipeline: SeedVr2Pipeline,
       source: Path,
       output: Path,
       target: (Int, Int) => (Int, Int),
       seed: Long,
       upscaleOptions: SeedVr2Options
-  ): Unit = {
+  ): Answer = {
     if (!Files.isReadable(source))
-      return json(
-        exchange,
-        400,
-        ujson.Obj("error" -> s"no readable file at $source")
-      )
+      return failed(400, s"no readable file at $source")
     if (!Option(output.getParent).exists(Files.isDirectory(_)))
-      return json(
-        exchange,
-        400,
-        ujson.Obj("error" -> s"no folder to write $output in")
-      )
+      return failed(400, s"no folder to write $output in")
     val pass = new UpscalePass {
       def steps(frames: Int, width: Int, height: Int): Int =
         pipeline.steps(frames, width, height, upscaleOptions)
@@ -886,7 +826,6 @@ final class ImageServer(
         )
     }
     enqueue(
-      exchange,
       "upscale",
       () => {
         println("sampling using Euler method")
@@ -931,13 +870,12 @@ final class ImageServer(
 
   /** A picture's `upscale` job: `encoded` is base64 or a data URL. */
   private def submitPictureUpscale(
-      exchange: HttpExchange,
       pipeline: SeedVr2Pipeline,
       encoded: String,
       target: (Int, Int) => (Int, Int),
       seed: Long,
       upscaleOptions: SeedVr2Options
-  ): Unit = {
+  ): Answer = {
     val bytes = Base64.getMimeDecoder.decode(
       if (encoded.startsWith("data:")) encoded.drop(encoded.indexOf(',') + 1)
       else encoded
@@ -947,17 +885,13 @@ final class ImageServer(
       .fold(VideoFiles.decode(bytes))(Media.Still(_)) match {
       case Media.Still(image) => Seq(image)
       case _                  =>
-        return json(
-          exchange,
+        return failed(
           400,
-          ujson.Obj(
-            "error" -> "`source` is a picture: a video goes as `source_file` and `output_file`"
-          )
+          "`source` is a picture: a video goes as `source_file` and `output_file`"
         )
     }
     val (width, height) = target(frames.head.getWidth, frames.head.getHeight)
     enqueue(
-      exchange,
       "upscale",
       () => {
         println("sampling using Euler method")
@@ -1000,12 +934,11 @@ final class ImageServer(
   }
 
   private def enqueue(
-      exchange: HttpExchange,
       kind: String,
       run: () => NativeJobResult,
       previews: Boolean = false,
       warnings: Seq[String] = Nil
-  ): Unit = {
+  ): Answer = {
     val job = new Job(
       UUID.randomUUID().toString,
       System.currentTimeMillis() / 1000,
@@ -1019,9 +952,7 @@ final class ImageServer(
     }
     jobs.put(job.id, job)
     queue.put(job)
-    answer(
-      exchange,
-      202,
+    Right(
       NativeJob(
         id = job.id,
         kind = kind,
@@ -1054,29 +985,29 @@ final class ImageServer(
     )
 
   /** `GET /sdcpp/v1/jobs/{id}` and `POST /sdcpp/v1/jobs/{id}/cancel`. */
-  private def job(exchange: HttpExchange): Unit = {
-    val parts = exchange.getRequestURI.getPath
-      .stripPrefix("/sdcpp/v1/jobs/")
-      .split('/')
-      .toSeq
-    Option(jobs.get(parts.head)) match {
-      case None => json(exchange, 404, ujson.Obj("error" -> "no such job"))
-      case Some(job) if parts.lift(1).contains("cancel") =>
+  /** `GET /sdcpp/v1/jobs/{id}`: the job, with its preview while it samples. */
+  private def polled(id: String): Answer =
+    Option(jobs.get(id)) match {
+      case None      => failed(404, "no such job")
+      case Some(job) => Right(describe(job).copy(preview = job.preview))
+    }
+
+  /** `POST /sdcpp/v1/jobs/{id}/cancel`. */
+  private def cancelled(id: String): Answer =
+    Option(jobs.get(id)) match {
+      case None      => failed(404, "no such job")
+      case Some(job) =>
         if (job.status == "queued" && queue.remove(job)) {
           job.status = "cancelled"
           job.completed = Some(System.currentTimeMillis() / 1000)
-          answer(exchange, 200, describe(job))
+          Right(describe(job))
         } else if (job.status == "generating") {
           // Stopped at the next step, not here: the answer says it still
           // generates, and the next poll finds it cancelled.
           job.cancelRequested = true
-          answer(exchange, 200, describe(job))
-        } else
-          json(exchange, 409, ujson.Obj("error" -> s"the job is ${job.status}"))
-      case Some(job) =>
-        answer(exchange, 200, describe(job).copy(preview = job.preview))
+          Right(describe(job))
+        } else failed(409, s"the job is ${job.status}")
     }
-  }
 
   /** The job's document, without its preview: only a poll carries that. */
   private def describe(job: Job): NativeJob =
@@ -1093,18 +1024,6 @@ final class ImageServer(
       error = job.error.map(NativeJobError("generation_failed", _)),
       warnings = job.warnings.asScala.toList
     )
-
-  /** A job's document as the answer: every field said, as sd-server does. */
-  private def answer(
-      exchange: HttpExchange,
-      status: Int,
-      job: NativeJob
-  ): Unit = {
-    val bytes = writeToArray(job)(using NativeJob.written)
-    exchange.getResponseHeaders.set("Content-Type", "application/json")
-    exchange.sendResponseHeaders(status, bytes.length)
-    exchange.getResponseBody.write(bytes)
-  }
 
   /** A step's progress line, as sd-cpp prints it: step 0 is the empty bar a
     * pass starts with, which says the sampling has begun (and how many steps it

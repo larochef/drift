@@ -2,181 +2,207 @@ package drift.runner.server
 
 import drift.runner.decode.*
 
-import java.io.{IOException, OutputStream}
-import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets.UTF_8
-import java.util.concurrent.Executors
+import scala.util.control.NonFatal
 
-import com.sun.net.httpserver.{HttpExchange, HttpServer}
+import ox.*
+import ox.flow.Flow
+import sttp.model.StatusCode
+import sttp.shared.Identity
+import sttp.tapir.*
+import sttp.tapir.server.ServerEndpoint
+import sttp.tapir.server.netty.sync.{NettySyncServer, OxStreams}
 
 /** llama-server's HTTP API over a `ChatEngine`: `/health` (503 while the model
   * loads), `/props`, `/v1/models`, `/lora-adapters`, `/tokenize` and
-  * `/v1/chat/completions`, streamed as server-sent events or whole. The JDK's
-  * own HTTP server: one localhost client, no dependency.
+  * `/v1/chat/completions`, streamed as server-sent events or whole. Served as
+  * the backend serves its own API: tapir on Netty, on ox.
   */
 final class ChatServer(options: ServerOptions, load: () => ChatEngine) {
 
   @volatile private var engine = Option.empty[ChatEngine]
   @volatile private var failure = Option.empty[String]
   private val name = options.model.getFileName.toString
-  private val server =
-    HttpServer.create(new InetSocketAddress(options.host, options.port), 64)
 
-  server.setExecutor(Executors.newFixedThreadPool(4))
-  route("/health") { exchange =>
-    (engine, failure) match {
-      case (Some(_), _) => json(exchange, 200, ujson.Obj("status" -> "ok"))
-      case (None, Some(error)) => json(exchange, 500, OpenAi.error(500, error))
-      case _ => json(exchange, 503, OpenAi.error(503, "Loading model"))
-    }
-  }
-  route("/props") { exchange =>
-    json(
-      exchange,
-      200,
-      ujson.Obj(
-        "default_generation_settings" -> ujson.Obj("n_ctx" -> options.context),
-        "modalities" -> ujson.Obj("vision" -> options.visionModel.isDefined),
-        "model_path" -> options.model.toString,
-        "build_info" -> Main.Version
-      )
+  /** An answer whole: its status and its JSON. */
+  private type Whole = (StatusCode, String)
+
+  private def whole(status: Int, value: ujson.Value): Whole =
+    StatusCode(status) -> ujson.write(value)
+
+  private val answer = statusCode.and(stringJsonBody)
+
+  /** A completion's answer: whole, or a stream of server-sent events — its
+    * status, its content type and its bytes as they come.
+    */
+  private type Reply = (StatusCode, String, Flow[Chunk[Byte]])
+
+  private def replied(status: Int, value: ujson.Value): Reply =
+    (
+      StatusCode(status),
+      "application/json",
+      Flow.fromValues(Chunk.fromArray(ujson.write(value).getBytes(UTF_8)))
     )
-  }
-  route("/v1/models") { exchange =>
-    json(
-      exchange,
-      200,
-      ujson.Obj(
-        "object" -> "list",
-        "data" -> ujson.Arr(
-          ujson.Obj("id" -> name, "object" -> "model", "owned_by" -> "drift")
+
+  /** What a request throws is the answer's reason, as llama-server words it. */
+  private def guarded(path: String)(answer: => Whole): Whole =
+    try answer
+    catch {
+      case NonFatal(error) =>
+        System.err.println(s"$path: $error")
+        whole(
+          500,
+          OpenAi.error(500, Option(error.getMessage).getOrElse(error.toString))
         )
-      )
-    )
-  }
-  route("/lora-adapters")(exchange => json(exchange, 200, ujson.Arr()))
-  route("/tokenize") { exchange =>
-    ready(exchange) { engine =>
-      val body =
-        ujson.read(new String(exchange.getRequestBody.readAllBytes(), UTF_8))
-      json(
-        exchange,
+    }
+
+  private def ready[A](unready: ujson.Value => A)(body: ChatEngine => A): A =
+    engine match {
+      case Some(loaded) => body(loaded)
+      case None         =>
+        unready(OpenAi.error(503, failure.getOrElse("Loading model")))
+    }
+
+  private val endpoints: List[ServerEndpoint[OxStreams, Identity]] = List(
+    endpoint.get.in("health").out(answer).serverLogicSuccess[Identity] { _ =>
+      (engine, failure) match {
+        case (Some(_), _)        => whole(200, ujson.Obj("status" -> "ok"))
+        case (None, Some(error)) => whole(500, OpenAi.error(500, error))
+        case _ => whole(503, OpenAi.error(503, "Loading model"))
+      }
+    },
+    endpoint.get.in("props").out(answer).serverLogicSuccess[Identity] { _ =>
+      whole(
         200,
         ujson.Obj(
-          "tokens" -> ujson.Arr(
-            engine.tokenize(body("content").str).map(ujson.Num(_))*
-          )
+          "default_generation_settings" ->
+            ujson.Obj("n_ctx" -> options.context),
+          "modalities" -> ujson.Obj("vision" -> options.visionModel.isDefined),
+          "model_path" -> options.model.toString,
+          "build_info" -> Main.Version
         )
       )
-    }
-  }
-  route("/v1/chat/completions")(exchange =>
-    ready(exchange)(completion(exchange, _))
+    },
+    endpoint.get.in("v1" / "models").out(answer).serverLogicSuccess[Identity] {
+      _ =>
+        whole(
+          200,
+          ujson.Obj(
+            "object" -> "list",
+            "data" -> ujson.Arr(
+              ujson
+                .Obj("id" -> name, "object" -> "model", "owned_by" -> "drift")
+            )
+          )
+        )
+    },
+    endpoint.get
+      .in("lora-adapters")
+      .out(answer)
+      .serverLogicSuccess[Identity](_ => whole(200, ujson.Arr())),
+    endpoint.post
+      .in("tokenize")
+      .in(stringBody)
+      .out(answer)
+      .serverLogicSuccess[Identity] { text =>
+        guarded("/tokenize")(ready(whole(503, _)) { loaded =>
+          whole(
+            200,
+            ujson.Obj(
+              "tokens" -> ujson.Arr(
+                loaded
+                  .tokenize(ujson.read(text)("content").str)
+                  .map(ujson.Num(_))*
+              )
+            )
+          )
+        })
+      },
+    endpoint.post
+      .in("v1" / "chat" / "completions")
+      .in(stringBody)
+      .out(statusCode)
+      .out(header[String]("Content-Type"))
+      .out(streamBinaryBody(OxStreams)(CodecFormat.OctetStream()))
+      .serverLogicSuccess[Identity] { text =>
+        try ready(replied(503, _))(completion(text, _))
+        catch {
+          case NonFatal(error) =>
+            System.err.println(s"/v1/chat/completions: $error")
+            replied(
+              500,
+              OpenAi.error(
+                500,
+                Option(error.getMessage).getOrElse(error.toString)
+              )
+            )
+        }
+      }
   )
 
-  def start(): Unit = {
-    server.start()
-    val loader = new Thread(() =>
+  /** Starts serving, and loading the model beside: `/health` answers 503 until
+    * it is in. Returns once the port is bound; the scope keeps both.
+    */
+  def start()(using Ox): Unit = {
+    NettySyncServer()
+      .addEndpoints(endpoints)
+      .host(options.host)
+      .port(options.port)
+      .start()
+      .discard
+    forkUser(
       try engine = Some(load())
       catch {
-        case error: Throwable =>
+        case NonFatal(error) =>
           failure = Some(Option(error.getMessage).getOrElse(error.toString))
           System.err.println(s"loading ${options.model} failed: ${failure.get}")
       }
-    )
-    loader.start()
+    ).discard
   }
 
-  private def route(path: String)(handle: HttpExchange => Unit): Unit =
-    server.createContext(
-      path,
-      exchange =>
-        try handle(exchange)
-        catch {
-          case error: IOException => () // the client went away
-          case error: Throwable   =>
-            System.err.println(s"$path: $error")
-            try
-              json(
-                exchange,
-                500,
-                OpenAi.error(
-                  500,
-                  Option(error.getMessage).getOrElse(error.toString)
-                )
-              )
-            catch { case _: Throwable => () }
-        } finally exchange.close()
-    )
-
-  private def ready(exchange: HttpExchange)(body: ChatEngine => Unit): Unit =
-    engine match {
-      case Some(e) => body(e)
-      case None    =>
-        json(
-          exchange,
-          503,
-          OpenAi.error(503, failure.getOrElse("Loading model"))
-        )
-    }
-
-  private def json(
-      exchange: HttpExchange,
-      status: Int,
-      value: ujson.Value
-  ): Unit = {
-    val bytes = ujson.write(value).getBytes(UTF_8)
-    exchange.getResponseHeaders.set("Content-Type", "application/json")
-    exchange.sendResponseHeaders(status, bytes.length.toLong)
-    exchange.getResponseBody.write(bytes)
-  }
-
-  private def completion(exchange: HttpExchange, engine: ChatEngine): Unit = {
-    val body =
-      ujson.read(new String(exchange.getRequestBody.readAllBytes(), UTF_8))
+  private def completion(text: String, engine: ChatEngine): Reply = {
+    val body = ujson.read(text)
     OpenAi.request(body, engine.context, engine.sees) match {
-      case Left(problem)  => json(exchange, 400, OpenAi.error(400, problem))
+      case Left(problem)  => replied(400, OpenAi.error(400, problem))
       case Right(request) =>
         val id = s"chatcmpl-${java.util.UUID.randomUUID().toString.take(12)}"
         val stream = body.obj.get("stream").exists(_.bool)
         if (stream) {
-          exchange.getResponseHeaders.set("Content-Type", "text/event-stream")
-          exchange.getResponseHeaders.set("Cache-Control", "no-cache")
-          exchange.sendResponseHeaders(200, 0)
-          val out = exchange.getResponseBody
-          val listener = new StreamingListener(out, id)
-          event(
-            out,
-            OpenAi.chunk(
-              id,
-              name,
-              ujson.Obj("role" -> "assistant", "content" -> ""),
-              None
+          val includeUsage = body.obj
+            .get("stream_options")
+            .flatMap(_.objOpt)
+            .exists(_.get("include_usage").exists(_.bool))
+          // The reply is generated as the stream is read: each piece is sent
+          // as it is made, and a client that stops reading stops the reply.
+          val events = Flow.usingEmit[Chunk[Byte]] { emit =>
+            val listener = new StreamingListener(emit.apply, id)
+            listener.event(
+              OpenAi.chunk(
+                id,
+                name,
+                ujson.Obj("role" -> "assistant", "content" -> ""),
+                None
+              )
             )
-          )
-          try {
-            val result = chat(engine, request, listener)
-            event(
-              out,
-              OpenAi.chunk(id, name, ujson.Obj(), Some(result.finishReason))
-            )
-            val includeUsage = body.obj
-              .get("stream_options")
-              .flatMap(_.objOpt)
-              .exists(_.get("include_usage").exists(_.bool))
-            if (includeUsage) {
-              val last = OpenAi.chunk(id, name, ujson.Obj(), None)
-              last("choices") = ujson.Arr()
-              last("usage") = OpenAi.usage(result)
-              last("timings") = OpenAi.timings(result)
-              event(out, last)
+            try {
+              val result = chat(engine, request, listener)
+              listener.event(
+                OpenAi.chunk(id, name, ujson.Obj(), Some(result.finishReason))
+              )
+              if (includeUsage) {
+                val last = OpenAi.chunk(id, name, ujson.Obj(), None)
+                last("choices") = ujson.Arr()
+                last("usage") = OpenAi.usage(result)
+                last("timings") = OpenAi.timings(result)
+                listener.event(last)
+              }
+              listener.send("data: [DONE]\n\n")
+            } catch {
+              case error: IllegalArgumentException =>
+                listener.event(OpenAi.error(400, error.getMessage))
             }
-            out.write("data: [DONE]\n\n".getBytes(UTF_8))
-            out.flush()
-          } catch {
-            case error: IllegalArgumentException =>
-              event(out, OpenAi.error(400, error.getMessage))
           }
+          (StatusCode.Ok, "text/event-stream", events)
         } else {
           val reasoningText = new StringBuilder
           val contentText = new StringBuilder
@@ -193,8 +219,7 @@ final class ChatServer(options: ServerOptions, load: () => ChatEngine) {
             ujson.Obj("role" -> "assistant", "content" -> contentText.toString)
           if (reasoningText.nonEmpty)
             message("reasoning_content") = reasoningText.toString
-          json(
-            exchange,
+          replied(
             200,
             ujson.Obj(
               "id" -> id,
@@ -227,23 +252,26 @@ final class ChatServer(options: ServerOptions, load: () => ChatEngine) {
     result
   }
 
-  private def event(out: OutputStream, value: ujson.Value): Unit = {
-    out.write(s"data: ${ujson.write(value)}\n\n".getBytes(UTF_8))
-    out.flush()
-  }
-
-  /** Streams each piece as a delta; a failed write (the client closed the
-    * stream: drift's Stop) cancels the reply.
+  /** Streams each piece as a delta. A send that fails — the client closed the
+    * stream: drift's Stop — cancels the reply, and nothing more is sent.
     */
-  final private class StreamingListener(out: OutputStream, id: String)
+  final private class StreamingListener(emit: Chunk[Byte] => Unit, id: String)
       extends ChatListener {
     @volatile private var gone = false
-    private def send(field: String, text: String): Unit =
+
+    def send(text: String): Unit =
       if (!gone)
-        try event(out, OpenAi.chunk(id, name, ujson.Obj(field -> text), None))
-        catch { case _: IOException => gone = true }
-    def reasoning(text: String): Unit = send("reasoning_content", text)
-    def content(text: String): Unit = send("content", text)
+        try emit(Chunk.fromArray(text.getBytes(UTF_8)))
+        catch { case _: Throwable => gone = true }
+
+    def event(value: ujson.Value): Unit =
+      send(s"data: ${ujson.write(value)}\n\n")
+
+    private def delta(field: String, text: String): Unit =
+      event(OpenAi.chunk(id, name, ujson.Obj(field -> text), None))
+
+    def reasoning(text: String): Unit = delta("reasoning_content", text)
+    def content(text: String): Unit = delta("content", text)
     def cancelled: Boolean = gone
   }
 }

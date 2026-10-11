@@ -1,16 +1,13 @@
 package drift.backend.generation
 
 import drift.backend.Background
-import drift.backend.nativejobs.NativeJobs
+import drift.backend.nativejobs.{NativeJobClient, NativeJobs}
 import drift.backend.outputs.GenerationFiles
 import drift.backend.session.SessionManager
 import drift.shared.*
 
-import java.net.http.*
 import java.nio.file.*
-import scala.util.control.NonFatal
 
-import com.github.plokhotnyuk.jsoniter_scala.core.*
 import com.typesafe.scalalogging.Logger
 
 /** Proxies generation to a session's `sd-server` and records every result
@@ -58,22 +55,10 @@ final class GenerationManager(
     */
   def capabilities(sessionId: String): Option[SessionCapabilities] =
     registry.readySession(sessionId).toOption.flatMap { (_, port) =>
-      try {
-        val response = registry.send(
-          HttpRequest
-            .newBuilder(registry.uri(port, "/sdcpp/v1/capabilities"))
-            .timeout(java.time.Duration.ofSeconds(10))
-            .GET()
-            .build()
-        )
-        if (response.statusCode == 200)
-          Some(readFromString[SessionCapabilities](response.body))
-        else None
-      } catch {
-        case NonFatal(err) =>
-          logger.warn(
-            s"Capabilities of session $sessionId failed: ${err.getMessage}"
-          )
+      NativeJobClient.capabilities(port) match {
+        case Right(capabilities) => Some(capabilities)
+        case Left(reason)        =>
+          logger.warn(s"Capabilities of session $sessionId: $reason")
           None
       }
     }

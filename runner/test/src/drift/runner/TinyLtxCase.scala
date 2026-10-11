@@ -1,6 +1,7 @@
 package drift.runner
 
-import drift.runner.diffusion.Lora
+import drift.runner.lora.Lora
+import drift.runner.weights.WeightSource
 import drift.runner.formats.SafetensorsModel
 import drift.runner.models.{
   Gemma4Text,
@@ -8,8 +9,7 @@ import drift.runner.models.{
   Ltx2Layout,
   LtxConnector,
   LtxTextFeatures,
-  LtxVideoVae,
-  WeightSource
+  LtxVideoVae
 }
 import drift.runner.tensor.{DType, Shape, Tensor}
 import drift.runner.ops.Ops

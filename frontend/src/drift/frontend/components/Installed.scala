@@ -5,10 +5,10 @@ import drift.shared.*
 import com.raquo.laminar.api.L.*
 
 /** What drift already has from the sites, looked up by what a browser row shows
-  * (François, 2026-09-17: "it would avoid multiple tries to install the same
-  * lora", and the same for a checkpoint): the LoRAs of the architecture being
-  * browsed, or the models registered anywhere. A search grid that says nothing
-  * costs a second install to find out what is already there.
+  * — it spares a second try at installing the same LoRA, or the same
+  * checkpoint: the LoRAs of the architecture being browsed, or the models
+  * registered anywhere. A search grid that says nothing costs a second install
+  * to find out what is already there.
   */
 class Installed(
     entries: List[InstalledItem],

@@ -65,9 +65,22 @@ object shared extends Module {
   }
 }
 
+/** What a server and what drives it say to each other (`specs/55`): the jobs
+  * of sd-server's native protocol, which drift's runner speaks too, as types
+  * the backend and the runner both build on.
+  */
+object protocol extends BaseScala {
+  def mvnDeps: T[Seq[Dep]] = Seq(
+    mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-core:$jsoniterV"
+  )
+  override def compileMvnDeps: T[Seq[Dep]] = Seq(
+    mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:$jsoniterV"
+  )
+}
+
 object backend extends BaseScala with JavaAppPackagingModule {
   def scalaVersion: T[String] = scalaV
-  def moduleDeps: Seq[JavaModule] = Seq(shared.jvm)
+  def moduleDeps: Seq[JavaModule] = Seq(shared.jvm, protocol)
 
   /** drift's own runner (`specs/42`) as the resources `runner/drift-runner.jar`
     * and `runner/rocm-version`: drift installs it from its runtimes page and
@@ -212,6 +225,14 @@ object frontend extends BaseScalaJS {
   * HIP runtime the tests load.
   */
 object runner extends BaseScala with RunnerJvm {
+
+  def moduleDeps: Seq[JavaModule] = Seq(protocol)
+
+  // The macros expand the codecs of what the runner answers, at compile
+  // time only.
+  override def compileMvnDeps: T[Seq[Dep]] = Seq(
+    mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:$jsoniterV"
+  )
 
   def mvnDeps: T[Seq[Dep]] = Seq(mvn"com.lihaoyi::ujson:4.4.3")
 

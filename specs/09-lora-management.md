@@ -30,8 +30,8 @@ sends paths and weights per request.
   **✓ installed** chip on its grid tile, the version one beside its name and
   the file one on its row (`33`).
 - An opened model lists only the versions published for the architecture's
-  Civitai base models (François, 2026-09-18: installing one made for another
-  base model is the commonest way to end up with a LoRA that does nothing).
+  Civitai base models: installing one made for another base model is the
+  commonest way to end up with a LoRA that does nothing.
   **Versions for other base models (N)** brings the rest back, still flagged
   ⚠ — Civitai's base model is whatever the author wrote. A version that
   declares none is never hidden, and the filter is off when the architecture
@@ -87,7 +87,7 @@ sends paths and weights per request.
   (`LoraDownloadJob` keyed by lora + file name).
 - Backend `backend/.../lora/LoraManager.scala` owns install, per-file jobs
   through the shared `Downloader`, the nsfw folder move, adoption and
-  recursive delete. Frontend `pages/architectures/LoraSection.scala`,
+  recursive delete. Frontend `models/architectures/LoraSection.scala`,
   `components/LoraPicker.scala`, `services/LoraService`.
 
 ## Notes
@@ -95,8 +95,8 @@ sends paths and weights per request.
 - sd-cpp's server APIs intentionally ignore `<lora:name:weight>` prompt
   syntax; LoRAs go through the structured `lora` array, the tiled
   post-processing jobs of `26`/`27` included.
-- `--lora-model-dir` is scanned at launch and subdirectories are included
-  (unlike `--hires-upscalers-dir`). A file installed or moved after launch is
+- `--lora-model-dir` is scanned at launch and subdirectories are included.
+  A file installed or moved after launch is
   invisible until restart — which is what the picker's warning reports.
 - The user's tuning lives in the entity under `~/.config`, never in the cache,
   so `~/.cache` stays safe to delete.

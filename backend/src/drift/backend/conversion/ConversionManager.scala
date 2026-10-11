@@ -267,7 +267,8 @@ final class ConversionManager(
             format = "gguf",
             parameters = sourceModel.map(_.parameters).getOrElse(Map.empty),
             removedParameters =
-              sourceModel.map(_.removedParameters).getOrElse(Nil)
+              sourceModel.map(_.removedParameters).getOrElse(Nil),
+            builtIn = false
           )
           storage.save[Model]("models", id, model)
           Right(job.copy(modelId = Some(id)))

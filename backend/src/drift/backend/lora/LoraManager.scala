@@ -2,8 +2,9 @@ package drift.backend.lora
 
 import drift.backend.Background
 import drift.backend.cache.ModelCache
+import drift.backend.civitai.CivitaiClient
 import drift.backend.download.*
-import drift.backend.routes.CivitaiClient
+import drift.backend.huggingface.HuggingFaceDownloads
 import drift.backend.storage.StorageService
 import drift.shared.*
 
@@ -38,7 +39,6 @@ final class LoraManager(
     /** Resolved per request, so a token saved in Settings applies without a
       * restart.
       */
-    civitaiToken: () => Option[String],
     /** The LoRAs drift offers to install, read once at start. */
     val catalog: List[Lora],
     val lorasRoot: Path,
@@ -74,7 +74,7 @@ final class LoraManager(
     huggingFace,
     modelScope,
     downloader,
-    civitaiToken,
+    civitaiClient,
     lorasRoot,
     background
   )
@@ -188,7 +188,7 @@ final class LoraManager(
   /** Makes one LoRA of two (`specs/33-lora-sources.md`): the other's files move
     * into this one's folder and the other entity goes. A wan 2.2 pair published
     * as two repositories arrives as two LoRAs, one stage each, and this is what
-    * makes it the pair it is (François, 2026-09-18).
+    * makes it the pair it is.
     *
     * The label is the user's: neither half's name says what the whole is. The
     * id does not change — it names the folder, and the files have just been
@@ -348,8 +348,8 @@ object LoraManager {
     *
     * "high noise" and "low noise" are looked for everywhere first: a file
     * called `high_noise` in a repository whose name says `low` is a high-noise
-    * file. Only then does the short form count (François, 2026-09-18: Civitai
-    * guesses well, the other sites should too).
+    * file. Only then does the short form count. Civitai guesses a file's stage
+    * well; this is what does it for the other sites.
     */
   def stageOf(names: String*): LoraFileStage = {
     def firstMatch(

@@ -3,6 +3,7 @@ package drift.runner.models
 import drift.runner.formats.FormatException
 import drift.runner.ops.Ops
 import drift.runner.tensor.Tensor
+import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
 

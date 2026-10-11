@@ -57,7 +57,7 @@ configuration prefers over its architecture's default — 32)
   the notes; the preview and the launcher both call it. Both read only the slots
   of the configuration's runner (`CheckpointRef.appliesTo`), and the form shows
   only those.
-- UI: `frontend/.../pages/inference/{RunConfigurationsPage,RunConfigurationCard,
+- UI: `frontend/.../models/inference/{RunConfigurationsPage,RunConfigurationCard,
   RunConfigurationEditCard,RunConfigurationForm,CheckpointAssignments}.scala`,
   hosted by `pages/models/ModelsPage.scala`; `services/RunConfigurationService`.
 

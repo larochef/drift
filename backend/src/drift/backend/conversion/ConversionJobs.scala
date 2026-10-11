@@ -1,7 +1,7 @@
 package drift.backend.conversion
 
 import drift.backend.{Background, WorkQueue}
-import drift.backend.process.ProcessOutput
+import drift.backend.process.ChildProcesses
 import drift.backend.runtime.LaunchRuntime
 import drift.shared.*
 
@@ -14,7 +14,6 @@ import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
 
 import com.typesafe.scalalogging.Logger
-import ox.*
 
 /** The pre-step a quantized source needs before sd-cli sees it: drift
   * dequantizes `source` into `intermediate`, which the command then reads, and
@@ -90,7 +89,10 @@ final private[conversion] class ConversionJobs(
           completedAt = Some(System.currentTimeMillis())
         )
       )
-      running.get().filter(_._1 == id).foreach(_._2.destroyForcibly())
+      running
+        .get()
+        .filter(_._1 == id)
+        .foreach((_, process) => ChildProcesses.terminate(process))
       true
     case _ => false
   }
@@ -183,23 +185,24 @@ final private[conversion] class ConversionJobs(
     appendLog(logFile, item.command.mkString(" "))
     val tail = ArrayDeque[String]()
     var lastError = Option.empty[String]
-    val builder = ProcessBuilder(item.command*)
-      .directory(Path.of(item.command.head).getParent.toFile)
-      .redirectErrorStream(true)
-    item.launch.environment.foreach((name, value) =>
-      builder.environment().put(name, value)
-    )
     val process =
-      try builder.start()
+      try
+        ChildProcesses.start(
+          item.command,
+          item.launch.environment,
+          Some(Path.of(item.command.head).getParent)
+        )
       catch {
         case NonFatal(err) =>
           fail(item, s"sd-cli could not start: ${err.getMessage}", Nil)
           return
       }
     running.set(Some(id -> process))
-    val exit = supervised {
-      val drained = fork(
-        ProcessOutput.drain(s"drift-conversion-$id", process, logFile) { raw =>
+    // No time limit: a conversion lasts as long as its model is large, and
+    // it can be cancelled.
+    val exit = ChildProcesses
+      .runToEnd(s"drift-conversion-$id", process, logFile, None, background) {
+        raw =>
           val line = LogProgress.clean(raw)
           if (line.nonEmpty)
             LogProgress.parse(line) match {
@@ -220,13 +223,8 @@ final private[conversion] class ConversionJobs(
                 if (lastError.isEmpty && LogProgress.looksLikeError(line))
                   lastError = Some(line)
             }
-        }
-      )
-      val exit = process.waitFor()
-      // The reader outlives the process by the last chunk of its output.
-      drained.join()
-      exit
-    }
+      }
+      .getOrElse(-1)
     running.set(None)
     val lines = tail.synchronized(tail.toList)
     if (stateOf(id) == ConversionState.Cancelled) {

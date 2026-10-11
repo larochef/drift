@@ -56,14 +56,14 @@ on the Models page and the project workspace ([`19`](19-projects-and-prompt-vers
 
 ## Shape
 
-- `frontend/pages/assistant/AssistantPanel` (constructor takes
+- `frontend/assistant/AssistantPanel` (constructor takes
   `onApplyProposal`; absent in free play), `frontend/services/AssistantService`
   (turns, staged attachments with preview and description, properties, one
   streamed `POST` per reply read with `fetch` and a `ReadableStream` reader
   through a small `TextDecoder` facade; `stop` aborts), `services/ChatStreaming`,
   `services/AssistantPrompts` (`parseProposal`, `describe`).
-- `pages/models/ModelsPage` hosts `pages/inference/RunConfigurationsPage`
-  with `tools = List(SdCpp, LlamaCpp)` and `pages/architectures/ArchitecturesPage`
+- `pages/models/ModelsPage` hosts `models/inference/RunConfigurationsPage`
+  with `tools = List(SdCpp, LlamaCpp)` and `models/architectures/ArchitecturesPage`
   as tabs, both built once and kept.
 - The gallery detail takes an `onAskAssistant` callback beside its reuse
   actions.

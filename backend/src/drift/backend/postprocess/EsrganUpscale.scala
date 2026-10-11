@@ -1,5 +1,6 @@
 package drift.backend.postprocess
 
+import drift.backend.images.PostProcessImages
 import drift.backend.runtime.{LaunchRuntime, RuntimeManager}
 import drift.backend.upscale.UpscalerManager
 import drift.shared.*

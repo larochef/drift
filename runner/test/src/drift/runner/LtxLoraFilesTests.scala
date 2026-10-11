@@ -1,18 +1,18 @@
 package drift.runner
 
+import drift.runner.lora.Lora
 import utest.*
 
-import drift.runner.diffusion.Lora
 import drift.runner.models.Ltx2
 import drift.runner.ops.CpuOps
 
 import java.nio.file.{Files, Path, Paths}
 import scala.jdk.CollectionConverters.*
 
-/** François's LTX LoRAs on the official LTX 2.5 transformer (mapped, its
-  * linears' weights not loaded): every pair's target one of the model's
-  * linears, of the update's shape. The LTX 2.5 files must map fully; the LTX
-  * 2.3 ones are reported. Skipped where the files are absent.
+/** The LTX LoRAs installed on this machine, on the official LTX 2.5 transformer
+  * (mapped, its linears' weights not loaded): every pair's target one of the
+  * model's linears, of the update's shape. The LTX 2.5 files must map fully;
+  * the LTX 2.3 ones are reported. Skipped where the files are absent.
   */
 object LtxLoraFilesTests extends TestSuite {
 

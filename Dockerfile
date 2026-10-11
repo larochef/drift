@@ -1,3 +1,7 @@
+# drift in a container: the backend and its page, on port 4321. Runtimes
+# (sd-cpp, llama.cpp) are installed from the page once it runs. Not in the
+# image: ffmpeg (video stills and the runner's videos need it) and the drift
+# runner's GPU kernels, which are built against a ROCm tree.
 FROM eclipse-temurin:25-jdk-alpine-3.23 AS build
 COPY . /root/data
 WORKDIR /root/data
@@ -5,15 +9,13 @@ RUN apk add --no-cache curl nodejs npm
 RUN ./mill --no-server backend.universalStage
 
 FROM eclipse-temurin:25-jre
-LABEL maintainer="NuMind <tech@numind.ai>"
 
-COPY --from=build /root/data/out/backend/universalStage.dest /opt/extract-platform
+COPY --from=build /root/data/out/backend/universalStage.dest /opt/drift
 
-RUN chmod +x /opt/extract-platform/bin/backend
+RUN chmod +x /opt/drift/bin/backend
 USER 1001
-WORKDIR /opt/extract-platform
+WORKDIR /opt/drift
 
-ENV PORT=9000
-EXPOSE 9000
+EXPOSE 4321
 
-ENTRYPOINT ["/opt/extract-platform/bin/backend"]
+ENTRYPOINT ["/opt/drift/bin/backend"]

@@ -21,7 +21,7 @@ in [`../docs/`](../docs/README.md).
 | [07](07-launch-and-supervision.md) | Launching and supervising `sd-server` | done |
 | [08](08-inference-ui.md) | Inference UI (txt2img, img2img, edit, video) | done |
 | [09](09-lora-management.md) | LoRA management | done |
-| [10](10-generation-time-upscaling.md) | Generation-time upscaling (hires + VAE tiling) | done; ESRGAN to move out of the generation form |
+| [10](10-generation-time-upscaling.md) | Generation-time upscaling (hires + VAE tiling) | done |
 | [11](11-status-websocket.md) | Status WebSocket | done |
 | [12](12-gallery.md) | Gallery and history | done |
 | [13](13-log-streaming.md) | Log streaming and progress feedback | done |
@@ -31,7 +31,7 @@ in [`../docs/`](../docs/README.md).
 | [17](17-assistant-runtime.md) | Assistant runtime (llama.cpp) | done |
 | [18](18-assistant-models-and-sessions.md) | Assistant models, sessions and chat proxy | done |
 | [19](19-projects-and-prompt-versions.md) | Projects and prompt versions | done |
-| [20](20-prompt-assistant-conversation.md) | Prompt assistant conversation, compaction, restart | done in code, not yet run live |
+| [20](20-prompt-assistant-conversation.md) | Prompt assistant conversation, compaction, restart | done; compaction not yet run live |
 | [21](21-assistant-page.md) | Assistant chat on the Models page | done |
 | [22](22-free-play-and-scratch-generations.md) | Free play and scratch generations | done; its page is the Sandbox since 47 |
 | [23](23-seeded-vendor-models.md) | Seeded vendor models | done |
@@ -39,51 +39,52 @@ in [`../docs/`](../docs/README.md).
 | [25](25-model-conversion.md) | Model conversion | partial — step 3 (imatrix + presets) parked |
 | [26](26-tiled-pid.md) | Tiled PiD on the GPU | done |
 | [27](27-redraw.md) | Redraw: tiled low-strength img2img | done |
-| [28](28-configuration-loras.md) | Default LoRAs on run configurations | done in code, not yet run live |
+| [28](28-configuration-loras.md) | Default LoRAs on run configurations | done |
 | [29](29-split-oversized-files.md) | Code structure: facades and component split | done |
-| [30](30-gallery-ergonomics-and-image-import.md) | Gallery ergonomics, image import, visible post-processing | planned |
-| [31](31-project-kinds.md) | Project kinds: image or video | done in code, not yet run live |
-| [32](32-prompt-library.md) | Prompt library: variants of the assistant, redraw and compaction prompts; the Ideogram caption writer | done in code, not yet run live |
+| [30](30-gallery-ergonomics-and-image-import.md) | Gallery ergonomics, image import, visible post-processing | partial — three items remain |
+| [31](31-project-kinds.md) | Project kinds: image or video | done |
+| [32](32-prompt-library.md) | Prompt library: variants of the assistant, redraw and compaction prompts; the Ideogram caption writer | done |
 | [33](33-lora-sources.md) | LoRA sources: HuggingFace and disk installs, the official LoRAs list | done in code, installs checked against a stub backend |
 | [34](34-sharded-safetensors.md) | Sharded safetensors models: an index downloads, weighs and checks its shards | done in code, checked on a tiny repository |
-| [35](35-assistant-loras.md) | LoRAs on chat models: adapters loaded at launch, defaults applied per reply | done in code, not yet run live |
+| [35](35-assistant-loras.md) | LoRAs on chat models: adapters loaded at launch, defaults applied per reply | done in code, not run live (no use for it today) |
 | [36](36-huggingface-examples.md) | Examples in the HuggingFace browser: image tiles, an Examples tab, the card's gallery | done |
 | [37](37-modelscope.md) | ModelScope: a model source, its browser (LoRAs by base model, covers), downloads | done |
-| [38](38-entity-migrations.md) | Entity migrations | done in code, not yet run live |
-| [39](39-seamless-edit.md) | Edit: change part of a picture by instruction, keep the rest — made once and carried up by SeedVR2 | done in code, used by François 2026-10-06; follows the change past a selection, edits at the picture's own size first — run end to end on an isolated drift 2026-10-07 |
-| [40](40-pause-and-resume.md) | Pausing a tiled job, and resuming it after a restart | done in code, not yet run live |
-| [41](41-text-projects.md) | Text projects: a kept conversation with a raw chat model | done in code, not yet run live |
+| [38](38-entity-migrations.md) | Entity migrations | done |
+| [39](39-seamless-edit.md) | Edit: change part of a picture by instruction, keep the rest — made once and carried up by SeedVR2 | done in code, used since 2026-10-06; follows the change past a selection, edits at the picture's own size first — run end to end on an isolated drift 2026-10-07 |
+| [40](40-pause-and-resume.md) | Pausing a tiled job, and resuming it after a restart | done |
+| [41](41-text-projects.md) | Text projects: a kept conversation with a raw chat model | done |
 | [42](42-drift-runner.md) | drift runner: own inference engine for Strix Halo (HIP kernels, Scala via FFM), chat first with MTP | partial — steps 1–9 done, 10–13 in part; step 14: MiniMax H3, Wan 2.2 A14B, LTX 2.5 (videos; H3 and LTX with their soundtracks) |
 | [43](43-runners-per-architecture.md) | Runners per architecture: the drift runner installed from the runtimes page, supported runners and model kind, a runner per configuration | done in code, run on a copy of the configuration |
-| [44](44-generation-progress.md) | Generation progress: batch and image bars, the runner reporting its own progress | planned |
-| [45](45-redraw-steps-and-reference.md) | Redraw: full steps at any strength, the 3×3 neighbourhood as reference, reference-taking models only, colour-matched parts | planned (measured 2026-10-03) |
-| [46](46-starter-configurations.md) | Starter run configurations; every launch becomes a download while weights are missing | done in code, not yet run live |
-| [47](47-sandbox.md) | Sandbox page: free play out of the Models page, image / video / text switch | done in code, not run live |
+| [44](44-generation-progress.md) | Generation progress: batch and image bars, the runner reporting its own progress | done |
+| [45](45-redraw-steps-and-reference.md) | Redraw: full steps at any strength, the 3×3 neighbourhood as reference, reference-taking models only, colour-matched parts | done |
+| [46](46-starter-configurations.md) | Starter run configurations; every launch becomes a download while weights are missing | done |
+| [47](47-sandbox.md) | Sandbox page: free play out of the Models page, image / video / text switch | done |
 | [48](48-soundtrack-polish.md) | Soundtrack polish: a post-processing step on a video's audio (loudness, de-harsh, denoise, low cut) through ffmpeg | planned |
-| [49](49-lora-sampling-settings.md) | Sampling settings on LoRAs: a turbo LoRA carries its steps, CFG, flow shift and sigmas, and selecting it sets them | done in code, not yet run live |
-| [50](50-inputs-from-the-gallery.md) | Inputs from the gallery: every input slot and the assistant pick from the gallery with its filters; an input goes to the assistant in one click | partial |
+| [49](49-lora-sampling-settings.md) | Sampling settings on LoRAs: a turbo LoRA carries its steps, CFG, flow shift and sigmas, and selecting it sets them | done |
+| [50](50-inputs-from-the-gallery.md) | Inputs from the gallery: every input slot and the assistant pick from the gallery with its filters; an input goes to the assistant in one click | partial — a video as a still and *Use as input* remain |
 
-| [51](51-seedvr2-upscaling.md) | SeedVR2 on the drift runner: one-step video and image upscaling, the missing video upscaler and a second one beside PiD | done in code, run once end to end on a configuration copy; not yet used live |
-| [52](52-auto-redraw.md) | Auto redraw: one call to the assistant on the downscaled picture, the tiles drawn on it, gives each tile its own prompt and strength and proposes repairs; shown in the form before the redraw starts | done in code, measured, run once end to end on an isolated copy; not yet used live |
+| [51](51-seedvr2-upscaling.md) | SeedVR2 on the drift runner: one-step video and image upscaling, the missing video upscaler and a second one beside PiD | done |
+| [52](52-auto-redraw.md) | Auto redraw: one call to the assistant on the downscaled picture, the tiles drawn on it, gives each tile its own prompt and strength and proposes repairs; shown in the form before the redraw starts | done; open: the reading for a redraw of a few selected tiles |
 | [53](53-background-tasks.md) | Background tasks: a long answer is asked for, then fetched — one system for any long-running task, first used by the reading of a picture (52) | planned, to groom |
-| [54](54-step-preview.md) | Step preview: a picture sampled on the drift runner shows the model's estimate of it under the progress bar, step by step | done in code, previews seen from the runner; not yet seen in a browser |
+| [54](54-step-preview.md) | Step preview: a picture sampled on the drift runner shows the model's estimate of it under the progress bar, step by step | done |
+| [55](55-architecture-consolidation.md) | Architecture consolidation: one piece of code per shape, across the backend, the page and the runner | planned — 30 steps from a review of the whole code |
 
 ## What is left
 
 - `25` step 3: importance-matrix collection and per-architecture rules presets.
 - `39`: a redraw of what changed, under the edit's mask, for the texture of what is new; an 8k picture whole; PiD as the upscaler; Mage-Flow Edit on the drift runner (sized).
-- `40`: a live pause, a drift restart and a resume on a long PiD job.
 - `30`: batch thumbnails reachable without scrolling, long prompts folded in
-  the detail, importing images that are not in the gallery, post-process
-  progress visible from anywhere.
-- Live walk-throughs of `20`, `28`, `31`, `41`, `32` (the Ideogram caption writer on a local model).
-- `23`: first runs of Mage-Flow Turbo, Mage-Flow Edit Turbo and SenseNova U1.5;
-  Qwen Image 2.1 once sd-cpp releases a binary that runs it (seeded 2026-09-20),
-  generating and editing, and its defaults settled against the vendor's numbers.
+  the detail, post-process progress visible from anywhere.
+- `20`: a compaction run live. `35`: never run against a real llama-server,
+  set aside while it has no use.
+- `50`: a video as a still, *Use as input* from the assistant's composer.
+- `52`: the reading for a redraw of a few selected tiles.
+- `53`, `48`: to groom.
+- `23`: a first run of SenseNova U1.5.
 - `33`, `34`: a live pass — SenseNova U1.5 from its official shards, and the
   official 8-step LoRA on it.
-- `54`: the preview seen in a browser; better pictures for FLUX.2 and Mage-Flow; redraw tiles and videos.
-- `42`: steps 10–15 of the runner; step 14 has MiniMax H3 and LTX 2.5 (with their soundtracks; no image conditions) and Wan 2.2 A14B (no LoRAs, no 5B); video LoRAs (Wan 2.2's high/low-noise pairs first) and HunyuanVideo next.
+- `54`: better pictures for FLUX.2 and Mage-Flow; a preview on redraw and edit tiles.
+- `42`: what is left of steps 10–15 of the runner (its own Remaining); HunyuanVideo and the quantizer among them.
 - Ideas not specced: parameter sweeps (one prompt × configurations), timings
   and a loud CPU-fallback warning, Civitai example → form, assistant autopilot,
   a disk view, continuing a video (its last frame, read by ffmpeg, becomes the

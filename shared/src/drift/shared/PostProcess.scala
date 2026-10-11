@@ -83,9 +83,8 @@ object PidUpscaleRequest {
   /** The longest side a PiD target may have. Bigger than this and the result
     * stops being a picture and becomes a memory problem: the blend holds the
     * whole target as an int raster and again as an image, 8 bytes a pixel — 2
-    * GB at this cap, 8 GB at twice it — and 16384² is already ~120 tiles
-    * (François, 2026-09-22: "redrawing 8k images already starts to show the
-    * limits of it, so 16k seems like a good limit").
+    * GB at this cap, 8 GB at twice it — and 16384² is already ~120 tiles — and
+    * redrawing an 8k picture already shows the limits of it.
     */
   val MaxSide: Int = 16384
 
@@ -97,8 +96,8 @@ object PidUpscaleRequest {
     * A target no larger than the source is refused rather than run: PiD decodes
     * a *quarter* of the target, so such a job would shrink the source to that
     * quarter and hand back the same size, looking like the original and an hour
-    * of GPU poorer (François, 2026-09-22, a 8192² source, where the cap of the
-    * day made ×4 the source's own size).
+    * of GPU poorer (seen on a 8192² source, where the cap of the day made ×4
+    * the source's own size).
     */
   def target(
       source: (Int, Int),
@@ -141,7 +140,7 @@ object PidUpscaleRequest {
   /** The largest tile `runtime` decodes. */
   def maxTileFor(runtime: Runtime): Int = maxTileFor(runtime.engine)
 
-  /** The largest tile an engine decodes (bug 30 asks which is best). */
+  /** The largest tile an engine decodes. */
   def maxTileFor(engine: RuntimeEngine): Int =
     if (engine == RuntimeEngine.DriftRunner) RunnerMaxTile else MaxTile
 
@@ -581,7 +580,7 @@ enum PausedWork derives CanEqual {
   case SeedVr2(request: SeedVr2UpscaleRequest)
 }
 object PausedWork {
-  given JsonValueCodec[PausedWork] = JsonCodecMaker.make
+  given JsonValueCodec[PausedWork] = JsonCodecMaker.make(storedRecord)
   given Schema[PausedWork] = Schema.derived
 }
 
@@ -602,8 +601,8 @@ case class PausedJob(
     startedAt: Long
 )
 object PausedJob {
-  given JsonValueCodec[PausedJob] = JsonCodecMaker.make
-  given JsonValueCodec[List[PausedJob]] = JsonCodecMaker.make
+  given JsonValueCodec[PausedJob] = JsonCodecMaker.make(storedRecord)
+  given JsonValueCodec[List[PausedJob]] = JsonCodecMaker.make(storedRecord)
   given Schema[PausedJob] = Schema.derived
 }
 
@@ -675,10 +674,6 @@ object PostProcessJob {
   given Schema[PostProcessJob] = Schema.derived
 }
 
-// `base` in Api.scala is private to that file (tracked as bug 16); the same
-// prefix is rebuilt here so these endpoints live under /api like the rest.
-private val postProcessBase = endpoint.in("api")
-
 /** Upscales one persisted output with a model from the upscaler store. Answers
   * with the running job, or a `Failed` one naming why it was refused.
   */
@@ -688,7 +683,7 @@ val upscaleOutput: PublicEndpoint[
   PostProcessJob,
   Any
 ] =
-  postProcessBase.post
+  base.post
     .in("outputs" / path[String]("date") / path[String]("file") / "upscale")
     .in(jsonBody[UpscaleRequest])
     .out(jsonBody[PostProcessJob])
@@ -702,7 +697,7 @@ val pidUpscaleOutput: PublicEndpoint[
   PostProcessJob,
   Any
 ] =
-  postProcessBase.post
+  base.post
     .in("outputs" / path[String]("date") / path[String]("file") / "pid")
     .in(jsonBody[PidUpscaleRequest])
     .out(jsonBody[PostProcessJob])
@@ -717,7 +712,7 @@ val seedVr2UpscaleOutput: PublicEndpoint[
   PostProcessJob,
   Any
 ] =
-  postProcessBase.post
+  base.post
     .in("outputs" / path[String]("date") / path[String]("file") / "seedvr2")
     .in(jsonBody[SeedVr2UpscaleRequest])
     .out(jsonBody[PostProcessJob])
@@ -731,7 +726,7 @@ val redrawOutput: PublicEndpoint[
   PostProcessJob,
   Any
 ] =
-  postProcessBase.post
+  base.post
     .in("outputs" / path[String]("date") / path[String]("file") / "redraw")
     .in(jsonBody[RedrawRequest])
     .out(jsonBody[PostProcessJob])
@@ -746,7 +741,7 @@ val editOutput: PublicEndpoint[
   PostProcessJob,
   Any
 ] =
-  postProcessBase.post
+  base.post
     .in("outputs" / path[String]("date") / path[String]("file") / "edit")
     .in(jsonBody[EditRequest])
     .out(jsonBody[PostProcessJob])
@@ -757,7 +752,7 @@ val editOutput: PublicEndpoint[
   * job of that id was found.
   */
 val pausePostProcessJob: PublicEndpoint[(String, Boolean), Unit, Boolean, Any] =
-  postProcessBase.post
+  base.post
     .in("post-process-jobs" / path[String] / "pause")
     // `force` does not wait for the tile in flight: it drops it the way a
     // cancel does, and the tile is run again on resume.
@@ -768,7 +763,7 @@ val pausePostProcessJob: PublicEndpoint[(String, Boolean), Unit, Boolean, Any] =
   * running job, or a `Failed` one naming why it could not be resumed.
   */
 val resumePostProcessJob: PublicEndpoint[String, Unit, PostProcessJob, Any] =
-  postProcessBase.post
+  base.post
     .in("post-process-jobs" / path[String] / "resume")
     .out(jsonBody[PostProcessJob])
 
@@ -794,7 +789,7 @@ val getPostProcessPicture: PublicEndpoint[
   (Array[Byte], String),
   Any
 ] =
-  postProcessBase.get
+  base.get
     .in("post-process-jobs" / path[String]("job") / "picture")
     .in(query[Option[Int]]("side"))
     .in(query[Option[Int]]("v"))
@@ -807,12 +802,12 @@ val getPostProcessPicture: PublicEndpoint[
   * job of that id was found.
   */
 val cancelPostProcessJob: PublicEndpoint[String, Unit, Boolean, Any] =
-  postProcessBase.post
+  base.post
     .in("post-process-jobs" / path[String] / "cancel")
     .out(jsonBody[Boolean])
 
 /** Every post-processing job of this drift run, newest first. */
 val listPostProcessJobs: PublicEndpoint[Unit, Unit, List[PostProcessJob], Any] =
-  postProcessBase.get
+  base.get
     .in("post-process-jobs")
     .out(jsonBody[List[PostProcessJob]])

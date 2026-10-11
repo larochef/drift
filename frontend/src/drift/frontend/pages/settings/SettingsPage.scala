@@ -18,9 +18,6 @@ class SettingsPage(
 
   lazy val element: HtmlElement = div(
     cls := "content",
-    runtimeService.effects,
-    authTokenService.effects,
-    promptTemplateService.effects,
     onMountCallback { _ =>
       runtimeService.push(Command.Load)
       runtimeService.push(Command.LoadInstalls)

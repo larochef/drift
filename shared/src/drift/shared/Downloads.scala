@@ -72,9 +72,7 @@ object ModelMetadata {
   given JsonValueCodec[ModelMetadata] = JsonCodecMaker.make
 }
 
-// `base` in Api.scala is private to that file (tracked as bug 16); the same
-// prefix is rebuilt here so these endpoints live under /api like the rest.
-private val downloadsBase = endpoint.in("api").in("downloads")
+private val downloadsBase = base.in("downloads")
 
 val listDownloads: PublicEndpoint[Unit, Unit, List[DownloadJob], Any] =
   downloadsBase.get.out(jsonBody[List[DownloadJob]])

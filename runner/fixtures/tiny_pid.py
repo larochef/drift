@@ -48,9 +48,10 @@ from safetensors.torch import save_file
 HERE = os.path.dirname(os.path.abspath(__file__))
 OFFICIAL = os.environ["PID_OFFICIAL"]
 TINY_DIR = os.path.join(HERE, "..", "test", "resources", "fixtures", "tiny")
-REAL_DIR = (
-    "/home/francois/.cache/huggingface/hub/models--Comfy-Org--PixelDiT/snapshots/"
-    "8df2107641178235a534f1dc014ad3056922a89c/diffusion_models/"
+REAL_DIR = os.path.join(
+    os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface")),
+    "hub/models--Comfy-Org--PixelDiT/snapshots/"
+    "8df2107641178235a534f1dc014ad3056922a89c/diffusion_models/",
 )
 
 # ---------------------------------------------------------------------------

@@ -6,8 +6,9 @@ import com.raquo.laminar.api.L.*
 
 /** The machine's corner of the sidebar, on every page: the GPU's load and the
   * memory really left over the last minutes, and what the GPU holds. A box of
-  * its own, so it is not read as one more download. Hidden until the backend
-  * has said anything.
+  * its own, so it is not read as one more download. Always there, its frames
+  * drawn: a figure the backend has not given yet, or that the driver does not
+  * report, reads as a dash over an empty graph.
   */
 class MachinePanel(status: Signal[Option[MachineStatus]]) extends Component {
 
@@ -36,16 +37,15 @@ class MachinePanel(status: Signal[Option[MachineStatus]]) extends Component {
     )
 
   private def text(read: MachineStatus => String): Signal[String] =
-    status.map(_.fold("")(read)).distinct
+    status.map(_.fold(MachinePanel.Unknown)(read)).distinct
 
   lazy val element: HtmlElement =
     div(
       cls := "machine-panel",
-      cls("is-hidden") <-- status.map(_.isEmpty).distinct,
       p(cls := "machine-heading", "Machine"),
       figure(
         "GPU",
-        text(_.gpuPercent.fold("")(percent => s"$percent %")),
+        text(_.gpuPercent.fold(MachinePanel.Unknown)(percent => s"$percent %")),
         MachineGraph(
           "gpu",
           history((_, sample) =>
@@ -54,8 +54,6 @@ class MachinePanel(status: Signal[Option[MachineStatus]]) extends Component {
             )
           )
         )
-      ).amend(
-        cls("is-hidden") <-- status.map(_.forall(_.gpuPercent.isEmpty)).distinct
       ),
       // The curve rises as the memory fills: high is nothing left.
       figure(
@@ -79,16 +77,19 @@ class MachinePanel(status: Signal[Option[MachineStatus]]) extends Component {
       ),
       p(
         cls := "text-secondary mb-0",
-        cls("is-hidden") <-- status
-          .map(_.forall(_.gpuMemoryBytes.isEmpty))
-          .distinct,
         title := "the memory the GPU holds, every process together: " +
           "the loaded models and what they compute on",
         child.text <-- text(machine =>
-          machine.gpuMemoryBytes.fold("")(bytes =>
-            s"On the GPU: ${MachineStatus.gigabytes(bytes)} GB"
+          machine.gpuMemoryBytes.fold(MachinePanel.Unknown)(bytes =>
+            s"${MachineStatus.gigabytes(bytes)} GB"
           )
-        )
+        ).map(held => s"On the GPU: $held")
       )
     )
+}
+
+object MachinePanel {
+
+  /** A figure nothing has given. */
+  val Unknown = "–"
 }

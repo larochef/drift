@@ -1,8 +1,9 @@
 package drift.runner
 
-import drift.runner.diffusion.Lora
+import drift.runner.lora.Lora
+import drift.runner.weights.WeightSource
 import drift.runner.formats.SafetensorsModel
-import drift.runner.models.{Wan, WanConfig, WeightSource}
+import drift.runner.models.{Wan, WanConfig}
 import drift.runner.ops.CpuOps
 
 import java.nio.file.{Files, Path, Paths}
@@ -10,10 +11,10 @@ import scala.jdk.CollectionConverters.*
 
 /** Maps every LoRA file under a folder onto a Wan transformer's sites, on the
   * reference backend (the files mapped, the F32 ones converted; nothing on the
-  * GPU): `[LORA_FOLDER [TRANSFORMER]]`, by default François's Wan 2.2 14B LoRAs
-  * and his low-noise expert (only its header is read, for the sizes). Fails
-  * unless every tensor of every file is read (no unsupported type, no name
-  * outside a pair) and every pair lands on a site of its shape.
+  * GPU): `[LORA_FOLDER [TRANSFORMER]]`, by default this machine's Wan 2.2 14B
+  * LoRAs and its low-noise expert (only its header is read, for the sizes).
+  * Fails unless every tensor of every file is read (no unsupported type, no
+  * name outside a pair) and every pair lands on a site of its shape.
   */
 object WanLoraCheck {
 

@@ -7,8 +7,8 @@ import drift.runner.native.HipBlas
 
 /** hipBLAS GEMM throughput at the diffusion transformers' shapes, F16 against
   * BF16 (`c[m, n] = a[m, k] · b[n, k]ᵀ`, F32 accumulation) and against int8
-  * operands summed in I32 (`bugs/53`), on device buffers of zeros (the speed
-  * does not depend on the values).
+  * operands summed in I32, on device buffers of zeros (the speed does not
+  * depend on the values).
   *
   * `./mill runner.gpuTest.runMain drift.runner.GemmBenchmark`
   */

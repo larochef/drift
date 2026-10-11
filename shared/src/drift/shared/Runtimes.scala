@@ -134,38 +134,38 @@ case class Runtime(
     /** The ROCm version the release was built against (from the asset name,
       * e.g. "7.14.0"). Rocm only.
       */
-    rocmVersion: Option[String] = None,
+    rocmVersion: Option[String],
     /** e.g. "gfx1151" (Strix Halo). Rocm only. */
-    gfxTarget: Option[String] = None,
+    gfxTarget: Option[String],
     /** The TheRock build actually installed, e.g. "7.14.0a20260612" — the
       * newest bucket build matching [[rocmVersion]], resolved by the install.
       */
-    theRockVersion: Option[String] = None,
+    theRockVersion: Option[String],
     /** Directory holding the unpacked release. */
     installedAt: String,
     /** Directory holding the unpacked TheRock distribution; its `lib` goes on
       * `LD_LIBRARY_PATH`. Rocm only.
       */
-    theRockPath: Option[String] = None,
+    theRockPath: Option[String],
     /** Registered from an existing directory rather than downloaded — drift
       * does not own the files and never deletes them.
       */
-    adopted: Boolean = false,
+    adopted: Boolean,
     /** This runtime follows the newest release of its tool for its backend
       * rather than a pinned tag: its id is stable (`latest-<backend>`,
       * `llama-latest-<backend>`) while [[releaseTag]] moves as it is upgraded.
       * "Update available" is decided by comparing [[releaseTag]] against the
       * newest release the catalog offers for [[tool]] and [[backend]].
       */
-    tracksLatest: Boolean = false,
+    tracksLatest: Boolean,
     /** The executable ran successfully under the composed environment. */
-    valid: Boolean = false,
-    validationError: Option[String] = None,
+    valid: Boolean,
+    validationError: Option[String],
     /** The banner the executable printed, e.g. "stable-diffusion.cpp version
       * unknown, commit 6b3edaa" or "version: 10844 (…)".
       */
-    reportedVersion: Option[String] = None,
-    createdAt: Long = 0L,
+    reportedVersion: Option[String],
+    createdAt: Long,
     /** The model kinds it runs, as its validation reported them (`specs/43`):
       * the drift runner's; none for an upstream build, which runs whatever its
       * architectures say.
@@ -191,19 +191,19 @@ object Runtime {
   // as a plain string ("Rocm"). The config must be inline -- the macro needs a
   // constant expression.
   given JsonValueCodec[Runtime] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
   given JsonValueCodec[List[Runtime]] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
   given JsonValueCodec[Option[Runtime]] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
 }
 
 /** Which runtime a launch uses when nothing pins one — one default per tool, so
   * switching the assistant's never touches sd-cpp's.
   */
 case class RuntimeSelection(
-    defaultRuntimeId: Option[String] = None,
-    defaultAssistantRuntimeId: Option[String] = None
+    defaultRuntimeId: Option[String],
+    defaultAssistantRuntimeId: Option[String]
 ) {
   def defaultFor(tool: RuntimeTool): Option[String] = tool match {
     case RuntimeTool.SdCpp    => defaultRuntimeId
@@ -216,7 +216,12 @@ case class RuntimeSelection(
     }
 }
 object RuntimeSelection {
-  given JsonValueCodec[RuntimeSelection] = JsonCodecMaker.make
+
+  /** No default chosen yet. */
+  val none: RuntimeSelection =
+    RuntimeSelection(defaultRuntimeId = None, defaultAssistantRuntimeId = None)
+
+  given JsonValueCodec[RuntimeSelection] = JsonCodecMaker.make(storedRecord)
 }
 
 /** Where a TheRock ROCm build comes from, in order of how much drift trusts it
@@ -460,25 +465,21 @@ object ChangeTheRockRequest {
 // Api.scala; a second anonymous given of the same shape clashes by name and
 // makes every `jsonBody[Boolean]` in the package ambiguous.
 
-// `base` in Api.scala is private to that file (tracked as bug 16); the same
-// prefix is rebuilt here so these endpoints live under /api like the rest.
-private val runtimesBase = endpoint.in("api")
-
 val listRuntimes: PublicEndpoint[Unit, Unit, List[Runtime], Any] =
-  runtimesBase.get.in("runtimes").out(jsonBody[List[Runtime]])
+  base.get.in("runtimes").out(jsonBody[List[Runtime]])
 
 val getRuntime: PublicEndpoint[String, Unit, Option[Runtime], Any] =
-  runtimesBase.get.in("runtimes" / path[String]).out(jsonBody[Option[Runtime]])
+  base.get.in("runtimes" / path[String]).out(jsonBody[Option[Runtime]])
 
 /** Registers a runtime entity as given — the "adopt an existing directory"
   * path. Installed runtimes are created by their install job instead.
   */
 val createRuntime: PublicEndpoint[Runtime, Unit, Runtime, Any] =
-  runtimesBase.post.in("runtimes").in(jsonBody[Runtime]).out(jsonBody[Runtime])
+  base.post.in("runtimes").in(jsonBody[Runtime]).out(jsonBody[Runtime])
 
 val updateRuntime
     : PublicEndpoint[(String, Runtime), Unit, Option[Runtime], Any] =
-  runtimesBase.put
+  base.put
     .in("runtimes" / path[String])
     .in(jsonBody[Runtime])
     .out(jsonBody[Option[Runtime]])
@@ -488,23 +489,23 @@ val updateRuntime
   * touched.
   */
 val deleteRuntime: PublicEndpoint[String, Unit, Boolean, Any] =
-  runtimesBase.delete.in("runtimes" / path[String]).out(jsonBody[Boolean])
+  base.delete.in("runtimes" / path[String]).out(jsonBody[Boolean])
 
 /** Re-runs the executable under the runtime's composed environment and saves
   * the outcome. The only honest check: it proves the binary, the libraries and
   * the environment agree.
   */
 val validateRuntime: PublicEndpoint[String, Unit, Option[Runtime], Any] =
-  runtimesBase.post
+  base.post
     .in("runtimes" / path[String] / "validate")
     .out(jsonBody[Option[Runtime]])
 
 val getRuntimeSelection: PublicEndpoint[Unit, Unit, RuntimeSelection, Any] =
-  runtimesBase.get.in("runtime-selection").out(jsonBody[RuntimeSelection])
+  base.get.in("runtime-selection").out(jsonBody[RuntimeSelection])
 
 val setRuntimeSelection
     : PublicEndpoint[RuntimeSelection, Unit, RuntimeSelection, Any] =
-  runtimesBase.put
+  base.put
     .in("runtime-selection")
     .in(jsonBody[RuntimeSelection])
     .out(jsonBody[RuntimeSelection])
@@ -514,14 +515,14 @@ val setRuntimeSelection
   */
 val listRuntimeReleases
     : PublicEndpoint[RuntimeTool, Unit, List[RuntimeRelease], Any] =
-  runtimesBase.get
+  base.get
     .in("runtime-releases")
     .in(query[RuntimeTool]("tool"))
     .out(jsonBody[List[RuntimeRelease]])
 
 /** The gfx targets TheRock publishes builds for, e.g. "gfx1151". */
 val listTheRockTargets: PublicEndpoint[Unit, Unit, List[String], Any] =
-  runtimesBase.get.in("therock" / "targets").out(jsonBody[List[String]])
+  base.get.in("therock" / "targets").out(jsonBody[List[String]])
 
 /** For a gfx target and the ROCm version a sd-cpp build needs, what TheRock
   * build drift would pair — preferring an already-downloaded match, then the
@@ -530,7 +531,7 @@ val listTheRockTargets: PublicEndpoint[Unit, Unit, List[String], Any] =
   */
 val resolveTheRock
     : PublicEndpoint[(String, String), Unit, TheRockResolution, Any] =
-  runtimesBase.get
+  base.get
     .in("therock" / "resolve")
     .in(query[String]("gfx"))
     .in(query[String]("rocm"))
@@ -538,7 +539,7 @@ val resolveTheRock
 
 val installRuntime
     : PublicEndpoint[InstallRuntimeRequest, Unit, RuntimeInstallJob, Any] =
-  runtimesBase.post
+  base.post
     .in("runtime-installs")
     .in(jsonBody[InstallRuntimeRequest])
     .out(jsonBody[RuntimeInstallJob])
@@ -546,16 +547,16 @@ val installRuntime
 /** The builds offered per tool (`RuntimeInstallOption`). */
 val runtimeInstallOptions
     : PublicEndpoint[Unit, Unit, List[RuntimeInstallOption], Any] =
-  runtimesBase.get
+  base.get
     .in("runtime-installs" / "options")
     .out(jsonBody[List[RuntimeInstallOption]])
 
 val listRuntimeInstalls
     : PublicEndpoint[Unit, Unit, List[RuntimeInstallJob], Any] =
-  runtimesBase.get.in("runtime-installs").out(jsonBody[List[RuntimeInstallJob]])
+  base.get.in("runtime-installs").out(jsonBody[List[RuntimeInstallJob]])
 
 val cancelRuntimeInstall: PublicEndpoint[String, Unit, RuntimeInstallJob, Any] =
-  runtimesBase.post
+  base.post
     .in("runtime-installs" / path[String]("runtimeId") / "cancel")
     .out(jsonBody[RuntimeInstallJob])
 
@@ -567,14 +568,14 @@ val cancelRuntimeInstall: PublicEndpoint[String, Unit, RuntimeInstallJob, Any] =
   */
 val installLatestRuntime
     : PublicEndpoint[InstallLatestRequest, Unit, RuntimeInstallJob, Any] =
-  runtimesBase.post
+  base.post
     .in("runtime-installs" / "latest")
     .in(jsonBody[InstallLatestRequest])
     .out(jsonBody[RuntimeInstallJob])
 
 /** Whether drift's own runner can be installed (`specs/43`). */
 val runnerOffer: PublicEndpoint[Unit, Unit, RunnerOffer, Any] =
-  runtimesBase.get.in("runtime-installs" / "runner").out(jsonBody[RunnerOffer])
+  base.get.in("runtime-installs" / "runner").out(jsonBody[RunnerOffer])
 
 /** Installs drift's own runner: one job per runtime, chat and images. */
 val installForConfigurations: PublicEndpoint[
@@ -583,14 +584,14 @@ val installForConfigurations: PublicEndpoint[
   List[RuntimeInstallJob],
   Any
 ] =
-  runtimesBase.post
+  base.post
     .in("runtime-installs" / "for-configurations")
     .in(jsonBody[InstallForConfigurationsRequest])
     .out(jsonBody[List[RuntimeInstallJob]])
 
 val installRunner
     : PublicEndpoint[InstallRunnerRequest, Unit, List[RuntimeInstallJob], Any] =
-  runtimesBase.post
+  base.post
     .in("runtime-installs" / "runner")
     .in(jsonBody[InstallRunnerRequest])
     .out(jsonBody[List[RuntimeInstallJob]])
@@ -605,7 +606,7 @@ val upgradeRuntime: PublicEndpoint[
   RuntimeInstallJob,
   Any
 ] =
-  runtimesBase.post
+  base.post
     .in("runtimes" / path[String] / "upgrade")
     .in(jsonBody[UpgradeRuntimeRequest])
     .out(jsonBody[RuntimeInstallJob])
@@ -620,7 +621,7 @@ val changeRuntimeTheRock: PublicEndpoint[
   RuntimeInstallJob,
   Any
 ] =
-  runtimesBase.post
+  base.post
     .in("runtimes" / path[String] / "therock")
     .in(jsonBody[ChangeTheRockRequest])
     .out(jsonBody[RuntimeInstallJob])

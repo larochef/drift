@@ -6,7 +6,7 @@ import org.scalajs.dom
 /** Which of a browser's two views shows -- the result list or one opened result
   * -- and where the list was scrolled while the opened one has the body, so
   * Back lands on the tile the browse left off at instead of the top of the
-  * search (François, 2026-09-17).
+  * search.
   *
   * The state is its own object rather than `ResultBrowser`'s own, because the
   * cards are built by the site's browser and must be able to open one: `open()`

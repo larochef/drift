@@ -1,6 +1,9 @@
 package drift.runner.server
 
+import drift.protocol.*
+import drift.protocol.Requests.given
 import drift.runner.diffusion.*
+import drift.runner.lora.LoraReport
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.net.InetSocketAddress
@@ -12,6 +15,7 @@ import javax.imageio.ImageIO
 import scala.jdk.CollectionConverters.*
 import scala.util.Random
 
+import com.github.plokhotnyuk.jsoniter_scala.core.*
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 
 /** `sd-server`'s native API (`/sdcpp/v1`) on the runner's image or video
@@ -41,12 +45,12 @@ final class ImageServer(
       val id: String,
       val created: Long,
       val kind: String,
-      val run: () => ujson.Value
+      val run: () => NativeJobResult
   ) {
     @volatile var status: String = "queued"
     @volatile var started: Option[Long] = None
     @volatile var completed: Option[Long] = None
-    @volatile var result: Option[ujson.Value] = None
+    @volatile var result: Option[NativeJobResult] = None
     @volatile var error: Option[String] = None
 
     /** Asked to stop while it generates: read between two steps. */
@@ -65,7 +69,7 @@ final class ImageServer(
     /** The last step's preview of the image or video being made, as the job's
       * document gives it.
       */
-    @volatile var preview: Option[ujson.Value] = None
+    @volatile var preview: Option[NativeJobPreview] = None
   }
 
   /** What a step throws once its job is asked to stop: the generation unwinds
@@ -77,8 +81,10 @@ final class ImageServer(
     * kept: the job ends `cancelled` or `failed` as `reason` says, and carries
     * `result` all the same (a video's upscale, `VideoUpscale`).
     */
-  final private class PartialResult(val result: ujson.Value, reason: Throwable)
-      extends RuntimeException(reason)
+  final private class PartialResult(
+      val result: NativeJobResult,
+      reason: Throwable
+  ) extends RuntimeException(reason)
 
   /** The job the worker is generating, if any. */
   @volatile private var generating: Option[Job] = None
@@ -210,15 +216,56 @@ final class ImageServer(
     options.sampler.filter(pipeline.samplers.contains)
 
   /** A request's `sample_params.custom_sigmas`. */
-  private def requestSigmas(
-      sample: collection.Map[String, ujson.Value]
-  ): Seq[Double] =
-    sample
-      .get("custom_sigmas")
-      .filterNot(_.isNull)
+  /** A request's body through the protocol's types (`drift.protocol`), or why
+    * it is refused: malformed, or naming a field the protocol lacks — the
+    * reason says which.
+    */
+  private def asked[A: JsonValueCodec](
+      exchange: HttpExchange
+  ): Either[String, A] =
+    try Right(readFromArray[A](exchange.getRequestBody.readAllBytes()))
+    catch {
+      case error: JsonReaderException =>
+        // jsoniter's message ends with where in the bytes, and a dump of them
+        Left(error.getMessage.split(", offset: ").head)
+    }
+
+  /** What a request sets that the runner does not read: said in the job's
+    * warnings rather than dropped. A field at the value that means "nothing
+    * asked" is not one.
+    */
+  private def unread(
+      sample: SampleRequest,
+      highNoise: Option[SampleRequest],
+      clipSkip: Option[Int],
+      outputFormat: Option[String],
+      written: String,
+      others: Seq[(String, Boolean)]
+  ): Seq[String] = {
+    val samples = sample +: highNoise.toSeq
+    val set = Seq(
+      "scheduler" -> samples.exists(
+        _.scheduler.exists(name => name.nonEmpty && name != "default")
+      ),
+      "eta" -> samples.exists(_.eta.exists(_ != 0)),
+      "shifted_timestep" -> samples.exists(_.shiftedTimestep.exists(_ != 0)),
+      "img_cfg" -> samples.exists(_.guidance.exists(_.imgCfg.nonEmpty)),
+      "slg" -> samples.exists(
+        _.guidance.exists(_.slg.exists(_.scale.exists(_ != 0)))
+      ),
+      "clip_skip" -> clipSkip.exists(_ > 0),
+      "output_format" -> outputFormat.exists(format =>
+        format.nonEmpty && format != written
+      )
+    ) ++ others
+    val names = set.collect { case (name, true) => s"`$name`" }
+    Option
+      .when(names.nonEmpty)(
+        s"the drift runner does not read ${names.mkString(", ")}: " +
+          (if (names.size == 1) "it was" else "they were") + " ignored"
+      )
       .toSeq
-      .flatMap(_.arr)
-      .map(_.num)
+  }
 
   private def capabilities: ujson.Value = {
     val name = options.diffusionModel.getFileName.toString
@@ -300,6 +347,8 @@ final class ImageServer(
         )
     }
     ujson.Obj(
+      // which protocol this server speaks, for the drift that drives it
+      "drift" -> ujson.Obj("protocol" -> JobRoutes.Version),
       "model" -> ujson.Obj(
         "name" -> name,
         "stem" -> name.stripSuffix(".safetensors").stripSuffix(".gguf"),
@@ -372,16 +421,17 @@ final class ImageServer(
   private def submit(exchange: HttpExchange, pipeline: ImagePipeline): Unit = {
     if (exchange.getRequestMethod != "POST")
       return json(exchange, 405, ujson.Obj("error" -> "POST only"))
-    val body = ujson.read(exchange.getRequestBody.readAllBytes())
-    def field(name: String) = body.obj.get(name).filterNot(_.isNull)
-    val sample: collection.Map[String, ujson.Value] =
-      field("sample_params").map(_.obj).getOrElse(Map.empty)
-    val guidance = sample.get("guidance").filterNot(_.isNull).map(_.obj)
-    val initImage = field("init_image").map(_.str).filter(_.nonEmpty)
-    val maskImage = field("mask_image").map(_.str).filter(_.nonEmpty)
-    val referenceImages =
-      field("ref_images").toSeq.flatMap(_.arr).map(_.str).filter(_.nonEmpty)
-    val loras = field("lora").toSeq.flatMap(_.arr)
+    val body = asked[ImageJobRequest](exchange) match {
+      case Right(read)   => read
+      case Left(problem) =>
+        return json(exchange, 400, ujson.Obj("error" -> problem))
+    }
+    val sample = body.sampleParams.getOrElse(SampleRequest.none)
+    val guidance = sample.guidance
+    val initImage = body.initImage.filter(_.nonEmpty)
+    val maskImage = body.maskImage.filter(_.nonEmpty)
+    val referenceImages = body.refImages.getOrElse(Nil).filter(_.nonEmpty)
+    val loras = body.lora.getOrElse(Nil)
     val unsupported = Seq(
       Option.when(initImage.nonEmpty && !pipeline.takesInitImage)(
         "init images"
@@ -394,17 +444,13 @@ final class ImageServer(
         "reference images"
       ),
       Option.when(loras.nonEmpty && !pipeline.takesLoras)("LoRAs"),
-      Option.when(requestSigmas(sample).nonEmpty && !pipeline.takesSigmas)(
+      Option.when(sample.sigmas.nonEmpty && !pipeline.takesSigmas)(
         "custom sigmas"
       ),
-      Option.when(
-        field("hires").exists(h => h.obj.get("enabled").exists(_.bool))
-      )("hires fix"),
-      Option.when(
-        field("vae_tiling_params").exists(t =>
-          t.obj.get("enabled").exists(_.bool)
-        )
-      )("VAE tiling")
+      Option.when(body.hires.exists(_.enabled.contains(true)))("hires fix"),
+      Option.when(body.vaeTilingParams.exists(_.enabled.contains(true)))(
+        "VAE tiling"
+      )
     ).flatten
     if (unsupported.nonEmpty)
       return json(
@@ -414,9 +460,9 @@ final class ImageServer(
           "error" -> s"not supported by the drift runner for ${pipeline.family} yet: ${unsupported.mkString(", ")}"
         )
       )
-    val seed = field("seed").map(_.num.toLong).getOrElse(options.seed)
-    val width = field("width").map(_.num.toInt).getOrElse(options.width)
-    val height = field("height").map(_.num.toInt).getOrElse(options.height)
+    val seed = body.seed.getOrElse(options.seed)
+    val width = body.width.getOrElse(options.width)
+    val height = body.height.getOrElse(options.height)
     val decoded =
       try
         Right(
@@ -432,16 +478,12 @@ final class ImageServer(
       case Left(problem) =>
         return json(exchange, 400, ujson.Obj("error" -> problem))
     }
-    val stretch = field("auto_resize_ref_image").forall(_.bool)
+    val stretch = body.autoResizeRefImage.getOrElse(true)
     // a sampler the family does not run is not refused: it runs its own
-    val sampler = sample
-      .get("sample_method")
-      .flatMap(_.strOpt)
+    val sampler = sample.sampleMethod
       .filter(pipeline.samplers.contains)
       .orElse(launchSampler(pipeline))
-    sample
-      .get("sample_method")
-      .flatMap(_.strOpt)
+    sample.sampleMethod
       .filterNot(name =>
         pipeline.samplers.contains(name) || name == pipeline.defaultSampler
       )
@@ -452,7 +494,7 @@ final class ImageServer(
         )
       )
     // the request's levels, else the launch's: a list is its own step count
-    val sigmas = Some(requestSigmas(sample))
+    val sigmas = Some(sample.sigmas)
       .filter(_.nonEmpty)
       .orElse(Some(launchSigmas).filter(_.nonEmpty))
       .map(FlowSchedule.custom) match {
@@ -462,22 +504,18 @@ final class ImageServer(
       case None                  => None
     }
     val request = ImageRequest(
-      prompt = field("prompt").map(_.str).getOrElse(options.prompt),
-      negativePrompt =
-        field("negative_prompt").map(_.str).getOrElse(options.negativePrompt),
+      prompt = body.prompt.getOrElse(options.prompt),
+      negativePrompt = body.negativePrompt.getOrElse(options.negativePrompt),
       width = width,
       height = height,
-      steps = sigmas.fold(
-        sample.get("sample_steps").map(_.num.toInt).getOrElse(steps)
-      )(_.size - 1),
+      steps = sigmas.fold(sample.sampleSteps.getOrElse(steps))(_.size - 1),
       cfgScale = guidance
-        .flatMap(_.get("txt_cfg"))
-        .map(_.num.toFloat)
+        .flatMap(_.txtCfg)
+        .map(_.toFloat)
         .getOrElse(options.cfgScale.toFloat),
       guidance = guidance
-        .flatMap(_.get("distilled_guidance"))
-        .filterNot(_.isNull)
-        .map(_.num.toFloat)
+        .flatMap(_.distilledGuidance)
+        .map(_.toFloat)
         .getOrElse(
           options.guidance.getOrElse(ImageOptions.DefaultGuidance).toFloat
         ),
@@ -485,23 +523,20 @@ final class ImageServer(
       // A request's own noise levels come without the launch's shift, where
       // the family derives one: `--flow-shift` was set for the schedule the
       // levels replace, and only a shift sent with them is meant for them.
-      shift = sample
-        .get("flow_shift")
-        .filterNot(_.isNull)
-        .map(_.num)
+      shift = sample.flowShift
         .orElse(
           defaultShift
-            .filterNot(_ => pipeline.ownShift && requestSigmas(sample).nonEmpty)
+            .filterNot(_ => pipeline.ownShift && sample.sigmas.nonEmpty)
         ),
       loras = loras.map { lora =>
-        val path = Paths.get(lora("path").str)
+        val path = Paths.get(lora.path)
         val resolved =
           if (path.isAbsolute) path
           else options.loraDirectory.fold(path)(_.resolve(path))
-        resolved -> lora.obj.get("multiplier").fold(1f)(_.num.toFloat)
+        resolved -> lora.multiplier.fold(1f)(_.toFloat)
       },
       initImage = init.map(Images.resized(_, width, height)),
-      strength = field("strength").fold(0.75f)(_.num.toFloat),
+      strength = body.strength.fold(0.75f)(_.toFloat),
       mask = mask.map(Images.resized(_, width, height)),
       references =
         if (stretch) references.map(Images.resized(_, width, height))
@@ -530,12 +565,13 @@ final class ImageServer(
           "error" -> s"${request.width} × ${request.height}: ${pipeline.family} takes multiples of 16"
         )
       )
-    val count = field("batch_count").map(_.num.toInt).getOrElse(1).max(1)
+    val count = body.batchCount.getOrElse(1).max(1)
     enqueue(
       exchange,
       "img_gen",
       () => images(pipeline, request, count),
-      previewAsked(body)
+      previewAsked(body.preview),
+      unread(sample, None, body.clipSkip, body.outputFormat, "png", Nil)
     )
   }
 
@@ -543,8 +579,8 @@ final class ImageServer(
     * (`proj`, `tae`, `vae`) or `none`. The runner has one way to draw one,
     * whatever the mode asked.
     */
-  private def previewAsked(body: ujson.Value): Boolean =
-    body.obj.get("preview").flatMap(_.strOpt).exists(_ != "none")
+  private def previewAsked(preview: Option[String]): Boolean =
+    preview.exists(_ != "none")
 
   /** `POST /sdcpp/v1/vid_gen`: a job from the request over the launch flags'
     * values, its frames and sides rounded up to what the model takes; what the
@@ -556,38 +592,39 @@ final class ImageServer(
   ): Unit = {
     if (exchange.getRequestMethod != "POST")
       return json(exchange, 405, ujson.Obj("error" -> "POST only"))
-    val body = ujson.read(exchange.getRequestBody.readAllBytes())
-    def field(name: String) = body.obj.get(name).filterNot(_.isNull)
-    def present(name: String) =
-      field(name).exists(value =>
-        value.strOpt.exists(_.nonEmpty) || value.arrOpt.exists(_.nonEmpty)
-      )
-    val sample: collection.Map[String, ujson.Value] =
-      field("sample_params").map(_.obj).getOrElse(Map.empty)
-    val guidance = sample.get("guidance").filterNot(_.isNull).map(_.obj)
+    val body = asked[VideoJobRequest](exchange) match {
+      case Right(read)   => read
+      case Left(problem) =>
+        return json(exchange, 400, ujson.Obj("error" -> problem))
+    }
+    def text(value: Option[String]) = value.filter(_.nonEmpty)
+    def some[A](values: Option[List[A]]) = values.getOrElse(Nil)
+    val sample = body.sampleParams.getOrElse(SampleRequest.none)
+    val guidance = sample.guidance
     val unsupported = Seq(
-      Option.when(present("init_image") && !pipeline.takesInitImage)(
+      Option.when(text(body.initImage).nonEmpty && !pipeline.takesInitImage)(
         "init images"
       ),
-      Option.when(present("end_image") && !pipeline.takesEndImage)(
+      Option.when(text(body.endImage).nonEmpty && !pipeline.takesEndImage)(
         "end images"
       ),
-      Option.when(present("control_frames"))("control frames"),
-      Option.when(present("references") && !pipeline.takesReferences)(
-        "reference media"
-      ),
-      Option.when(present("guides") && !pipeline.takesGuides)("guides"),
+      Option.when(some(body.controlFrames).nonEmpty)("control frames"),
       Option.when(
-        (present("control_video") || present("control_mask")) &&
+        some(body.references).nonEmpty && !pipeline.takesReferences
+      )("reference media"),
+      Option.when(some(body.guides).nonEmpty && !pipeline.takesGuides)(
+        "guides"
+      ),
+      Option.when(
+        (text(body.controlVideo).nonEmpty ||
+          text(body.controlMask).nonEmpty) &&
           !pipeline.takesControl
       )("control videos"),
-      Option.when(present("lora") && !pipeline.takesLoras)("LoRAs"),
-      Option.when(requestSigmas(sample).nonEmpty)("custom sigmas"),
-      Option.when(
-        field("vae_tiling_params").exists(t =>
-          t.obj.get("enabled").exists(_.bool)
-        )
-      )("VAE tiling")
+      Option.when(some(body.lora).nonEmpty && !pipeline.takesLoras)("LoRAs"),
+      Option.when(sample.sigmas.nonEmpty)("custom sigmas"),
+      Option.when(body.vaeTilingParams.exists(_.enabled.contains(true)))(
+        "VAE tiling"
+      )
     ).flatten
     if (unsupported.nonEmpty)
       return json(
@@ -597,12 +634,10 @@ final class ImageServer(
           "error" -> s"not supported by the drift runner for ${pipeline.family} yet: ${unsupported.mkString(", ")}"
         )
       )
-    val seed = field("seed").map(_.num.toLong).getOrElse(options.seed)
-    val highNoise: collection.Map[String, ujson.Value] =
-      field("high_noise_sample_params").map(_.obj).getOrElse(Map.empty)
-    val width = field("width").map(_.num.toInt).getOrElse(options.width)
-    val height = field("height").map(_.num.toInt).getOrElse(options.height)
-    def string(name: String) = field(name).map(_.str).filter(_.nonEmpty)
+    val seed = body.seed.getOrElse(options.seed)
+    val highNoise = body.highNoiseSampleParams
+    val width = body.width.getOrElse(options.width)
+    val height = body.height.getOrElse(options.height)
     def frames(media: Media): Seq[java.awt.image.BufferedImage] = media match {
       case Media.Still(image)       => Seq(image)
       case Media.Clip(frames, _, _) => frames
@@ -613,25 +648,18 @@ final class ImageServer(
       try
         Right {
           // a mask alone (with its source) inpaints without a control video
-          val control = string("control_video")
+          val control = text(body.controlVideo)
             .map(media)
             .orElse(
-              string("control_mask")
+              text(body.controlMask)
                 .map(_ => Media.Clip(Nil, pipeline.fps, None))
             )
           (
-            string("init_image").map(decode),
-            string("end_image").map(decode),
-            field("references").toSeq
-              .flatMap(_.arr)
-              .map(_.str)
-              .filter(_.nonEmpty)
-              .map(media),
-            field("guides").toSeq.flatMap(_.arr).map { guide =>
-              VideoGuide(
-                media(guide("media").str),
-                guide.obj.get("frame_index").fold(0)(_.num.toInt)
-              )
+            text(body.initImage).map(decode),
+            text(body.endImage).map(decode),
+            some(body.references).filter(_.nonEmpty).map(media),
+            some(body.guides).map { guide =>
+              VideoGuide(media(guide.media), guide.frameIndex.getOrElse(0))
             },
             control.map { video =>
               VideoControl(
@@ -640,11 +668,11 @@ final class ImageServer(
                   case Media.Clip(_, fps, _) => fps
                   case _                     => pipeline.fps.toDouble
                 },
-                field("control_strength").fold(1f)(_.num.toFloat),
-                field("control_start").fold(0f)(_.num.toFloat),
-                field("control_end").fold(1f)(_.num.toFloat),
-                string("control_mask").map(mask => frames(media(mask))),
-                string("source_video").map(source => frames(media(source)))
+                body.controlStrength.fold(1f)(_.toFloat),
+                body.controlStart.fold(0f)(_.toFloat),
+                body.controlEnd.fold(1f)(_.toFloat),
+                text(body.controlMask).map(mask => frames(media(mask))),
+                text(body.sourceVideo).map(source => frames(media(source)))
               )
             }
           )
@@ -658,47 +686,37 @@ final class ImageServer(
     def rounded(side: Int) =
       (side + pipeline.sizeMultiple - 1) / pipeline.sizeMultiple * pipeline.sizeMultiple
     val request = VideoRequest(
-      prompt = field("prompt").map(_.str).getOrElse(options.prompt),
-      negativePrompt =
-        field("negative_prompt").map(_.str).getOrElse(options.negativePrompt),
+      prompt = body.prompt.getOrElse(options.prompt),
+      negativePrompt = body.negativePrompt.getOrElse(options.negativePrompt),
       width = width,
       height = height,
-      frames =
-        field("video_frames").map(_.num.toInt).getOrElse(options.videoFrames),
-      steps = sample.get("sample_steps").map(_.num.toInt).getOrElse(steps),
+      frames = body.videoFrames.getOrElse(options.videoFrames),
+      steps = sample.sampleSteps.getOrElse(steps),
       cfgScale = guidance
-        .flatMap(_.get("txt_cfg"))
-        .map(_.num.toFloat)
+        .flatMap(_.txtCfg)
+        .map(_.toFloat)
         .getOrElse(options.cfgScale.toFloat),
       seed = if (seed < 0) Random.nextLong(Long.MaxValue) else seed,
-      shift = sample
-        .get("flow_shift")
-        .filterNot(_.isNull)
-        .map(_.num)
+      shift = sample.flowShift
         .orElse(options.flowShift)
         .getOrElse(FlowSchedule.DefaultShift),
       highNoiseSteps = highNoise
-        .get("sample_steps")
-        .filterNot(_.isNull)
-        .map(_.num.toInt)
+        .flatMap(_.sampleSteps)
         .filter(_ >= 0)
         .orElse(options.highNoiseSteps),
       highNoiseCfgScale = highNoise
-        .get("guidance")
-        .filterNot(_.isNull)
-        .flatMap(_.obj.get("txt_cfg"))
-        .map(_.num.toFloat)
+        .flatMap(_.guidance)
+        .flatMap(_.txtCfg)
+        .map(_.toFloat)
         .orElse(options.highNoiseCfgScale.map(_.toFloat)),
-      moeBoundary = field("moe_boundary")
-        .map(_.num.toFloat)
+      moeBoundary = body.moeBoundary
+        .map(_.toFloat)
         .getOrElse(options.moeBoundary.toFloat),
-      fps = field("fps").map(_.num.toInt).orElse(options.fps),
-      audioCfgScale = field("audio_cfg_scale").map(_.num.toFloat),
-      ancestral =
-        sample.get("sample_method").exists(_.strOpt.contains("euler_a")),
-      modalityScale = field("modality_scale").map(_.num.toFloat).getOrElse(1f),
-      audioModalityScale =
-        field("audio_modality_scale").map(_.num.toFloat).getOrElse(1f),
+      fps = body.fps.orElse(options.fps),
+      audioCfgScale = body.audioCfgScale.map(_.toFloat),
+      ancestral = sample.sampleMethod.contains("euler_a"),
+      modalityScale = body.modalityScale.map(_.toFloat).getOrElse(1f),
+      audioModalityScale = body.audioModalityScale.map(_.toFloat).getOrElse(1f),
       initImage = initImage.map(
         pipeline.onCanvas(_, rounded(width), rounded(height), follower = false)
       ),
@@ -710,13 +728,13 @@ final class ImageServer(
           follower = initImage.nonEmpty
         )
       ),
-      loras = field("lora").toSeq.flatMap(_.arr).map { lora =>
-        val path = Paths.get(lora("path").str)
+      loras = some(body.lora).map { lora =>
+        val path = Paths.get(lora.path)
         VideoLora(
           if (path.isAbsolute) path
           else options.loraDirectory.fold(path)(_.resolve(path)),
-          lora.obj.get("multiplier").fold(1f)(_.num.toFloat),
-          lora.obj.get("is_high_noise").exists(_.bool)
+          lora.multiplier.fold(1f)(_.toFloat),
+          lora.isHighNoise.contains(true)
         )
       },
       references = references,
@@ -734,7 +752,15 @@ final class ImageServer(
       exchange,
       "vid_gen",
       () => video(pipeline, request),
-      previewAsked(body)
+      previewAsked(body.preview),
+      unread(
+        sample,
+        highNoise,
+        body.clipSkip,
+        body.outputFormat,
+        "webm",
+        Seq("vace_strength" -> body.vaceStrength.nonEmpty)
+      )
     )
   }
 
@@ -746,12 +772,11 @@ final class ImageServer(
     *   - **A video** is a file, `source_file`, and is written to another,
     *     `output_file` (a webm, its frame rate and soundtrack the source's):
     *     drift and the runner share the machine, and a video of any length goes
-    *     through without being held (`VideoUpscale`, `bugs/54`). The result
-    *     names the file (`file`), its frames (`frame_count`, of
-    *     `source_frames`) and its rate (`frame_rate`, exact; `fps`, rounded). A
-    *     job stopped or failed after its first frames ends `cancelled` or
-    *     `failed` with that result all the same: the file is the video of the
-    *     frames made.
+    *     through without being held (`VideoUpscale`). The result names the file
+    *     (`file`), its frames (`frame_count`, of `source_frames`) and its rate
+    *     (`frame_rate`, exact; `fps`, rounded). A job stopped or failed after
+    *     its first frames ends `cancelled` or `failed` with that result all the
+    *     same: the file is the video of the frames made.
     */
   private def submitUpscale(
       exchange: HttpExchange,
@@ -759,18 +784,19 @@ final class ImageServer(
   ): Unit = {
     if (exchange.getRequestMethod != "POST")
       return json(exchange, 405, ujson.Obj("error" -> "POST only"))
-    val body = ujson.read(exchange.getRequestBody.readAllBytes())
-    def field(name: String) = body.obj.get(name).filterNot(_.isNull)
-    def whole(name: String) = field(name).map(_.num.toInt)
-    def text(name: String) = field(name).map(_.str).filter(_.nonEmpty)
-    val scale = whole("scale").getOrElse(SeedVr2Pipeline.DefaultScale)
+    val body = asked[UpscaleJobRequest](exchange) match {
+      case Right(read)   => read
+      case Left(problem) =>
+        return json(exchange, 400, ujson.Obj("error" -> problem))
+    }
+    def text(value: Option[String]) = value.filter(_.nonEmpty)
+    val scale = body.scale.getOrElse(SeedVr2Pipeline.DefaultScale)
     def even(side: Int) = side / 2 * 2
     def target(width: Int, height: Int) = (
-      even(whole("width").getOrElse(width * scale)),
-      even(whole("height").getOrElse(height * scale))
+      even(body.width.getOrElse(width * scale)),
+      even(body.height.getOrElse(height * scale))
     )
-    val seed = field("seed")
-      .map(_.num.toLong)
+    val seed = body.seed
       .filter(_ >= 0)
       .getOrElse(
         if (options.seed >= 0) options.seed
@@ -779,14 +805,14 @@ final class ImageServer(
     val upscaleOptions =
       try
         SeedVr2Options.Default.copy(
-          batch = whole("batch").getOrElse(SeedVr2Options.Default.batch),
-          overlap = whole("overlap").getOrElse(SeedVr2Options.Default.overlap)
+          batch = body.batch.getOrElse(SeedVr2Options.Default.batch),
+          overlap = body.overlap.getOrElse(SeedVr2Options.Default.overlap)
         )
       catch {
         case error: IllegalArgumentException =>
           return json(exchange, 400, ujson.Obj("error" -> error.getMessage))
       }
-    (text("source"), text("source_file"), text("output_file")) match {
+    (text(body.source), text(body.sourceFile), text(body.outputFile)) match {
       case (Some(encoded), None, None) =>
         submitPictureUpscale(
           exchange,
@@ -878,14 +904,14 @@ final class ImageServer(
                 } (seed $seed)"
             )
         )
-        val result = ujson.Obj(
-          "output_format" -> "webm",
-          "mime_type" -> "video/webm",
-          "fps" -> made.rate.rounded,
-          "frame_rate" -> made.rate.toString,
-          "frame_count" -> made.frames,
-          "source_frames" -> made.sourceFrames,
-          "file" -> output.toString
+        val result = NativeJobResult(
+          outputFormat = "webm",
+          mimeType = Some("video/webm"),
+          fps = Some(made.rate.rounded),
+          frameRate = Some(made.rate.toString),
+          frameCount = Some(made.frames),
+          sourceFrames = Some(made.sourceFrames),
+          file = Some(output.toString)
         )
         made.stopped match {
           case Some(reason) =>
@@ -963,13 +989,10 @@ final class ImageServer(
         )
         val png = new ByteArrayOutputStream()
         ImageIO.write(restored.head, "png", png)
-        ujson.Obj(
-          "output_format" -> "png",
-          "images" -> ujson.Arr(
-            ujson.Obj(
-              "index" -> 0,
-              "b64_json" -> Base64.getEncoder.encodeToString(png.toByteArray)
-            )
+        NativeJobResult(
+          outputFormat = "png",
+          images = List(
+            NativeJobImage(0, Base64.getEncoder.encodeToString(png.toByteArray))
           )
         )
       }
@@ -979,8 +1002,9 @@ final class ImageServer(
   private def enqueue(
       exchange: HttpExchange,
       kind: String,
-      run: () => ujson.Value,
-      previews: Boolean = false
+      run: () => NativeJobResult,
+      previews: Boolean = false,
+      warnings: Seq[String] = Nil
   ): Unit = {
     val job = new Job(
       UUID.randomUUID().toString,
@@ -989,17 +1013,21 @@ final class ImageServer(
       run
     )
     job.previewWanted = previews
+    warnings.foreach { warning =>
+      println(s"[WARN] $warning")
+      job.warnings.add(warning)
+    }
     jobs.put(job.id, job)
     queue.put(job)
-    json(
+    answer(
       exchange,
       202,
-      ujson.Obj(
-        "id" -> job.id,
-        "kind" -> kind,
-        "status" -> "queued",
-        "created" -> ujson.Num(job.created.toDouble),
-        "poll_url" -> s"/sdcpp/v1/jobs/${job.id}"
+      NativeJob(
+        id = job.id,
+        kind = kind,
+        status = "queued",
+        created = job.created,
+        pollUrl = Some(JobRoutes.job(job.id))
       )
     )
   }
@@ -1037,41 +1065,45 @@ final class ImageServer(
         if (job.status == "queued" && queue.remove(job)) {
           job.status = "cancelled"
           job.completed = Some(System.currentTimeMillis() / 1000)
-          json(exchange, 200, describe(job))
+          answer(exchange, 200, describe(job))
         } else if (job.status == "generating") {
           // Stopped at the next step, not here: the answer says it still
           // generates, and the next poll finds it cancelled.
           job.cancelRequested = true
-          json(exchange, 200, describe(job))
+          answer(exchange, 200, describe(job))
         } else
           json(exchange, 409, ujson.Obj("error" -> s"the job is ${job.status}"))
       case Some(job) =>
-        val described = describe(job)
-        job.preview.foreach(described("preview") = _)
-        json(exchange, 200, described)
+        answer(exchange, 200, describe(job).copy(preview = job.preview))
     }
   }
 
-  private def describe(job: Job): ujson.Obj = {
-    val position = queue.asScala.toSeq.indexOf(job)
-    val described = ujson.Obj(
-      "id" -> job.id,
-      "kind" -> job.kind,
-      "status" -> job.status,
-      "created" -> ujson.Num(job.created.toDouble),
-      "queue_position" -> math.max(position, 0)
+  /** The job's document, without its preview: only a poll carries that. */
+  private def describe(job: Job): NativeJob =
+    NativeJob(
+      id = job.id,
+      kind = job.kind,
+      status = job.status,
+      created = job.created,
+      started = job.started,
+      completed = job.completed,
+      queuePosition = math.max(queue.asScala.toSeq.indexOf(job), 0),
+      // a completed job's, or what a stopped one keeps (`PartialResult`)
+      result = job.result,
+      error = job.error.map(NativeJobError("generation_failed", _)),
+      warnings = job.warnings.asScala.toList
     )
-    job.started.foreach(t => described("started") = ujson.Num(t.toDouble))
-    job.completed.foreach(t => described("completed") = ujson.Num(t.toDouble))
-    // a completed job's, or what a stopped one keeps (`PartialResult`)
-    job.result.foreach(described("result") = _)
-    job.error.foreach(message =>
-      described("error") =
-        ujson.Obj("code" -> "generation_failed", "message" -> message)
-    )
-    if (!job.warnings.isEmpty)
-      described("warnings") = ujson.Arr.from(job.warnings.asScala)
-    described
+
+  /** A job's document as the answer: every field said, as sd-server does. */
+  private def answer(
+      exchange: HttpExchange,
+      status: Int,
+      job: NativeJob
+  ): Unit = {
+    val bytes = writeToArray(job)(using NativeJob.written)
+    exchange.getResponseHeaders.set("Content-Type", "application/json")
+    exchange.sendResponseHeaders(status, bytes.length)
+    exchange.getResponseBody.write(bytes)
   }
 
   /** A step's progress line, as sd-cpp prints it: step 0 is the empty bar a
@@ -1162,7 +1194,7 @@ final class ImageServer(
       pipeline: ImagePipeline,
       request: ImageRequest,
       count: Int
-  ): ujson.Value = {
+  ): NativeJobResult = {
     println("sampling using Euler method")
     val startedAt = System.nanoTime()
     val pngs = (0 until count).map { index =>
@@ -1198,14 +1230,11 @@ final class ImageServer(
     // sd-cpp's closing line, which is what drift ends the batch count on.
     val seconds = (System.nanoTime() - startedAt) / 1e9
     println(f"generate_image completed in $seconds%.2fs")
-    ujson.Obj(
-      "output_format" -> "png",
-      "images" -> ujson.Arr.from(pngs.zipWithIndex.map { (png, index) =>
-        ujson.Obj(
-          "index" -> index,
-          "b64_json" -> Base64.getEncoder.encodeToString(png)
-        )
-      })
+    NativeJobResult(
+      outputFormat = "png",
+      images = pngs.zipWithIndex.map { (png, index) =>
+        NativeJobImage(index, Base64.getEncoder.encodeToString(png))
+      }.toList
     )
   }
 
@@ -1229,11 +1258,11 @@ final class ImageServer(
         if (step == steps || now - drawnAt >= PreviewIntervalNanos) {
           val file = picture()
           job.preview = Some(
-            ujson.Obj(
-              "pass" -> pass,
-              "step" -> step,
-              "total_steps" -> steps,
-              "b64_json" -> Base64.getEncoder.encodeToString(file)
+            NativeJobPreview(
+              pass,
+              step,
+              steps,
+              Base64.getEncoder.encodeToString(file)
             )
           )
           drawnAt = now
@@ -1245,7 +1274,7 @@ final class ImageServer(
   private def video(
       pipeline: VideoPipeline,
       request: VideoRequest
-  ): ujson.Value = {
+  ): NativeJobResult = {
     println("sampling using Euler method")
     println(
       s"generating ${pipeline.alignedFrames(request.frames)} frames of ${request.width} × ${request.height} (seed ${request.seed})"
@@ -1281,12 +1310,12 @@ final class ImageServer(
     println(
       f"generate_video completed in ${(System.nanoTime() - startedAt) / 1e9}%.2fs"
     )
-    ujson.Obj(
-      "output_format" -> "webm",
-      "mime_type" -> "video/webm",
-      "fps" -> video.fps,
-      "frame_count" -> video.frames.size,
-      "b64_json" -> Base64.getEncoder.encodeToString(webm)
+    NativeJobResult(
+      outputFormat = "webm",
+      mimeType = Some("video/webm"),
+      fps = Some(video.fps),
+      frameCount = Some(video.frames.size),
+      b64Json = Some(Base64.getEncoder.encodeToString(webm))
     )
   }
 

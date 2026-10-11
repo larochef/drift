@@ -1,7 +1,8 @@
 package drift.backend.postprocess
 
+import drift.backend.images.PostProcessImages
+import drift.backend.nativejobs.NativeJobs
 import drift.backend.runtime.LaunchRuntime
-import drift.backend.sdserver.NativeJobs
 import drift.backend.session.SessionManager
 import drift.shared.*
 
@@ -203,7 +204,7 @@ final private[postprocess] class TileRun(
                 stopServer = server.stop
                 // The job's own server, so a cancel stops it at once: the
                 // tile in flight then ends on a dead server, which `fail`
-                // records as the cancel it is (bug 44). A session's server
+                // records as the cancel it is. A session's server
                 // is not the job's to stop.
                 jobs.runsOn(job, server.stop)
                 server.port -> (() => server.exitCode)

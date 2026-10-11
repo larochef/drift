@@ -66,8 +66,8 @@ case class Session(
       */
     progress: Option[SessionProgress] = None,
     /** The last thing the session said that was not a progress redraw - what it
-      * is working on when there is no bar to show (François, 2026-09-09).
-      * Trimmed to something a single line can hold.
+      * is working on when there is no bar to show. Trimmed to something a
+      * single line can hold.
       */
     activity: Option[String] = None,
     /** Which image of a batch the session is generating, read out of its log
@@ -118,19 +118,15 @@ object LaunchSessionRequest {
   given JsonValueCodec[LaunchSessionRequest] = JsonCodecMaker.make
 }
 
-// `base` in Api.scala is private to that file (tracked as bug 16); the same
-// prefix is rebuilt here so these endpoints live under /api like the rest.
-private val sessionsBase = endpoint.in("api")
-
 val listSessions: PublicEndpoint[Unit, Unit, List[Session], Any] =
-  sessionsBase.get.in("sessions").out(jsonBody[List[Session]])
+  base.get.in("sessions").out(jsonBody[List[Session]])
 
 /** Launches `sd-server` for a run configuration. A configuration that already
   * has a live session answers with that session instead of starting a second; a
   * launch that cannot proceed answers with a `Failed` session naming why.
   */
 val launchSession: PublicEndpoint[LaunchSessionRequest, Unit, Session, Any] =
-  sessionsBase.post
+  base.post
     .in("sessions")
     .in(jsonBody[LaunchSessionRequest])
     .out(jsonBody[Session])
@@ -144,11 +140,11 @@ val launchSession: PublicEndpoint[LaunchSessionRequest, Unit, Session, Any] =
   * stands, stopped; the relaunch arrives on the status socket.
   */
 val restartSession: PublicEndpoint[String, Unit, Option[Session], Any] =
-  sessionsBase.post
+  base.post
     .in("sessions" / path[String] / "restart")
     .out(jsonBody[Option[Session]])
 
 val stopSession: PublicEndpoint[String, Unit, Option[Session], Any] =
-  sessionsBase.delete
+  base.delete
     .in("sessions" / path[String])
     .out(jsonBody[Option[Session]])

@@ -6,6 +6,7 @@ import drift.runner.models.Flux2.Grid
 import drift.runner.ops.Ops
 import drift.runner.tensor.*
 import drift.runner.text.{Tokenizer, TokenizerJson}
+import drift.runner.weights.WeightSource
 
 import java.awt.image.BufferedImage
 import java.nio.file.{Files, Path}
@@ -237,7 +238,7 @@ final class LladaImagePipeline(
       val unconditional =
         Option.when(guided)(condition(request.negativePrompt, semantic = false))
       val random = new SplittableRandom(request.seed)
-      val noise = Array.fill(grid.tokens * channels)(Images.gaussian(random))
+      val noise = Array.fill(grid.tokens * channels)(Noise.gaussian(random))
       val x = hold(ops.fromFloats(Shape.of(grid.tokens, channels), noise))
       // the flow shift: the request's or the launch's, else the released
       // scheduler's, else none; above 1 it is Turbo's scheduler, whose steps
@@ -312,7 +313,7 @@ final class LladaImagePipeline(
           val fresh = ops.fromFloats(
             x.shape,
             Array.fill(grid.tokens * channels)(
-              sigmas(i + 1) * Images.gaussian(random)
+              sigmas(i + 1) * Noise.gaussian(random)
             )
           )
           try ops.add(x, fresh, x)

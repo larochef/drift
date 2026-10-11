@@ -2,8 +2,8 @@ package drift.shared
 
 import utest.*
 
-/** A slot that is one runner's (`bugs/36`): required and passed there, absent
-  * everywhere else — the preview and the launcher read the same function.
+/** A slot that is one runner's: required and passed there, absent everywhere
+  * else — the preview and the launcher read the same function.
   */
 object SlotsPerRunnerTests extends TestSuite {
 
@@ -16,16 +16,28 @@ object SlotsPerRunnerTests extends TestSuite {
         "diffusion",
         "diffusion",
         "--diffusion-model",
+        required = true,
         runners = Nil
       ),
       CheckpointRef(
         "tokenizer",
         "tokenizer",
         "--tokenizer",
+        required = true,
         runners = List(RuntimeEngine.DriftRunner)
       )
     ),
     defaultParameters = Map.empty,
+    civitaiBaseModels = List.empty,
+    tags = List.empty,
+    builtIn = false,
+    pixelDiffusionDecoder = false,
+    initImage = true,
+    referenceImages = ReferenceImageUse.Unused,
+    promptingNotes = None,
+    assistantTemplateId = None,
+    huggingFaceBaseModels = List.empty,
+    modelScopeBaseModels = List.empty,
     sizeMultiple = 16,
     modelKind = None,
     runners = List(RuntimeEngine.SdCpp, RuntimeEngine.DriftRunner)
@@ -38,7 +50,8 @@ object SlotsPerRunnerTests extends TestSuite {
     source = Local(s"/models/$id"),
     format = "gguf",
     parameters = Map.empty,
-    removedParameters = Nil
+    removedParameters = Nil,
+    builtIn = false
   )
 
   private val models = List(model("diffusion"), model("tokenizer"))
@@ -52,6 +65,8 @@ object SlotsPerRunnerTests extends TestSuite {
         Option.when(tokenizer)("tokenizer" -> "tokenizer"),
       overriddenParameters = Map.empty,
       removedParameters = Nil,
+      loras = List.empty,
+      assistantTemplateId = None,
       createdAt = 0L,
       lastUsedAt = 0L,
       runner = runner

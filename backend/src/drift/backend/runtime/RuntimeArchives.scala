@@ -1,11 +1,11 @@
 package drift.backend.runtime
 
 import drift.backend.download.{DownloadOutcome, Downloader}
+import drift.backend.process.ChildProcesses
 import drift.shared.*
 
-import java.nio.charset.StandardCharsets
 import java.nio.file.*
-import java.util.concurrent.TimeUnit
+import scala.concurrent.duration.DurationInt
 import scala.jdk.CollectionConverters.*
 
 /** A runtime's archives — a release, a TheRock build — downloaded through the
@@ -83,19 +83,19 @@ final private[runtime] class RuntimeArchives(
         if (archive.getFileName.toString.endsWith(".zip"))
           List("unzip", "-q", "-o", archive.toString, "-d", tmp.toString)
         else List("tar", "-xzf", archive.toString, "-C", tmp.toString)
-      val process = ProcessBuilder(command*).redirectErrorStream(true).start()
-      val output = String(
-        process.getInputStream.readNBytes(16 * 1024),
-        StandardCharsets.UTF_8
-      )
-      if (!process.waitFor(15, TimeUnit.MINUTES)) {
-        process.destroyForcibly()
-        throw RuntimeException(s"${command.head} timed out on $archive")
+      ChildProcesses.answer(
+        command,
+        within = 15.minutes,
+        most = 16 * 1024
+      ) match {
+        case Left(_) =>
+          throw RuntimeException(s"${command.head} timed out on $archive")
+        case Right(answer) if answer.exit != 0 =>
+          throw RuntimeException(
+            s"${command.head} failed on $archive: ${answer.text.take(300)}"
+          )
+        case Right(_) => ()
       }
-      if (process.exitValue() != 0)
-        throw RuntimeException(
-          s"${command.head} failed on $archive: ${output.take(300)}"
-        )
       // A tarball may wrap everything in a single top-level directory; the
       // runtime directory should be the content either way.
       val children = Files.list(tmp).iterator().asScala.toList

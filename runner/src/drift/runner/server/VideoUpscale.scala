@@ -37,11 +37,11 @@ final case class UpscaledVideo(
     stopped: Option[Throwable]
 )
 
-/** A video upscaled from a file into a file, whatever it lasts (`bugs/54`): the
-  * source's frames are read one at a time (`ClipFrames`), restored a batch at a
-  * time, every pass feeding the next as it goes, and written to the encoder as
-  * they are made (`WebmWriter`). Nothing holds the video: a frame being read,
-  * the batches being restored and a frame being written are all that is on the
+/** A video upscaled from a file into a file, whatever it lasts: the source's
+  * frames are read one at a time (`ClipFrames`), restored a batch at a time,
+  * every pass feeding the next as it goes, and written to the encoder as they
+  * are made (`WebmWriter`). Nothing holds the video: a frame being read, the
+  * batches being restored and a frame being written are all that is on the
   * heap. The soundtrack is the source's, taken from its file by the encoder,
   * and the frame rate the source's own.
   */

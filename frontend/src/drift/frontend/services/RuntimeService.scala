@@ -136,7 +136,7 @@ class RuntimeService(statusSocket: StatusSocketService) extends ServiceErrors {
     * nothing about what is installed.
     */
   val runtimesLoaded: Signal[Boolean] = _runtimesLoaded.signal
-  private val _selection = Var(RuntimeSelection())
+  private val _selection = Var(RuntimeSelection.none)
   private val _releases = Var(Map.empty[RuntimeTool, List[RuntimeRelease]])
   private val _targets = Var(List.empty[String])
   private val _installs = Var(Map.empty[String, RuntimeInstallJob])
@@ -457,7 +457,7 @@ class RuntimeService(statusSocket: StatusSocketService) extends ServiceErrors {
     // not connected — a dev server not forwarding the upgrade, a connection
     // dropped while the tab was away — froze the row on the state its POST
     // answered with and left the runtime list unaware it had finished, until
-    // the page was reloaded (François, 2026-09-20). A pushing socket keeps
+    // the page was reloaded. A pushing socket keeps
     // `lastInstallPush` fresh, so nothing is polled in the normal case.
     EventStream
       .periodic(RuntimeService.InstallPollMillis)

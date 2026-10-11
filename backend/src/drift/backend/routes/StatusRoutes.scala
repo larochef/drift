@@ -2,10 +2,10 @@ package drift.backend.routes
 
 import drift.backend.conversion.ConversionManager
 import drift.backend.download.DownloadManager
+import drift.backend.generation.GenerationManager
 import drift.backend.lora.LoraManager
 import drift.backend.postprocess.PostProcessManager
 import drift.backend.runtime.RuntimeManager
-import drift.backend.sdserver.GenerationManager
 import drift.backend.session.{MachineMonitor, SessionManager}
 import drift.backend.upscale.UpscalerManager
 import drift.shared.*

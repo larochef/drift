@@ -170,7 +170,7 @@ else:
 Types are chosen per tensor, never per file. A ROCmFP4 model keeps f16
 embeddings and a Q6_K output head.
 
-**Weight names** (`models/WeightNames`, bug 32). `WeightSource` gives every
+**Weight names** (`weights/WeightNames`). `WeightSource` gives every
 tensor the name the loaders read, whoever exported the file, as sd-cpp's
 `name_conversion.cpp` does; no loader has a prefix or naming of its own.
 ComfyUI's and the single files' prefixes are dropped (`model.diffusion_model.`,
@@ -696,7 +696,7 @@ on the old tool.
    - HIP-graph replay of a decode step, which pays only once the kernels
      leave host submission on the critical path;
    - RMS norm per head with 256 threads on rows of 128 is wasteful.
-   - Runner-agnostic parameters in drift (François, 2026-09-25): higher-level
+   - Runner-agnostic parameters in drift: higher-level
      parameters and checkpoints with a value per runner, such as "flash
      attention", which is sd-cpp's `--diffusion-fa` and llama.cpp's
      `-fa on`. A runner may still take arguments of its own that others lack.
@@ -1185,7 +1185,7 @@ on the old tool.
            runner matches it to 0.0031% (`Cpu`) and 0.0228% (`Hip`).
          - The invariant tests (oracle drafts, MTP drafts, the prefix cache)
            cover Qwen 3.8 too, with its n-gram states.
-       - **Speed, measured on François's laptop** (its power limit is below
+       - **Speed, measured on the development laptop** (its power limit is below
          a desktop Strix Halo's, so published figures don't transfer; warm
          page cache, 200 greedy tokens):
 
@@ -1239,7 +1239,7 @@ on the old tool.
 
     ROCmFP4 is left for step 15.
 11. **Vision.** The ViT with video, chat LoRAs, grammars. Gemma 4 is
-    dropped (François, 2026-09-25: its results didn't convince him).
+    dropped (2026-09-25: its results did not convince).
     - **Done 2026-09-25: images, for Qwen 3.6, Qwen 3.8 Flash Next and Qwen
       Image 2.1's editing.** All three use Qwen3-VL's ViT (27 blocks of 1152,
       16 heads of 72, patches of 16, 2 × 2 merge; Qwen 3.5/3.6/3.8 differ only
@@ -1308,8 +1308,8 @@ on the old tool.
         A 3-token verify takes 145 ms, 1.55 plain steps: the lever for MTP
         here. Prefill of 512 tokens 1.71 s (299 tok/s) against llama.cpp
         Vulkan's 280.
-        François recalls llama.cpp Vulkan with MTP at about the same speed on
-        this model (not measured here).
+        llama.cpp Vulkan with MTP is recalled at about the same speed on this
+        model (not measured here).
       - **ROCmFP4** (2026-09-26): kingjones777's STRIX_LEAN (fast layout, the
         QKV projections dual, 14.6 GB, no MTP layer) drafts with the MTP-only
         `mtp-Qwen3.8-27B-Q4_0.gguf` of the same repository (`blk.64.nextn.*`
@@ -1390,10 +1390,10 @@ on the old tool.
       for pixel. Not there yet for Krea 2: reference images and editing,
       hires fix, VAE tiling. Requests asking for them are refused (400) by
       name.
-    - **img2img, done 2026-09-26** (bug 32): the init image through the Wan
+    - **img2img, done 2026-09-26**: the init image through the Wan
       VAE's encoder, packed 2 × 2, mixed at step `steps − ⌊steps ×
       strength⌋` as for FLUX.2. Redraws run on it.
-    - **LoRAs, done 2026-09-25** (`diffusion/Lora`, `Krea2.useLoras`).
+    - **LoRAs, done 2026-09-25** (`lora/Lora`, `Krea2.useLoras`).
       - **Names.** The published files hold `lora_A`/`lora_B` pairs (also
         `lora_down`/`lora_up`) under `diffusion_model.` or `transformer.`, in
         the original naming or in diffusers', and are read in all of these.
@@ -1415,7 +1415,7 @@ on the old tool.
         diffusers with the deltas merged: 0.08% (`Cpu`) and 0.16% (`Hip`),
         the BF16 rounding of the updates. Setting it and removing it again
         gives the base velocity back.
-      - **Live.** All of François's Krea 2 LoRAs match fully. The Kimono Robe
+      - **Live.** All the Krea 2 LoRAs installed here match fully. The Kimono Robe
         one adds the robe. The rank-256 8-step Turbo distill gives the same
         look as sd-cpp's at 8 steps: 72 s against 129 s.
       - **Cost.** 31 s without a LoRA; 36 s with a rank-32 one and 37 s with
@@ -1574,7 +1574,7 @@ on the old tool.
         - **Tests.** A tiny LoRA (both namings, fused and split targets, two
           alphas, the swapped final modulation) matches diffusers with the
           deltas merged: 0.099% (`Cpu`) and 0.13% (`Hip`).
-        - **Live.** François's anatomy slider (rank 4, BFL names) matches all
+        - **Live.** An anatomy slider (rank 4, BFL names) matches all
           its targets and costs no measurable time.
       - **Not yet:** masks.
     - **Done 2026-09-26: FLUX.2 [dev]** (32B), on Klein's code: txt2img,
@@ -1798,7 +1798,7 @@ on the old tool.
         run live with a list yet. PiD keeps its four distilled levels, and
         the video families refuse a request's sigmas: the others say at
         startup that they ignore `--sigmas`. Every run prints its levels.
-      - **Turbo LoRAs** (`bugs/55`), each on the official Q4_K at 1024 ×
+      - **Turbo LoRAs**, each on the official Q4_K at 1024 ×
         1536, CFG 1, the same seed and prompt:
 
         | LoRA | steps | levels | time |
@@ -1807,7 +1807,7 @@ on the old tool.
         | Pruna 5-step (r64, alpha 128) | 5 | its nodes | 49 s |
         | alibaba-pai Fun-Acc 4-step | 4 | its own, final | 54 s |
         | none | 40, CFG 1 (the pipeline's own) | the model's | 343 s, the GPU shared |
-        | none | 25, CFG 6 (sd-cpp's example) | the model's | 325 s, soft and striped (`bugs/49`) |
+        | none | 25, CFG 6 (sd-cpp's example) | the model's | 325 s, soft and striped |
 
         - A LoRA's scale is `alpha / rank` from its `.alpha` tensors, else
           from PEFT's settings in the file's metadata
@@ -1997,7 +1997,7 @@ on the old tool.
       - **Live** (BF16 checkpoints, Qwen3-VL-4B Q8_0, 4 steps, CFG 1): 1024²
         in 4.8 s; 2048² in 25.5 s; an edit with one reference 10.0 s at 1024²
         and 29.6 s at 1536² (sd-cpp without flash attention: 150–163 s at
-        1024², `bugs/51`); a rank-32 LoRA 6.0 s; img2img at 0.6 over 8 steps
+        1024²); a rank-32 LoRA 6.0 s; img2img at 0.6 over 8 steps
         5.1 s. The mask was not run live.
     - **Done 2026-09-29: HiDream O1 Image** (Dev and full), txt2img,
       img2img and reference images (`models/HiDreamO1`,
@@ -2089,7 +2089,7 @@ on the old tool.
         text right, fur and snow sharp at full size. sd-cpp's, with the
         same file and tokenizer, missed the prompt (a man on a bench) under a
         speckle of noise.
-      - **drift.** Migration 008 reseeds the architecture: the drift runner
+      - **drift.** The architecture: the drift runner
         listed, HiDream's `tokenizer.json` a required checkpoint (sd-cpp takes
         it too), 2048² by default (the sizes it was trained on are all about
         2048²), sides of 32. The runner's image server takes `--model` for a
@@ -2242,7 +2242,7 @@ on the old tool.
         0.0073% (`Cpu`) and 0.46% (`Hip`, BF16 products); the video VAE,
         encoding 9 frames and decoding 3 latent frames through the streams, to
         0.27% and 0.34% (`Cpu`), 0.25% and 0.55% (`Hip`).
-      - **Live** (François's configuration: the Civitai FASTMOVE V2 Q8 experts
+      - **Live** (a configuration in use: the Civitai FASTMOVE V2 Q8 experts
         (I2V), the uncensored UMT5 fp8, the Wan 2.1 VAE; 832 × 480, 33 frames,
         4 + 4 steps, seed 42): **302 s against sd-cpp's 603 s**, with the
         high-noise CFG at 1 on both. Steps 31–36 s (sd-cpp 63), the grey
@@ -2291,7 +2291,7 @@ on the old tool.
       `diffusion/LtxPipeline`). diffusers 0.40 (`LTX2VideoTransformer3DModel`,
       `LTX2TextConnectors`, the `LTX25AutoBlocks`) and transformers
       (`Gemma4UnifiedTextModel`) are the references; sd-cpp crashes on these
-      files (bugs/35), so there is no tool to beat.
+      files, so there is no tool to beat.
       - **Text.** Gemma 4 12B from the text encoder's file (transformers'
         names under `model.`; its tokenizer is the file's own `tokenizer_json`
         tensor, read raw): sliding layers of 8 key heads of 256 and global
@@ -2327,7 +2327,7 @@ on the old tool.
         0.013% (`Cpu`) and 0.017% (`Hip`); the transformer to 0.011% and
         0.013%; the conv VAE (diffusers' own blocks in the file's order) to
         0.21% and 0.38%.
-      - **Live** (François's configuration: the official distilled BF16
+      - **Live** (a configuration in use: the official distilled BF16
         files; 512 × 512, 64 frames → 57, 8 steps, 16 fps): a clean,
         coherent clip in **71 s**: steps of 5.3–8 s, decode 21.7 s, loading
         19 s.
@@ -2371,8 +2371,8 @@ on the old tool.
       - **Live.** MiniMax H3 (640 × 352, 56 frames, 20 steps, the pruned Q4_K):
         2.3 s of 32 kHz sound decoded in 0.3 s, a clean song and guitar.
         LTX 2.5 (512², 57 frames at 16 fps, 8 steps): 3.5 s of 48 kHz sound
-        in 0.8 s; François heard the birds and the outdoor sound of the
-        prompt, but with "robotic" parts and noise H3's lacks.
+        in 0.8 s; the birds and the outdoor sound of the prompt are
+        there, but with "robotic" parts and noise H3's lacks.
       - **LTX's robotic sound was the prompt.** Every stage matches diffusers
         on the released files: the text features and connectors to 0.2%
         (`gpuTest` `LtxTextCheck`), one step of the transformer to 0.11% on
@@ -2384,15 +2384,15 @@ on the old tool.
         naming sounds in passing ("barks … birds chirping …") left the audio
         near silence (−48 to −53 dB RMS at 16 or 24 fps; Euler ancestral −116
         dB at 16 fps), which the vocoder turns robotic; the same scene as a
-        caption gave −18 dB and the sounds it names, which François found as
+        caption gave −18 dB and the sounds it names, which sounds as
         good as what Civitai shows for LTX 2.5. A short prompt with a quoted
         line of speech does speak (−23 to −25 dB, the caption −15 to −17),
         and the frame rate (16 or 24 fps) changes neither: what matters is
         how clearly the prompt describes the sound.
       - **No clamp: the track is fitted.** Long captions make LTX's audio
         hotter than full scale (182 samples at the clamp in 4 s of speech),
-        and the references' per-sample clamp to [−1, 1] saturates it, which
-        François heard. `Soundtrack.fitted` scales the whole stereo track
+        and the references' per-sample clamp to [−1, 1] saturates it
+        audibly. `Soundtrack.fitted` scales the whole stereo track
         down when its peak passes 0.97 (room for Vorbis' overshoot), for both
         models; the decoders no longer clamp.
       - **Also added while looking:** request knobs `audio_cfg_scale`,
@@ -2431,7 +2431,7 @@ on the old tool.
         A high-noise LoRA goes on the high-noise expert, the rest (and all of
         them with one expert) on the low-noise one, as sd-cpp routes them. The
         cross-attention keys and values are made after the LoRAs are set. All
-        11 of François's files map fully (400 pairs on 400 sites each,
+        11 of the files installed here map fully (400 pairs on 400 sites each,
         `WanLoraCheck`). `diff`/`diff_b` deltas are not read.
       - **End image**: diffusers' `last_image`, the VAE latents of [first,
         zeros…, last] with the mask on the first latent frame and the last
@@ -2466,7 +2466,7 @@ on the old tool.
         one a REDGraft layer decodes to the official BF16 layer (cosine 1.00,
         an int8 and a 4-bit one), with the Sylvester matrix or the −1 on the
         diagonal to noise. Any other group size is refused.
-      - **Read in place** (`bugs/53`, 2026-10-08; `tensor/ConvRot`,
+      - **Read in place** (2026-10-08; `tensor/ConvRot`,
         `kernels/convrot.hip`, `Ops.rotated`). A rotated weight stays where
         the file holds it — the int8 codes, or the 4-bit ones two a byte — and
         the backend is given its scales beside. Each product decodes it to
@@ -2492,8 +2492,8 @@ on the old tool.
       - **LoRAs** at run time on every linear, the text connectors' too (they
         now load with the transformer): original names and diffusers'
         (`proj_in`, `time_embed`, `av_cross_attn_*`, `connectors.*`), a target
-        applied when its shape matches. François's BEANFLK (rank 16, 1152
-        pairs) maps fully; his seven LTX 2.3 LoRAs match LTX 2.5's names and
+        applied when its shape matches. BEANFLK (rank 16, 1152
+        pairs) maps fully; seven LTX 2.3 LoRAs match LTX 2.5's names and
         shapes too (not offered).
       - **Conditions** at strength 1: one at frame 0 (a still, or a clip the
         video continues, 8n + 1 frames) replaces the first latent frames; the
@@ -2534,7 +2534,7 @@ on the old tool.
         musubi (`lora_unet_`) and diffusers names. The pruned files' AdaLN
         updates run on the host with their projections. A target without a
         weight (the time MLP on a pruned file) is reported, not fatal. All 10
-        of François's Civitai files map fully (104 to 258 pairs).
+        of the Civitai files installed here map fully (104 to 258 pairs).
       - **Noise.** torch's CPU generator (MT19937, both `randn` paths) in
         diffusers' draw order, so a seed gives diffusers' noise; t2va videos
         changed for a given seed.

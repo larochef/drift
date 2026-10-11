@@ -1,6 +1,6 @@
 # 47 — Sandbox
 
-**Status:** done in code, compiled and backend-tested, not run live
+**Status:** done
 **Depends on:** 22, 41, 46
 
 Free play (22) lives inside the Models page: any live session, including one
@@ -60,17 +60,17 @@ play to a page of its own and leaves the Models page to configurations.
   missing project) and `AssistantPanel` with `freePlay`, through `WorkspaceBody`
   (below); `freePlay` makes the template follow the live image
   model's and fall back to none on the Text tab, where no panel is up.
-- `pages/projects/WorkspaceBody` is what both pages mount under their own
+- `workspace/WorkspaceBody` is what both pages mount under their own
   heading: the model bar, the generation panel, the assistant drawer (or, for
   text, the chat alone), the drawer's state and the proposals' way to the
   form. The workspace hands it the project's binding, its detail view, its
   history or start screen for when no model is live, and whether the bar is
   at the top; the Sandbox hands it no project, a line of text, and the
   shared-model notice.
-- `pages/projects/ModelBar`, cut out of `WorkspaceHeader`, is the bar it
+- `workspace/ModelBar`, cut out of `WorkspaceHeader`, is the bar it
   draws: the `ModelPicker`s of a kind, the generation panel's
   `sessionControls` beside the image or video one and
-  `pages/assistant/AssistantSessionControls` beside the assistant's. It takes
+  `assistant/AssistantSessionControls` beside the assistant's. It takes
   the launching project and a `confirmReplace` the Sandbox uses to ask before
   stopping a project's model. Neither panel draws a header of its own any
   more.

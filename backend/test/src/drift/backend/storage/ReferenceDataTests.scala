@@ -1,5 +1,6 @@
 package drift.backend.storage
 
+import drift.protocol.ImageServerFlags
 import drift.shared.*
 
 import java.nio.file.Files
@@ -51,6 +52,38 @@ object ReferenceDataTests extends TestSuite {
           !starter.assignments.values.forall(known)
       )
       assert(broken.isEmpty)
+    }
+    test("what drift launches its runner with are flags the runner takes") {
+      val storage = StorageService(Files.createTempDirectory("reference"))
+      storage.init
+      val models = storage.list[Model]("models")
+      // what the runner's rule drops before a launch
+      val vetoed = storage.runtimeRules
+        .filter(rule =>
+          rule.tool == RuntimeTool.SdCpp &&
+            rule.engine == RuntimeEngine.DriftRunner
+        )
+        .flatMap(_.unsupported.map(_.flag))
+        .toSet
+      val refused = for {
+        architecture <- storage.list[Architecture]("architectures")
+        if architecture.tool == RuntimeTool.SdCpp &&
+          architecture.runners.contains(RuntimeEngine.DriftRunner)
+        slots = architecture.checkpoints.filter(slot =>
+          slot.runners.isEmpty ||
+            slot.runners.contains(RuntimeEngine.DriftRunner)
+        )
+        families = slots.map(_.familyId).toSet
+        flag <- slots.map(_.flag) ++
+          architecture.defaultParameters.keys ++
+          models
+            .filter(model => families(model.familyId))
+            .flatMap(_.parameters.keys) ++
+          // what every launch adds (`CommandLine.resolve`)
+          List("--lora-model-dir", "--listen-ip", "--listen-port")
+        if !vetoed(flag) && !ImageServerFlags.accepts(flag)
+      } yield s"${architecture.id}: $flag"
+      assert(refused.distinct.isEmpty)
     }
   }
 }

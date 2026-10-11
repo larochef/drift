@@ -9,8 +9,8 @@ picked there *is* the model's source, never typed.
 
 ## What it does
 
-- **Add Model** opens the browser at once (François, 2026-09-17: one button,
-  not one per site). Its head — where a browser says what it is set to, beside
+- **Add Model** opens the browser at once: one button, not one per
+  site. Its head — where a browser says what it is set to, beside
   **Play videos** — switches between Civitai, HuggingFace, ModelScope and this
   machine, each button carrying the site's mark; each site keeps its own
   search, filters and results. The search starts on the architecture's name
@@ -23,11 +23,11 @@ picked there *is* the model's source, never typed.
   chips (`ResultBrowser.suggestions`): the family id less an `-mmproj`/`-mtp`/
   `-tokenizer` suffix, and the architecture's name. A family naming a VAE
   starts on the architecture (VAE family ids match no repository), the rest on
-  the family. Wan 2.2's text encoder family is `umt5-xxl` (migration 7), which
+  the family. Wan 2.2's text encoder family is `umt5-xxl`, which
   is what that search needs.
 - A pick closes the browser onto a modal of its own — id, label, source with
   **Change model**, parameters, **Add** / **Cancel** — never a panel inline in
-  the page, where what is left to do was easy to miss (François, 2026-09-28).
+  the page, where what is left to do was easy to miss.
   Editing a model opens the same modal with **Save**.
 - What comes back is a `ModelSource` with the fields that site needs, so the
   form shows the source read-only — site, repository or model, file, and the
@@ -61,7 +61,7 @@ picked there *is* the model's source, never typed.
   the site's browser under it (`sourceSwitch` is a mod the four browsers take
   and `ResultBrowser` renders above the search form), normalising what is
   picked into `(ModelSource, suggested label)` — plus `onCivitaiVersion` for
-  LoRAs, whose unit is a version (`09`). `pages/architectures/ModelForm.scala`
+  LoRAs, whose unit is a version (`09`). `models/architectures/ModelForm.scala`
   opens it, then shows the panel; `SourceTypeSelector` and its typed-in fields
   are gone. `ModelSource.kind`/`lines`/`fileName` (`shared/.../Api.scala`) are
   what the read-only panel and the model list show.
@@ -97,8 +97,4 @@ picked there *is* the model's source, never typed.
 - Civitai's search parameter is `query`, and `nsfw` must always be sent
   explicitly: the API's absent-parameter default hides models the site shows,
   some of them SFW-flagged.
-- A null stat in one Civitai result must not fail the page (bugs/20).
-- Open low-severity bugs: 08 (label truncation on names with `/`), 12
-  (HuggingFace query not URL-encoded), 13 (the browser does not re-search when
-  the architecture's base models change: it receives a snapshot list, not the
-  signal).
+- A null stat in one Civitai result must not fail the page.

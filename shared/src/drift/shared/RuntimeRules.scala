@@ -129,7 +129,7 @@ object ResolutionNote {
   * The layer is half the answer, not decoration: a model that sets
   * `--attn-scale` to the same number its architecture already had looks
   * identical to no override at all unless the form says where the value came
-  * from (François, 2026-09-20).
+  * from.
   */
 case class ResolvedParameter(
     flag: String,
@@ -145,10 +145,8 @@ case class ParameterResolution(
     notes: List[ResolutionNote]
 )
 
-private val runtimeRulesBase = endpoint.in("api")
-
 /** Every rule drift ships. Read-only: these describe upstream builds, not the
   * user's choices.
   */
 val listRuntimeRules: PublicEndpoint[Unit, Unit, List[RuntimeRule], Any] =
-  runtimeRulesBase.get.in("runtime-rules").out(jsonBody[List[RuntimeRule]])
+  base.get.in("runtime-rules").out(jsonBody[List[RuntimeRule]])

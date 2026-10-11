@@ -2,21 +2,22 @@ package drift.frontend.pages.projects
 
 import drift.frontend.Page
 import drift.frontend.components.*
-import drift.frontend.pages.gallery.GenerationDetailHost
-import drift.frontend.pages.generate.GenerationPanel
+import drift.frontend.gallery.GenerationDetailHost
+import drift.frontend.generate.GenerationPanel
 import drift.frontend.services.*
 import drift.frontend.services.ProjectService.Command
+import drift.frontend.workspace.*
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
 
 /** One project's workspace (`specs/19-projects-and-prompt-versions.md`), laid
-  * out by what is loaded (François, 2026-09-29): an empty project with no model
-  * is the model bar alone, in the middle of the page; a project with versions
-  * and no model is the bar over its version history; with an image model up, it
-  * is the bar over the generation panel, the history under its result. The
-  * assistant is a drawer on the right, opened from its picker. A text project's
-  * workspace is the chat column alone (`specs/41-text-projects.md`).
+  * out by what is loaded: an empty project with no model is the model bar
+  * alone, in the middle of the page; a project with versions and no model is
+  * the bar over its version history; with an image model up, it is the bar over
+  * the generation panel, the history under its result. The assistant is a
+  * drawer on the right, opened from its picker. A text project's workspace is
+  * the chat column alone (`specs/41-text-projects.md`).
   *
   * The pieces live beside this file (`specs/29-split-oversized-files.md`):
   * `WorkspaceHeader`, `VersionHistory`, and — shared with the Sandbox —
@@ -79,14 +80,12 @@ class ProjectWorkspacePage(
     * It is *not* what the form follows moment to moment. Seeding the form is a
     * separate act, done when the panel appears and when the user clicks a
     * version card: a generation appends a version, and the parameters have to
-    * stay exactly as they are (François, 2026-09-10).
+    * stay exactly as they are.
     */
   private val selectedVersionId = Var(Option.empty[String])
   private val selectedVersion: Signal[Option[PromptVersion]] = project
     .combineWith(selectedVersionId.signal)
-    .map((project, id) =>
-      project.flatMap(ProjectWorkspacePage.resolveVersion(_, id))
-    )
+    .map((project, id) => project.flatMap(_.versionFor(id)))
     .distinct
 
   /** The version ids seen so far, to tell a version that has just been appended
@@ -95,7 +94,7 @@ class ProjectWorkspacePage(
   private val knownVersionIds = Var(Set.empty[String])
 
   /** The result whose detail is open, if any — the gallery's modal, on the
-    * project's own generations (François, 2026-09-09).
+    * project's own generations.
     */
   private val openDetail = Var(Option.empty[GenerationDetailHost.Open])
 
@@ -183,8 +182,8 @@ class ProjectWorkspacePage(
         currentProject
           .now()
           .flatMap(project =>
-            ProjectWorkspacePage
-              .resolveVersion(project, selectedVersionId.now())
+            project
+              .versionFor(selectedVersionId.now())
           )
           .map(_.id),
       history = history(VersionHistory.Size.Small)
@@ -205,7 +204,7 @@ class ProjectWorkspacePage(
     confirmReplace = _ => true,
     binding = () => Some(binding),
     // The result under the form opens where every other result on this page
-    // opens: the gallery's own detail view (François, 2026-09-10).
+    // opens: the gallery's own detail view.
     onOpenOutput =
       Some((generation, index) => openOutput(generation.id, index)),
     idle = () => idle,
@@ -241,15 +240,7 @@ class ProjectWorkspacePage(
       section,
       openDetail
     ),
-    projectService.effects,
-    runConfigurationService.effects,
-    sessionService.effects,
-    generationService.effects,
-    loraService.effects,
-    historyService.effects,
-    postProcessService.effects,
-    upscalerService.effects,
-    prerequisites.effects,
+    prerequisites.loads,
     onMountCallback { _ =>
       projectService.push(Command.Load)
       projectService.push(Command.LoadGenerations(projectId))
@@ -382,18 +373,4 @@ class ProjectWorkspacePage(
     header.element,
     body.element
   )
-}
-
-object ProjectWorkspacePage {
-
-  /** The version an id names, falling back to the newest — the one rule, so
-    * that what the form was seeded with and what the submit names cannot drift
-    * apart on a stale id.
-    */
-  def resolveVersion(
-      project: Project,
-      id: Option[String]
-  ): Option[PromptVersion] =
-    id.flatMap(i => project.versions.find(_.id == i))
-      .orElse(project.versions.lastOption)
 }

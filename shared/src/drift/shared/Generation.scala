@@ -86,10 +86,12 @@ object SampleParameters {
 
 /** The `hires` block of `POST /sdcpp/v1/img_gen` — highres-fix: generate at the
   * form's size, upscale, then refine with a second sampling pass
-  * (`specs/10-generation-time-upscaling.md`). `upscaler` is a name from the
-  * capabilities' `upscalers` list — built-ins plus the model files scanned from
-  * `--hires-upscalers-dir`. `targetWidth`/`targetHeight` of 0 mean "use
-  * `scale`", and `steps` 0 lets the server derive the second pass's count.
+  * (`specs/10-generation-time-upscaling.md`). `upscaler` is one of the server's
+  * built-in modes, as its capabilities list them: a latent mode or a plain
+  * filter. Upscaling with a model is post-processing
+  * (`specs/15-post-hoc-resize.md`), and no launch hands the server the model
+  * files. `targetWidth`/`targetHeight` of 0 mean "use `scale`", and `steps` 0
+  * lets the server derive the second pass's count.
   */
 case class HiresParameters(
     enabled: Boolean = false,
@@ -104,6 +106,17 @@ case class HiresParameters(
 )
 object HiresParameters {
   given Schema[HiresParameters] = Schema.derived
+
+  def isLatentMode(upscaler: String): Boolean = upscaler.startsWith("Latent")
+  def isPlainFilter(upscaler: String): Boolean =
+    upscaler == "Lanczos" || upscaler == "Nearest"
+
+  /** Whether `upscaler` is one the server has without a model file — what the
+    * form offers, and what an older generation made through an ESRGAN model is
+    * not.
+    */
+  def isBuiltIn(upscaler: String): Boolean =
+    isLatentMode(upscaler) || isPlainFilter(upscaler)
 }
 
 /** The `vae_tiling_params` block — decode (and encode) the VAE in overlapping
@@ -570,16 +583,12 @@ object Generation {
 
 // ---------------------------------------------------------------- endpoints
 
-// `base` in Api.scala is private to that file (tracked as bug 16); the same
-// prefix is rebuilt here so these endpoints live under /api like the rest.
-private val generationBase = endpoint.in("api")
-
 /** The capabilities of a session's loaded model, proxied from the session port.
   * Empty when the session is unknown, not yet ready, or unreachable.
   */
 val getSessionCapabilities
     : PublicEndpoint[String, Unit, Option[SessionCapabilities], Any] =
-  generationBase.get
+  base.get
     .in("sessions" / path[String] / "capabilities")
     .out(jsonBody[Option[SessionCapabilities]])
 
@@ -605,19 +614,20 @@ object GenerationPreferences {
   /** What a drift that has stored none runs with: previews shown. */
   val Initial: GenerationPreferences = GenerationPreferences(stepPreview = true)
 
-  given JsonValueCodec[GenerationPreferences] = JsonCodecMaker.make
+  given JsonValueCodec[GenerationPreferences] =
+    JsonCodecMaker.make(storedRecord)
   given Schema[GenerationPreferences] = Schema.derived
 }
 
 val getGenerationPreferences
     : PublicEndpoint[Unit, Unit, GenerationPreferences, Any] =
-  generationBase.get
+  base.get
     .in("generation-preferences")
     .out(jsonBody[GenerationPreferences])
 
 val setGenerationPreferences
     : PublicEndpoint[GenerationPreferences, Unit, GenerationPreferences, Any] =
-  generationBase.put
+  base.put
     .in("generation-preferences")
     .in(jsonBody[GenerationPreferences])
     .out(jsonBody[GenerationPreferences])
@@ -631,7 +641,7 @@ val submitImageGeneration: PublicEndpoint[
   Generation,
   Any
 ] =
-  generationBase.post
+  base.post
     .in("sessions" / path[String] / "generations" / "image")
     .in(submitContextInput)
     .in(query[Option[Boolean]]("scratch"))
@@ -647,7 +657,7 @@ val submitVideoGeneration: PublicEndpoint[
   Generation,
   Any
 ] =
-  generationBase.post
+  base.post
     .in("sessions" / path[String] / "generations" / "video")
     .in(submitContextInput)
     .in(query[Option[Boolean]]("scratch"))
@@ -659,7 +669,7 @@ val submitVideoGeneration: PublicEndpoint[
   * and completion without the frontend ever touching the session port.
   */
 val listGenerations: PublicEndpoint[String, Unit, List[Generation], Any] =
-  generationBase.get
+  base.get
     .in("sessions" / path[String] / "generations")
     .out(jsonBody[List[Generation]])
 
@@ -676,7 +686,7 @@ val listGenerations: PublicEndpoint[String, Unit, List[Generation], Any] =
   */
 val cancelGeneration
     : PublicEndpoint[(String, Boolean), Unit, Option[Generation], Any] =
-  generationBase.post
+  base.post
     .in("generations" / path[String] / "cancel")
     .in(query[Boolean]("force").default(false))
     .out(jsonBody[Option[Generation]])
@@ -687,8 +697,8 @@ val cancelGeneration
 /** A persisted output scaled down for the screen, its longest side at most
   * `side` px — what the gallery and the detail view show. An 8192² upscale is
   * 150 MB on disk and a quarter of a gigabyte decoded; handing that to an
-  * `<img>` in a 700 px box froze the detail view for seconds at a time
-  * (François, 2026-09-19). Scaled copies are cached, so the cost is paid once.
+  * `<img>` in a 700 px box froze the detail view for seconds at a time. Scaled
+  * copies are cached, so the cost is paid once.
   *
   * An image already within `side` is served as it is. Videos are not scaled:
   * ask for the file itself.
@@ -699,7 +709,7 @@ val getOutputPreview: PublicEndpoint[
   (Array[Byte], String),
   Any
 ] =
-  generationBase.get
+  base.get
     .in("outputs" / path[String] / path[String] / "preview")
     .in(query[Option[Int]]("side"))
     .errorOut(statusCode(StatusCode.NotFound))
@@ -721,7 +731,7 @@ object OutputSize {
   * (`specs/27-redraw.md`).
   */
 val getOutputSize: PublicEndpoint[(String, String), Unit, OutputSize, Any] =
-  generationBase.get
+  base.get
     .in("outputs" / path[String] / path[String] / "size")
     .errorOut(statusCode(StatusCode.NotFound))
     .out(jsonBody[OutputSize])
@@ -739,7 +749,7 @@ val getOutputFile: PublicEndpoint[
   (StatusCode, String, Option[String], Long, FileRange),
   Any
 ] =
-  generationBase.get
+  base.get
     .in("outputs" / path[String] / path[String])
     .in(header[Option[String]]("Range"))
     .errorOut(statusCode.and(header[Option[String]]("Content-Range")))

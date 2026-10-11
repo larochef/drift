@@ -1,9 +1,10 @@
 package drift.runner
 
+import drift.runner.weights.ComfyQuantStorage
+import drift.runner.weights.WeightSource
 import utest.*
 
 import drift.runner.formats.{ComfyQuant, FormatException}
-import drift.runner.models.{ComfyQuantStorage, WeightSource}
 import drift.runner.ops.CpuOps
 import drift.runner.tensor.{
   Comparison,

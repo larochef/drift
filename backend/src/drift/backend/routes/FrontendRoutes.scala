@@ -24,8 +24,7 @@ def frontendEndpoints: List[ServerEndpoint[Any, Identity]] = List(
     .out(stringBody)
     .serverLogic[Identity] { (segments: List[String]) =>
       // An unmatched `/api/...` path is a mistake, not a client-side route:
-      // answered with the shell, every wrong API call looked like a 200
-      // (bugs/16).
+      // answered with the shell, every wrong API call looked like a 200.
       if (segments.headOption.contains("api")) Left(())
       else
         Right(

@@ -1,8 +1,0 @@
-{
-  "version": 15,
-  "description": "bugs/55, bugs/49: the Qwen Image 2.1 turbo LoRAs already installed take their own noise levels (a flow shift of 3 stood in for them), and the model its pipeline's own defaults (40 steps, no guidance)",
-  "steps": [
-    { "collection": "loras", "op": "coded", "name": "qwen-turbo-lora-levels" },
-    { "collection": "architectures", "op": "reseed", "where": { "id": "qwen-image-2.1", "builtIn": true } }
-  ]
-}

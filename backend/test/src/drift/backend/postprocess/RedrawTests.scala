@@ -1,5 +1,6 @@
 package drift.backend.postprocess
 
+import drift.backend.images.PostProcessImages
 import drift.shared.{ImageRegion, RedrawRequest, TileSettings, Tiling}
 import utest.*
 

@@ -6,7 +6,7 @@ import com.raquo.laminar.api.L.*
 
 /** What the ticked files add up to, where they will land, and the button that
   * sends them (`specs/33-lora-sources.md`) — one button for the whole opened
-  * model or repository, whatever the site (François, 2026-09-18).
+  * model or repository, whatever the site.
   *
   * Several files travel together by default, since that is what makes a wan 2.2
   * pair one LoRA; one file makes a LoRA of its own; and either can join a LoRA

@@ -277,8 +277,7 @@ final class Downloader(
                 // those only. Resetting to the completed chunks also dropped
                 // the other workers' bytes in flight, and the bar fell back by
                 // several chunks on every retry — a TheRock archive of several
-                // GB on a flaky connection went back and forth for minutes
-                // (François, 2026-09-28).
+                // GB on a flaky connection went back and forth for minutes.
                 downloadedTotal.addAndGet(-attemptBytes)
             }
           }
@@ -290,7 +289,7 @@ final class Downloader(
           // The chunk's bytes reach the disk before the sidecar says they
           // did: the sidecar is small and can land first, and after a machine
           // crash it claimed chunks the file never held — a full-size
-          // download that failed its checksum (bugs/33).
+          // download that failed its checksum.
           channel.force(false)
           completed.add(chunk)
           saveChunkState(

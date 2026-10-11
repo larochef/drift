@@ -332,10 +332,6 @@ object CommandLine {
         * directory.
         */
       loraModelDirectory: Option[String] = None,
-      /** The flat upscaler store (`specs/10-generation-time-upscaling.md`),
-        * emitted as `--hires-upscalers-dir` — same convention as the LoRA root.
-        */
-      hiresUpscalersDirectory: Option[String] = None,
       /** The rule for the runtime this will launch on
         * (`specs/16-parameter-resolution.md`), when one is known.
         */
@@ -355,7 +351,6 @@ object CommandLine {
       resolvePath,
       port,
       loraModelDirectory,
-      hiresUpscalersDirectory,
       rule,
       loraAdapters
     ).map(_._1)
@@ -370,7 +365,6 @@ object CommandLine {
       resolvePath: Model => String,
       port: Option[Int] = None,
       loraModelDirectory: Option[String] = None,
-      hiresUpscalersDirectory: Option[String] = None,
       rule: Option[RuntimeRule] = None,
       loraAdapters: List[String] = Nil
   ): Either[List[LaunchBlocker], (List[String], List[ResolutionNote])] = {
@@ -399,11 +393,11 @@ object CommandLine {
         case (flag, value) => List(flag, value)
       }
 
-      // The model directories are sd-server's scans; llama-server has no
-      // equivalent and would refuse the flags.
+      // The LoRA directory is sd-server's scan; llama-server has no
+      // equivalent and would refuse the flag.
       val sdCpp = architecture.tool == RuntimeTool.SdCpp
       // Only the architecture's own LoRAs are scanned, so a model cannot be
-      // handed another architecture's (François, 2026-09-12).
+      // handed another architecture's.
       val loraArguments =
         if (sdCpp)
           loraModelDirectory.toList
@@ -414,10 +408,6 @@ object CommandLine {
         else
           loraAdapters.flatMap(path => List("--lora", path)) :+
             "--lora-init-without-apply"
-
-      val upscalerArguments = hiresUpscalersDirectory.toList
-        .filter(_ => sdCpp)
-        .flatMap(directory => List("--hires-upscalers-dir", directory))
 
       val listenArguments = port.toList.flatMap(p =>
         architecture.tool match {
@@ -431,7 +421,7 @@ object CommandLine {
       Right(
         (
           checkpointArguments ++ parameterArguments ++ loraArguments ++
-            upscalerArguments ++ listenArguments,
+            listenArguments,
           resolution.notes
         )
       )

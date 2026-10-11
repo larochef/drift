@@ -32,7 +32,7 @@ class StatusSocketService {
     * message, so a bundle that cannot decode one decodes none of them: the app
     * goes quiet while looking merely idle, and only a reload cures it. The
     * shell says so rather than leaving the page to look like nothing is
-    * happening (François, 2026-09-20).
+    * happening.
     */
   val undecodable: Signal[Boolean] = _undecodable.signal.distinct
 

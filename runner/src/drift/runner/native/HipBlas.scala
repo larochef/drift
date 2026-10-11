@@ -172,7 +172,7 @@ final class HipBlas(hip: HipRuntime) extends AutoCloseable {
   }
 
   /** `c[m, n] = a[m, k] · b[n, k]ᵀ` on int8 operands, the sums in I32: what a
-    * product on quantized weights and activations would run (`bugs/53`).
+    * product on quantized weights and activations would run.
     */
   def gemmInt8(
       a: MemorySegment,

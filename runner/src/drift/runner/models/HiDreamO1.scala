@@ -1,9 +1,10 @@
 package drift.runner.models
 
-import drift.runner.diffusion.{Lora, LoraUpdates}
+import drift.runner.lora.{Lora, LoraUpdates}
 import drift.runner.ops.*
 import drift.runner.state.Sequence
 import drift.runner.tensor.*
+import drift.runner.weights.WeightSource
 
 import scala.collection.mutable
 

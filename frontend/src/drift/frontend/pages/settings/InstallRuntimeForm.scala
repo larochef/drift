@@ -32,8 +32,8 @@ class InstallRuntimeForm(
       .combineWith(runtimeService.releases)
       .map((tool, all) => all.getOrElse(tool, Nil))
 
-  /** Backend for the "install latest" shortcut — Vulkan by default, the one
-    * confirmed working on the target machine (see bugs/17).
+  /** Backend for the "install latest" shortcut — Vulkan by default: it runs on
+    * any GPU.
     */
   private val latestBackend = Var[RuntimeBackend](RuntimeBackend.Vulkan)
 

@@ -33,7 +33,7 @@ them. Downloading is always your explicit action.
   can use it, dimmed with a download button when its file is absent.
 - **Not downloaded (n)** — the missing ones in one list, with per-model
   buttons and **Download all**.
-- **Upscalers** — the weights for generation-time hires upscaling.
+- **Upscalers** — the ESRGAN weights the gallery's **Upscale** task offers.
 
 ## Downloads
 

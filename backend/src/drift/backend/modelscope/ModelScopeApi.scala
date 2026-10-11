@@ -1,6 +1,6 @@
 package drift.backend.modelscope
 
-import drift.backend.routes.ModelDescriptions
+import drift.backend.sites.ModelDescriptions
 import drift.shared.*
 
 import java.net.URI

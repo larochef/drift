@@ -104,7 +104,7 @@ html, body {
   overflow-y: auto;
 }
 
-/* Scrolling stays where the pointer is (François, 2026-09-11): a panel that
+/* Scrolling stays where the pointer is: a panel that
    reaches its end keeps the wheel instead of handing it on to what is behind
    it. Overlays also lock their background outright (`ScrollLock`). */
 .modal-card-body,
@@ -121,7 +121,7 @@ html, body {
 
 /* The three site browsers (specs/24): a grid of tiles wants the window, not a
    dialog's width. */
-/* The same width whatever is browsed (François, 2026-09-17): pinned, not a
+/* The same width whatever is browsed: pinned, not a
    range, so a short file listing does not draw a narrower modal than a grid of
    tiles and the head keeps the room its source row needs. */
 .browser-modal .modal-card {
@@ -231,15 +231,15 @@ a {
 }
 
 /* A header chip — ready, incomplete, starting, failed, stopped — stands as
-   tall as the small buttons beside it (François, 2026-09-15): Bulma sizes a
+   tall as the small buttons beside it: Bulma sizes a
    tag at 2em and a small button at 2.5em of the same font size. */
 .card-header > .tag {
   height: 2.5em;
 }
 
 /* The picker's inline chips — nsfw, needs restart, not installed — sit inside
-   a line of small text, so they stay no taller than it (François,
-   2026-09-15). Bulma v1 has no small tag: `is-small` alone changes nothing. */
+   a line of small text, so they stay no taller than it. Bulma v1 has no small
+   tag: `is-small` alone changes nothing. */
 .lora-picker p .tag.is-small {
   height: 1.5em;
   padding-inline: 0.5em;
@@ -247,8 +247,8 @@ a {
 }
 
 /* The list of LoRAs to add can be long: the line under the mouse lights up,
-   so its "+ Add" is plainly the one about to be clicked (François,
-   2026-09-15). The negative margin keeps the names aligned with the rest of
+   so its "+ Add" is plainly the one about to be clicked. The negative margin
+   keeps the names aligned with the rest of
    the box while the highlight reaches past them. */
 /* About eight lines tall, scrolling past them. The padding gives the rows'
    highlight, which reaches past the names, room inside the scroll box. */
@@ -277,8 +277,8 @@ a {
   color: white;
 }
 
-/* The ✕ beside a strength stands exactly as tall as the strength's input
-   (François, 2026-09-15). Bulma sizes a button by its content — `height: auto`
+/* The ✕ beside a strength stands exactly as tall as the strength's input.
+   Bulma sizes a button by its content — `height: auto`
    — and the glyph comes from a fallback font with a taller line, while a small
    input is a fixed 2.5em of the same font size. */
 .lora-picker .button.lora-picker-remove {
@@ -603,7 +603,7 @@ select.select:focus {
 }
 
 /* What an empty projects page or gallery says, in the middle of the page:
-   what a project is and the button that starts one (François, 2026-09-28). */
+   what a project is and the button that starts one. */
 .empty-invitation {
   max-width: 38rem;
   margin: 4rem auto;
@@ -697,7 +697,7 @@ select.select:focus {
 
 /* The runtime select and Launch: spaced like the footer's other controls,
    the button stretched to the select's height rather than Bulma's taller
-   small-button one (François, 2026-09-28). */
+   small-button one. */
 .run-configuration-launch-controls {
   display: flex;
   align-items: stretch;
@@ -1134,8 +1134,8 @@ select.select:focus {
   right: 0.4rem;
 }
 
-/* A batch's images are tiles of their own, side by side in the grid
-   (François, 2026-09-14); the accent along their top and the "2/4" badge say
+/* A batch's images are tiles of their own, side by side in the grid;
+   the accent along their top and the "2/4" badge say
    they came from one run. */
 .gallery-card.is-batch {
   border-top: 3px solid hsl(204, 71%, 53%);
@@ -1164,15 +1164,14 @@ select.select:focus {
   /* A *definite* height, not a maximum: every percentage height below this —
      the image's included — resolves against it. With `max-height` the chain
      stayed `auto`, the image sized itself from its width, and the body's
-     hidden overflow cut it off instead of shrinking it (François,
-     2026-09-19). */
+     hidden overflow cut it off instead of shrinking it. */
   height: 95vh;
   max-height: 95vh;
 }
 
 /* The detail view is a height budget: header and footer take what they take,
    and the image gets the rest. Nothing in it scrolls but the open section of
-   the right column (François, 2026-09-19). */
+   the right column. */
 .gallery-detail .modal-card-body {
   overflow: hidden;
 }
@@ -1232,7 +1231,7 @@ select.select:focus {
   gap: 0.5rem;
   /* Both halves centred on the same line: a picture shorter than the card and
      the strip beside it read as one block, rather than hanging from the top
-     over a band of nothing (François, 2026-09-20). */
+     over a band of nothing. */
   align-items: center;
 }
 
@@ -1253,8 +1252,7 @@ select.select:focus {
   flex-direction: column;
   flex-wrap: nowrap;
   /* Centred against the picture, not hung from the top: the strip is as tall
-     as the batch makes it, and sits beside the middle of the image
-     (François, 2026-09-20). */
+     as the batch makes it, and sits beside the middle of the image. */
   justify-content: center;
   align-items: flex-start;
   width: auto;
@@ -1267,7 +1265,7 @@ select.select:focus {
 
 /* Square thumbnails, cropped from the top: a 2048×1024 frame letterboxed into
    a strip is a sliver of picture between two bands of nothing, and a crop of
-   the top is where the subject usually is (François, 2026-09-19).
+   the top is where the subject usually is.
    Their side shrinks with the size of the batch — the height a strip has is
    the card's, less its head and foot — so eight fit as readably as two. */
 .gallery-strip.is-vertical img,
@@ -1310,7 +1308,7 @@ select.select:focus {
 
 /* Prompts are prose: the label column of the table left them a sliver, and the
    prompt is what the page is most often read for. Full width, cut short, and
-   the whole of it one click away (François, 2026-09-19). */
+   the whole of it one click away. */
 .gallery-prose {
   margin-bottom: 0.6rem;
 }
@@ -1554,8 +1552,7 @@ select.select:focus {
 /* The post-processing tab (specs 15, 26, 27): one task at a time behind a
    picker, its fields in labelled groups, its button on the last line. The
    controls stay small — bigger ones were no more readable — and the room the
-   panel has goes into the space between the rows instead (François,
-   2026-09-20). */
+   panel has goes into the space between the rows instead. */
 .post-tasks {
   margin-bottom: 1rem;
 }
@@ -1578,7 +1575,7 @@ select.select:focus {
 
    The space between the rows is each row's own margin, not a gap on a flex
    parent: a panel's rows sit inside the panel's own element, one level below
-   `.post-panel`, so a gap there spaced nothing at all (François, 2026-09-21).
+   `.post-panel`, so a gap there spaced nothing at all.
    A margin holds wherever a row is put, which is what the three panels
    needed. */
 .post-group {
@@ -1659,8 +1656,7 @@ select.select:focus {
 
 /* The left of the footer is everything read off the picture: what the job
    would cost, and under it the switches for the grid drawn over it — which
-   change nothing about the job, and so are no part of the form
-   (François, 2026-09-21). */
+   change nothing about the job, and so are no part of the form. */
 .post-foot-lines {
   display: flex;
   flex-direction: column;
@@ -1710,7 +1706,7 @@ select.select:focus {
    `.content pre { white-space: pre; word-wrap: normal }`, which out-specifies a
    bare `.assistant-text` — so a model's long paragraph never wrapped, the page
    stretched to the width of its longest line, and the header's session controls
-   went off the side of the window with it (François, 2026-09-09). `anywhere`
+   went off the side of the window with it. `anywhere`
    also breaks the unbroken tokens a chat produces: URLs, base64, long ids. */
 /* The assistant's thinking while it lasts (`ThinkingView`): the last lines of
    it, however the text wraps — a box of about eight lines whose content sits
@@ -1746,7 +1742,7 @@ select.select:focus {
 /* A live panel's header — the configuration, its status, and the session
    controls. Bulma's `.level` never wraps, so in a narrow column (the
    workspace's assistant column, or any narrow window) `.level-right` used to
-   overflow and carry Stop session out of sight (François, 2026-09-09). It
+   overflow and carry Stop session out of sight. It
    wraps to its own row instead, and neither group may push wider than the
    column it sits in. */
 .panel-header {
@@ -1764,7 +1760,7 @@ select.select:focus {
 
 /* Bulma gives `.title:not(:last-child)` a 1.5rem bottom margin, and the level
    centres each item on its *margin* box - so the status tag beside the title
-   sat visibly low (François, 2026-09-09). The header supplies its own spacing;
+   sat visibly low. The header supplies its own spacing;
    the title needs none of its own. */
 .panel-header .title,
 .panel-header .subtitle {
@@ -1881,8 +1877,7 @@ select.select:focus {
 }
 
 /* The kind, image or video, left of Open: the bare glyph, no box, drawn about
-   as tall as the small buttons beside it (2.5em of 0.75rem) — François,
-   2026-09-15. */
+   as tall as the small buttons beside it (2.5em of 0.75rem). */
 .project-card-kind {
   display: inline-flex;
   align-items: center;
@@ -1950,7 +1945,7 @@ select.select:focus {
 
 /* Project workspace (specs/19-projects-and-prompt-versions.md): the model
    bar over the page's body, the assistant a drawer on the right that takes
-   its width from the body rather than covering it (François, 2026-09-29). */
+   its width from the body rather than covering it. */
 .workspace-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1986,7 +1981,7 @@ select.select:focus {
 }
 /* Each picker a row of the same grid — label, select, then the status and
    the session's controls — so the selects line up whatever their
-   longest option, and nothing runs out of the card (François, 2026-09-29). */
+   longest option, and nothing runs out of the card. */
 .workspace-model-bar .field.is-grouped {
   display: grid;
   grid-template-columns: 7rem 26rem;
@@ -2171,7 +2166,7 @@ select.select:focus {
 
 /* The generation form's numbers (CoreFields): each input as wide as the
    characters it holds, plus padding and the spinner, and the fields side by
-   side, wrapping (François, 2026-09-29). */
+   side, wrapping. */
 .form-compact-row {
   display: flex;
   flex-wrap: wrap;

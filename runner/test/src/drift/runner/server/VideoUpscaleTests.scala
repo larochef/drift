@@ -72,9 +72,9 @@ object TestClips {
   val Mp4: Seq[String] = Seq("-c:v", "mpeg4", "-q:v", "4", "-c:a", "aac")
 }
 
-/** A video upscaled from a file into a file (`bugs/54`): every frame kept at
-  * the source's own rate, whatever its soundtrack lasts, and the frames made
-  * kept when the run stops. Needs the `ffmpeg` the runner encodes with.
+/** A video upscaled from a file into a file: every frame kept at the source's
+  * own rate, whatever its soundtrack lasts, and the frames made kept when the
+  * run stops. Needs the `ffmpeg` the runner encodes with.
   */
 object VideoUpscaleTests extends TestSuite {
 

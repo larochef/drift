@@ -19,6 +19,19 @@ import sttp.tapir.json.jsoniter.*
 given JsonValueCodec[Boolean] = JsonCodecMaker.make
 given JsonValueCodec[List[String]] = JsonCodecMaker.make
 
+/** How a stored record is written and read: every field, an empty list and an
+  * absent value included, so a file says all of what it holds. A record lacking
+  * a field does not decode — a field added to an entity comes with a migration
+  * that adds it to the stored records. The one field a file may still omit is
+  * an optional one, read as absent.
+  */
+inline def storedRecord: CodecMakerConfig = CodecMakerConfig
+  .withTransientDefault(false)
+  .withTransientEmpty(false)
+  .withTransientNone(false)
+  .withRequireCollectionFields(true)
+  .withRequireDefaultFields(true)
+
 /** What a model does with a reference image (`specs/27-redraw.md`).
   *
   *   - `Unused`: sd-cpp has no reference preset for the family, so a reference
@@ -50,31 +63,31 @@ case class Architecture(
     tool: RuntimeTool,
     checkpoints: List[CheckpointRef],
     defaultParameters: Map[String, String],
-    civitaiBaseModels: List[String] = List.empty,
+    civitaiBaseModels: List[String],
     /** What this architecture is for: `image`, `video`, `edit`, `audio`, `llm`,
-      * `upscale` — as many as apply (François, 2026-09-10). Declared rather
-      * than inferred, and open-ended: a model that does something drift has not
-      * met yet gets a word for it without a schema change.
+      * `upscale` — as many as apply. Declared rather than inferred, and
+      * open-ended: a model that does something drift has not met yet gets a
+      * word for it without a schema change.
       */
-    tags: List[String] = List.empty,
-    builtIn: Boolean = false,
+    tags: List[String],
+    builtIn: Boolean,
     /** A PiD pixel-diffusion decoder (`specs/15-post-hoc-resize.md`): its run
       * configurations upscale a reference image rather than generate from a
       * prompt, so the gallery offers them as diffusion upscalers.
       */
-    pixelDiffusionDecoder: Boolean = false,
+    pixelDiffusionDecoder: Boolean,
     /** Whether the model repaints an image it is *given*: img2img from an init
       * image at a denoising strength. True of every ordinary image model, and
       * what a redraw (`specs/27`) is made of.
       */
-    initImage: Boolean = true,
+    initImage: Boolean,
     /** What this model does with a reference image, which is not a yes or no
       * (`ReferenceImageUse`). sd-cpp gives each family a preset
       * (`get_default_ref_image_preset`), and the presets differ in kind: some
       * let the reference inform the result, others hand it to the diffusion
       * model as the image being *edited* — and that one reproduces the
-      * reference's own layout in every tile it is given (François, 2026-09-19,
-      * redrawing with Krea2).
+      * reference's own layout in every tile it is given (seen redrawing with
+      * Krea 2).
       *
       * It has to be declared here, and it cannot be asked for: sd-server's
       * `features_by_mode` answers `ref_images: true` for every model from a
@@ -82,39 +95,38 @@ case class Architecture(
       * `ref_image_args`, so neither the preset nor a way around it crosses the
       * wire.
       */
-    referenceImages: ReferenceImageUse = ReferenceImageUse.Unused,
+    referenceImages: ReferenceImageUse,
     /** How this model reads a prompt, in a sentence or two for the assistant
       * (`specs/20`): natural-language description or tag lists, what helps and
       * what does nothing. Seeded for the built-ins; `None` gets a generic note.
       */
-    promptingNotes: Option[String] = None,
+    promptingNotes: Option[String],
     /** The assistant system template a project targeting this architecture
       * starts with (`specs/32-prompt-library.md`): Ideogram names its caption
       * writer, `None` is drift's helper. A project's own pick wins over it.
       */
-    assistantTemplateId: Option[String] = None,
+    assistantTemplateId: Option[String],
     /** The HuggingFace repositories this architecture's LoRAs are trained on,
       * most relevant first (`specs/33-lora-sources.md`): the HuggingFace LoRA
       * browser lists their adapters (`base_model:adapter:<repo>`) by default,
       * as the Civitai browser filters by `civitaiBaseModels`.
       */
-    huggingFaceBaseModels: List[String] = List.empty,
+    huggingFaceBaseModels: List[String],
     /** The base model names this architecture's LoRAs declare on ModelScope
       * (`specs/37-modelscope.md`), revision suffixes included (`…@master`): the
       * ModelScope LoRA browser lists the LoRAs of all of them at once.
       */
-    modelScopeBaseModels: List[String] = List.empty,
+    modelScopeBaseModels: List[String],
     /** The multiple every side of a generated image is aligned **up** to, which
       * is sd-cpp's `vae_scale_factor × diffusion_model_down_factor`
       * (`GenerationRequest::align_image_size`). It has to be declared, like
       * `referenceImages`: sd-cpp aligns the request silently and answers with
       * the bigger image, and a tiled job that asked for anything else fails on
-      * the size it gets back (François, 2026-09-20, redrawing 1280×1264 tiles
-      * that came back 1280×1280).
+      * the size it gets back (1280×1264 tiles came back 1280×1280).
       *
       * No default: every architecture says its own, the built-ins from the
       * reference file and a user's from the form, so a family whose number is
-      * not 16 cannot inherit one that is (François, 2026-09-20).
+      * not 16 cannot inherit one that is.
       */
     sizeMultiple: Int,
     /** What the model is, as the engines name it (`specs/43`): the GGUF
@@ -147,11 +159,11 @@ object Architecture {
   // a plain string ("SdCpp"), as the seed file and the UI write it. The config
   // must be inline -- the macro needs a constant expression.
   given JsonValueCodec[Architecture] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
   given JsonValueCodec[List[Architecture]] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
   given JsonValueCodec[Option[Architecture]] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
 }
 
 /** The tag vocabulary the UI suggests. Nothing enforces it - `Architecture
@@ -203,11 +215,11 @@ case class CheckpointRef(
       * `--diffusion-model` (sd-cpp) or `--mmproj` (llama.cpp).
       */
     flag: String,
-    required: Boolean = true,
+    required: Boolean,
     /** The runners the slot is for; empty means every runner of the
       * architecture. On another runner the slot does not exist: nothing is
       * asked for it and nothing assigned to it is passed — a tokenizer file the
-      * drift runner cannot do without and sd-cpp does not read (`bugs/36`).
+      * drift runner cannot do without and sd-cpp does not read.
       */
     runners: List[RuntimeEngine]
 ) {
@@ -327,13 +339,13 @@ case class Model(
       * an "empty" override would put `--steps ""` on the command line. A layer
       * above can set the flag again.
       */
-    removedParameters: List[String] = List.empty,
-    builtIn: Boolean = false
+    removedParameters: List[String],
+    builtIn: Boolean
 )
 object Model {
-  given JsonValueCodec[Model] = JsonCodecMaker.make
-  given JsonValueCodec[List[Model]] = JsonCodecMaker.make
-  given JsonValueCodec[Option[Model]] = JsonCodecMaker.make
+  given JsonValueCodec[Model] = JsonCodecMaker.make(storedRecord)
+  given JsonValueCodec[List[Model]] = JsonCodecMaker.make(storedRecord)
+  given JsonValueCodec[Option[Model]] = JsonCodecMaker.make(storedRecord)
 }
 
 case class RunConfiguration(
@@ -347,7 +359,7 @@ case class RunConfiguration(
       * (`specs/16-parameter-resolution.md`). The top layer removes as it
       * overrides: nothing above it can put the flag back.
       */
-    removedParameters: List[String] = List.empty,
+    removedParameters: List[String],
     createdAt: Long,
     /** When this configuration last launched a session — `createdAt` until the
       * first launch, so a fresh configuration sorts like a just-used one. The
@@ -358,13 +370,13 @@ case class RunConfiguration(
       * starts with them, a tiled job sends them with every tile
       * (`specs/28-configuration-loras.md`). Only LoRAs of its architecture.
       */
-    loras: List[ConfiguredLora] = List.empty,
+    loras: List[ConfiguredLora],
     /** The assistant system template this configuration prefers over its
       * architecture's default (`specs/32-prompt-library.md`); none means the
       * architecture's. A project's assistant is offered a switch to it when the
       * configuration's model starts.
       */
-    assistantTemplateId: Option[String] = None,
+    assistantTemplateId: Option[String],
     /** The engine it runs on, one of its architecture's runners (`specs/43`):
       * every launch path resolves its runtime from it.
       */
@@ -373,11 +385,11 @@ case class RunConfiguration(
 object RunConfiguration {
   // No discriminator: `RuntimeEngine` encodes as a plain string ("SdCpp").
   given JsonValueCodec[RunConfiguration] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
   given JsonValueCodec[List[RunConfiguration]] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
   given JsonValueCodec[Option[RunConfiguration]] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
 }
 
 /** What a repository's model makes (`specs/36-huggingface-examples.md`): an
@@ -591,9 +603,9 @@ object FileEntry {
   given JsonValueCodec[List[FileEntry]] = JsonCodecMaker.make
 }
 
-/** Every endpoint's `/api` prefix. Package-visible, so `Civitai.scala` builds
-  * on it too: file-private, it once left the Civitai endpoints at the server
-  * root (bugs/16).
+/** Every endpoint's `/api` prefix, which every file of the package builds on:
+  * Vite's dev proxy forwards nothing else, and the backend answers any other
+  * path with the page's shell.
   */
 private[shared] val base = endpoint.in("api")
 

@@ -57,7 +57,7 @@ raw tail on demand.
 - Frontend `components/LogProgressView` — the bar and the last line, over a
   `(Option[SessionProgress], Option[String])` signal, so a session's panel and
   a post-processing job's row (15) show the same thing — and
-  `pages/generate/SessionLog`;
+  `generate/SessionLog`;
   `services/LogService` reads the NDJSON with the same fetch + ReadableStream
   reader the assistant chat uses.
 

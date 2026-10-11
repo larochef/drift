@@ -23,7 +23,10 @@ class PromptsSection(service: PromptTemplateService) extends Component {
       id = s"${kind.toString.toLowerCase}-${System.currentTimeMillis()}",
       kind = kind,
       label = "",
-      text = ""
+      text = "",
+      appends = AssistantAppends.standard,
+      proposalFormat = ProposalFormat.Fenced,
+      builtIn = false
     )
   private val expanded = Var(Set.empty[String])
 

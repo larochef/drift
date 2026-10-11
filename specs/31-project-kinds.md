@@ -1,6 +1,6 @@
 # 31 — Project kinds: image or video
 
-**Status:** done in code, not yet run live
+**Status:** done
 **Depends on:** 19 (projects and the workspace), the architecture tags
 
 A project says whether it makes images or videos, and its workspace offers

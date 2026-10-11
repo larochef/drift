@@ -1,9 +1,10 @@
 package drift.runner
 
+import drift.runner.ops.KvCache
 import scala.util.Random
 
 import drift.runner.ops.{Attention, Ops}
-import drift.runner.state.{KvCache, PageAllocator, SequencePages}
+import drift.runner.state.{PageAllocator, SequencePages}
 import drift.runner.tensor.{DType, Shape, Tensor}
 
 /** One attention call with seeded inputs, runnable on any backend: `keyCount`

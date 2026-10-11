@@ -1,6 +1,6 @@
 package drift.runner
 
-import drift.runner.diffusion.Lora
+import drift.runner.lora.Lora
 import drift.runner.ops.CpuOps
 
 import java.nio.charset.StandardCharsets

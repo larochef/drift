@@ -1,5 +1,7 @@
 package drift.runner.diffusion
 
+import drift.runner.tensor.TorchRandom
+
 import java.awt.image.BufferedImage
 
 /** MiniMax H3's latents as the transformer's rows, and how its conditions are

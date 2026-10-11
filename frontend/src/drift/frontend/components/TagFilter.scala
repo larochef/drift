@@ -5,7 +5,7 @@ import drift.shared.ArchitectureTags
 import com.raquo.laminar.api.L.*
 
 /** The All / <tag> chips shared by the architectures and the run configurations
-  * built on them (François, 2026-09-10).
+  * built on them.
   *
   * Built from the tags actually in use rather than a fixed list, so a tag
   * invented on an architecture becomes a filter without anything else changing.

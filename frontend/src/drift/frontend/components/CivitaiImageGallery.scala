@@ -10,8 +10,8 @@ import com.raquo.laminar.api.L.*
   * time: first the images its author published with the version — already in
   * the payload, so they show at once — then posts from Civitai's image search,
   * ten at a time, since that search is slow, often overloaded and ranks
-  * somewhat at random (François, 2026-09-11). A tile opens a viewer linking to
-  * its page on civitai.com; the API returns posts without their recipes.
+  * somewhat at random. A tile opens a viewer linking to its page on
+  * civitai.com; the API returns posts without their recipes.
   *
   * Rebuilt each time the tab is shown; the service keeps the posts it last
   * loaded, so coming back to the tab for the same model reloads nothing.

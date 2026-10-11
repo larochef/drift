@@ -2,7 +2,8 @@ package drift.backend.download
 
 import drift.backend.{Background, WorkQueue}
 import drift.backend.cache.{CacheEntry, ModelCache}
-import drift.backend.routes.CivitaiClient
+import drift.backend.civitai.CivitaiClient
+import drift.backend.huggingface.HuggingFaceDownloads
 import drift.backend.storage.StorageService
 import drift.shared.*
 
@@ -34,7 +35,6 @@ final class DownloadManager(
     /** Resolved per request, so a token saved in Settings applies without a
       * restart.
       */
-    civitaiToken: () => Option[String],
     /** Where its downloads run. */
     background: Background,
     concurrency: Int = 2
@@ -202,7 +202,10 @@ final class DownloadManager(
         (version, file) match {
           case (Some(foundVersion), Some(foundFile)) =>
             val url = foundFile.downloadUrl.getOrElse(
-              s"https://civitai.com/api/download/models/${foundVersion.id}?fileId=${foundFile.id}"
+              civitaiClient.downloadAddress(
+                foundVersion.id.toString,
+                foundFile.id.toString
+              )
             )
             val target = cache.civitaiTarget(
               source,
@@ -216,9 +219,7 @@ final class DownloadManager(
                 target.resolveSibling(target.getFileName.toString + ".part"),
               finalFile = target,
               expectedSha256 = foundFile.sha256,
-              headers = civitaiToken()
-                .map(t => "Authorization" -> s"Bearer $t")
-                .toMap,
+              headers = civitaiClient.downloadHeaders,
               isCancelled = () => entry.cancelled.get(),
               onProgress = onProgress
             )

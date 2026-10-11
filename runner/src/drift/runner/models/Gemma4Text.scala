@@ -3,6 +3,7 @@ package drift.runner.models
 import drift.runner.formats.FormatException
 import drift.runner.ops.*
 import drift.runner.tensor.*
+import drift.runner.weights.WeightSource
 
 import scala.collection.mutable
 

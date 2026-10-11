@@ -19,7 +19,7 @@ drift offers, one click to install.
   a chat architecture, `35`), **HuggingFace**, **ModelScope**, and **This
   machine**, whose files are copied into the LoRA store (sd-cpp only sees what
   is under its `--lora-model-dir`), the original left alone.
-- Every source installs the same way (François, 2026-09-18). An opened model
+- Every source installs the same way. An opened model
   or repository is one list of weight files, **none ticked to begin with**;
   ticks may cross a Civitai model's versions and a directory's folders; and
   one bar over the list says how many are ticked, how much they weigh, and
@@ -29,7 +29,7 @@ drift offers, one click to install.
   at a time ends up whole. A single ticked file defaults to a LoRA of its own.
   The browser stays open afterwards, the bar saying what was sent, since
   finding a pair often means several installs from one search.
-- **Pairing two halves** (François, 2026-09-18): a wan 2.2 pair is sometimes
+- **Pairing two halves**: a wan 2.2 pair is sometimes
   published as two repositories, one per stage, and installs as two LoRAs. A
   LoRA whose files are all of one stage — all high noise, or all low — carries
   a **⇄ Pair** button naming the other halves it could join: this
@@ -60,7 +60,7 @@ drift offers, one click to install.
 - A HuggingFace or disk install is labelled with the file's path without its
   extension; trigger words and tags start empty, nsfw off, stage guessed from
   the name like a Civitai file.
-- The stage guess reads every name a file goes by (François, 2026-09-18):
+- The stage guess reads every name a file goes by:
   its own path — folders included, since a repository often says it there —
   and what the site calls the thing it came from: a Civitai version's name, a
   HuggingFace or ModelScope repository's. "high noise" and "low noise" win
@@ -132,7 +132,7 @@ drift offers, one click to install.
   `HuggingFaceDownloads.lookup` (size, hash) and `downloadTo` (straight into
   the LoRA folder, not the shared HuggingFace cache), disk as a copy through a
   `.part` file. Frontend: `components/LoraInstallButton.scala`,
-  `pages/architectures/LoraSection.scala`, `services/LoraService`
+  `models/architectures/LoraSection.scala`, `services/LoraService`
   (`LoadCatalog`).
 
 ## Notes
@@ -146,7 +146,7 @@ drift offers, one click to install.
   Civitai — keeps its effect in 28 steps at CFG 1. It carries the norms'
   weights as whole-tensor differences, which the drift runner applies
   (`specs/42`); whether sd-cpp does is not checked.
-- The catalog holds SenseNova's own 8-step LoRA and, at François's request,
+- The catalog holds SenseNova's own 8-step LoRA,
   lightx2v's 4-step LoRA for HunyuanVideo 1.5 (not Tencent's, repackaged by
   Comfy-Org, whose repository the sd-cpp doc names), and Comfy-Org's rank-128
   extraction of Boogu Image's Turbo distillation, which spares a second 20 GB

@@ -149,7 +149,7 @@ final class HipRuntime(val rocmRoot: Path) {
   check("hipInit", (hipInit.invokeExact(0): Int))
   check("hipSetDevice", (hipSetDevice.invokeExact(0): Int))
 
-  // How a call that waits for the GPU waits (bug 38). HIP spins a core by
+  // How a call that waits for the GPU waits. HIP spins a core by
   // default; asleep until the GPU is done, a Qwen Image 2.1 tile took the same
   // 115.3 s and 3.7 s of CPU instead of 115.3 (yielding spun as much). So the
   // runner blocks, unless `DRIFT_HIP_SCHEDULE` asks for `spin` or `yield`.
@@ -377,8 +377,8 @@ object HipRuntime {
 
   /** `DRIFT_HIP_TRACE=1`: every kernel waited for as it is launched and timed
     * by name, and the table printed when the process ends — which kernels are
-    * long enough to keep the desktop's frames waiting (bug 38), and where a
-    * model's time goes. It slows a run; it is for measuring one.
+    * long enough to keep the desktop's frames waiting, and where a model's time
+    * goes. It slows a run; it is for measuring one.
     */
   object Trace {
     val on: Boolean = sys.env.get("DRIFT_HIP_TRACE").exists(_.nonEmpty)

@@ -1,7 +1,6 @@
 package drift.runner.models
 
-import drift.runner.ops.{Attention, Ops}
-import drift.runner.state.KvCache
+import drift.runner.ops.*
 import drift.runner.tensor.*
 
 /** Attention of whole sequences without a causal order, for the models that run

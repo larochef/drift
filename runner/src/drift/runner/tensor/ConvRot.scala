@@ -50,11 +50,10 @@ object ConvRot {
     }
   }
 
-  /** A rotated linear read where the file holds it, undecoded (`bugs/53`): the
-    * codes alone, which only a backend that was given their scales
-    * (`Ops.rotated`) can decode — each product does. `Codes` are
-    * `int8_tensorwise`'s, a value a byte; `Nibbles` `asym_w4a8_int8`'s, two
-    * values a byte.
+  /** A rotated linear read where the file holds it, undecoded: the codes alone,
+    * which only a backend that was given their scales (`Ops.rotated`) can
+    * decode — each product does. `Codes` are `int8_tensorwise`'s, a value a
+    * byte; `Nibbles` `asym_w4a8_int8`'s, two values a byte.
     */
   sealed abstract class Stored(label: String, valuesPerByte: Int)
       extends DType(label, valuesPerByte, 1, None, None) {

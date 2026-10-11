@@ -1,7 +1,7 @@
 package drift.backend.postprocess
 
 import drift.backend.assistant.AssistantProxy
-import drift.backend.postprocess.PostProcessImages.*
+import drift.backend.images.PostProcessImages.*
 import drift.backend.storage.StorageService
 import drift.shared.*
 

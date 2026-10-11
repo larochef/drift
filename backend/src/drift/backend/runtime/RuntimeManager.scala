@@ -155,8 +155,8 @@ final class RuntimeManager(
     * exposes an AMD GPU, paired for its gfx target; Vulkan and CPU always;
     * drift's runner where this drift carries it and the GPU is the one its
     * kernels are built for. Recommended: the runner where it is offered — the
-    * default wherever it is available (François, 2026-10-03) — else ROCm for
-    * sd-cpp when there is one, Vulkan otherwise.
+    * default wherever it is available — else ROCm for sd-cpp when there is one,
+    * Vulkan otherwise.
     */
   def installOptions: List[RuntimeInstallOption] = {
     val gfx = GpuDetection.amdGfxTarget()
@@ -274,9 +274,8 @@ object RuntimeManager {
     *
     * The banner is looked for in the *whole* output rather than its first line:
     * llama.cpp b11060 logs `llama_server: initializing ...` before it, and
-    * reading only the first line put that log line in the version chip
-    * (François, 2026-09-20). A build whose banner is still the first thing it
-    * prints reads exactly as it did.
+    * reading only the first line put that log line in the version chip. A build
+    * whose banner is still the first thing it prints reads exactly as it did.
     */
   def reportedVersion(tool: RuntimeTool, output: String): String = {
     val lines = output.linesIterator

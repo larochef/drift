@@ -18,7 +18,7 @@ and the results are feather-blended.
 - **A target no larger than the source is refused**, asked for or capped into
   being: PiD decodes a quarter of the target, so such a job shrinks the source
   to that quarter and hands the same size back — which is what a 8192² source
-  did before the cap moved (François, 2026-09-22). The panel says the target in
+  did before the cap moved. The panel says the target in
   pixels beside "×4 of the source", and the refusal in its place, with the
   button disabled.
 - Adaptive layout per axis: the fewest tiles of at most 1536 px overlapping
@@ -80,7 +80,7 @@ and the results are feather-blended.
   its grid drawn on the source and moved there. Browser and backend lay the
   tiles out from one `UpscaleTiling` (`PidUpscaleRequest.tilingFor`); the tile
   is kept between 1024 px and the runtime's largest.
-- The PiD panel (`pages/gallery/PidUpscalePanel`): the configuration, then
+- The PiD panel (`gallery/PidUpscalePanel`): the configuration, then
   Advanced (15) holding the target size, steps, seed and the prompt it sends —
   the source's, inherited through the derivation chain; "→ ×4" and the button
   on the last line, and empty size fields send no size. Configured LoRAs go
@@ -91,7 +91,7 @@ and the results are feather-blended.
 - Until sd-cpp master-892, sd-server scaled every reference image to the
   request's width × height while decoding it, whatever
   `auto_resize_ref_image` said, so PiD saw a blurred full-size reference
-  instead of the quarter-size crop and returned a smear (bugs/25). PiD ran one
+  instead of the quarter-size crop and returned a smear. PiD ran one
   `sd-cli` per tile meanwhile, reloading the models every time. Reported as
   leejet/stable-diffusion.cpp#2004, fixed by #2011 (merged 2026-09-21): the
   opt-out now holds from the decode on, while the default still scales — so
@@ -105,7 +105,7 @@ and the results are feather-blended.
   on the drift runner engine and 1536 on sd-cpp, in the backend's job (the launch runtime's) and
   in the panel's preview (the configuration's runner), and
   `SdCppBuilds.keepsReferenceSize` counts the runner in.
-- **One pass beats sd-cpp's 3 × 3, measured 2026-09-25** (bug 30): the same
+- **One pass beats sd-cpp's 3 × 3, measured 2026-09-25**: the same
   1024² subject (Qwen Image 2.1: a face, a crowd, a sign, knit, a fence
   across the tile borders), `pid-flux2`, 4 steps, seed 7, through drift's job.
   Against the source, the runner's one pass is closer (RMSE 0.0588 against

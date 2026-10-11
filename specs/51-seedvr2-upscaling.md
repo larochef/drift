@@ -1,6 +1,6 @@
 # 51 — SeedVR2 on the drift runner: video and image upscaling
 
-**Status:** done in code, run once end to end in drift on a copy of the configuration (a picture and a video through the API, the panel in a browser); not yet used by François
+**Status:** done; SeedVR2 is the upscaler preferred on pictures
 **Depends on:** 15 (post-processing), 26 (PiD), 42 (the drift runner), 43 (a runner per configuration)
 
 drift upscales pictures (ESRGAN, PiD) and has nothing for video. SeedVR2
@@ -252,9 +252,6 @@ golden fixtures.
 
 ## Open questions
 
-- **Is it better than PiD on pictures**, or only different? A first look
-  is in the Notes (PiD's ×4 result reduced to the same size); to be judged
-  by eye, and again at step 4 on the runner.
 - **How large in one pass.** Windowed attention should take a 4k picture
   whole; the VAE is the part that needs tiles. To be measured, not guessed.
 - **Speed.** Measured on this laptop, 3B fp8, 832² to 1664², one pass,

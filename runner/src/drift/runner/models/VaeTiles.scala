@@ -41,7 +41,7 @@ object VaeTiles {
     * blended with what is above them, so across the whole overlap between two
     * columns the picture steps at the row where a tile starts — a hard
     * horizontal line, the wider the overlap the longer, and these overlaps grow
-    * to half a tile (`bugs/42`: y = 1360 of a 2048 × 3072 SeedVR2 picture).
+    * to half a tile (seen at y = 1360 of a 2048 × 3072 SeedVR2 picture).
     */
   def stitch(
       tiles: Seq[Seq[Array[Float]]],
@@ -116,9 +116,9 @@ object VaeTiles {
   /** The same tiles stitched as diffusers' `_stitch_tiles` does: each blended
     * with the one above and the one to its left (both as made), over the
     * overlap between them, then cut by its own overlaps below and to the right.
-    * It steps where `stitch` does not (`bugs/42`); MiniMax H3's VAE keeps it,
-    * being checked against its reference's frames to the pixel
-    * (`TinyMiniMaxH3Case`) and its video not yet looked at with the other.
+    * It steps where `stitch` does not; MiniMax H3's VAE keeps it, being checked
+    * against its reference's frames to the pixel (`TinyMiniMaxH3Case`) and its
+    * video not yet looked at with the other.
     */
   def stitchAsDiffusers(
       tiles: Seq[Seq[Array[Float]]],

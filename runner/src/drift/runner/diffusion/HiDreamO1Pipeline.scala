@@ -1,6 +1,7 @@
 package drift.runner.diffusion
 
 import drift.runner.decode.Prompt
+import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
 import drift.runner.ops.Ops
 import drift.runner.state.Sequence
@@ -81,9 +82,10 @@ final class HiDreamO1Pipeline(
   )
 
   /** Makes `loras` the model's active set, and says in the log what became of
-    * them.
+    * them — and, unguided, that they were trained for the guided checkpoint
+    * (`fullOnly`).
     */
-  private def useLoras(loras: Seq[(Path, Float)]): Unit = {
+  private def useLoras(loras: Seq[(Path, Float)], guided: Boolean): Unit = {
     val (opened, _) = loraFiles.open(loras)
     val use = model.useLoras(opened)
     LoraReport.told(
@@ -93,6 +95,10 @@ final class HiDreamO1Pipeline(
     if (use.outside > 0)
       println(
         s"LoRA: ${use.outside} updates are the vision tower's or the token embeddings', which stay the checkpoint's"
+      )
+    if (!guided && fullOnly(opened.map((lora, _) => lora.metadata)))
+      LoraReport.told(
+        loras.map((path, _) => fullUnguided(path.getFileName.toString))
       )
   }
 
@@ -254,7 +260,7 @@ final class HiDreamO1Pipeline(
     val sampler = request.sampler
       .filter(Samplers.contains)
       .getOrElse(ownSampler(guided, request.references.size))
-    useLoras(request.loras)
+    useLoras(request.loras, guided)
     // a request's own levels (a turbo LoRA's) in place of any schedule
     val sigmas = request.sigmas.getOrElse(
       if (sampler == Flash || !guided) distilledSigmas(request.steps)
@@ -274,7 +280,7 @@ final class HiDreamO1Pipeline(
       FlowSchedule.firstStep(request.steps, request.strength)
     )
     val start = {
-      val noise = Array.fill(values)(noiseScale * Images.gaussian(random))
+      val noise = Array.fill(values)(noiseScale * Noise.gaussian(random))
       request.initImage.foreach { init =>
         val sigma = sigmas(first)
         val image = patches(Images.pixels(init), request.width, request.height)
@@ -487,6 +493,32 @@ object HiDreamO1Pipeline {
   def ownSampler(guided: Boolean, references: Int): String =
     if (guided) UniPcSampler else if (references == 1) Euler else Flash
 
+  /** Whether a LoRA's metadata says it was trained on the full checkpoint
+    * (`ss_sd_model_name`, as ai-toolkit and kohya write it, naming
+    * `HiDream-ai/HiDream-O1-Image` and not its `-Dev`). A file that says
+    * nothing is taken at its word.
+    */
+  def trainedOnFull(metadata: Map[String, String]): Boolean =
+    metadata.get("ss_sd_model_name").map(_.toLowerCase).exists { name =>
+      name.contains("hidream-o1-image") &&
+      !name.contains("hidream-o1-image-dev")
+    }
+
+  /** Whether a request's LoRAs are all `trainedOnFull`: unguided, that is the
+    * Dev checkpoint with LoRAs that are not its own. One file that does not say
+    * so may be the Dev distillation, which makes the full checkpoint run
+    * unguided and is where the others belong — the checkpoints' own files do
+    * not tell Dev from full — so nothing is said then.
+    */
+  def fullOnly(loras: Seq[Map[String, String]]): Boolean =
+    loras.nonEmpty && loras.forall(trainedOnFull)
+
+  /** The warning for such a LoRA on an unguided request: the picture is still
+    * made.
+    */
+  def fullUnguided(file: String): String =
+    s"[WARN] LoRA $file was trained on the full HiDream O1 checkpoint: without guidance (the Dev checkpoint, CFG 1) it washes the picture out, the more the stronger it is — it belongs on the full checkpoint, at CFG 5 or so, or at CFG 1 with the Dev distillation LoRA beside it"
+
   /** A noise level as the official loop reads it off a scheduler's timesteps: a
     * whole number of thousandths, the rest dropped.
     */
@@ -664,7 +696,7 @@ object HiDreamO1Pipeline {
       count: Int,
       sigma: Float
   ): Array[Float] = {
-    val noise = Array.fill(count)(Images.gaussian(random))
+    val noise = Array.fill(count)(Noise.gaussian(random))
     val mean = noise.iterator.map(_.toDouble).sum / count
     val deviation = math.sqrt(
       noise.iterator.map(v => (v - mean) * (v - mean)).sum / (count - 1)

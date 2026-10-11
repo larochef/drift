@@ -21,7 +21,7 @@ is 26; the redraw pass that usually follows is 27.
   the job's summary and its button, and nothing of a task sits after its own
   button. A panel shows the **model** and nothing else: every other parameter
   is behind an "Advanced" fold, so a panel can be read at a glance
-  (François, 2026-09-21). The fold is `components/FoldedSection` — the
+. The fold is `components/FoldedSection` — the
   architecture page's LoRA fold (09), which the panels asked for by name rather
   than a button of their own, so it moved into a component both use — with its
   body hidden rather than removed, since a form loses what has been typed into
@@ -90,7 +90,7 @@ is 26; the redraw pass that usually follows is 27.
 - A finished card — done, failed or cancelled — closes with a **×**. Only the
   notice goes: the job stays in the list the backend holds and the result stays
   in the gallery. It is what keeps a second redraw of the same output from
-  being read as the first one's result (François, 2026-09-20). A running card
+  being read as the first one's result. A running card
   has none — it carries the only Stop. The closed set is the browser's, not the
   server's: a reload shows the cards again.
 - Video sources are refused.

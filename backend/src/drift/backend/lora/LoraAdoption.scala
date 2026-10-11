@@ -85,11 +85,13 @@ final private[lora] class LoraAdoption(
       architectureId = request.architectureId,
       label = label,
       nsfw = nsfw,
+      defaultStrength = 1.0,
       triggerWords = sidecar.map(_.trainedWords).getOrElse(Nil),
       tags = sidecar.map(_.tags).getOrElse(Nil),
       description = sidecar.flatMap(_.description).map(_.take(2000)),
+      files = List.empty,
       createdAt = System.currentTimeMillis(),
-      sampling = LoraSampling()
+      sampling = LoraSampling.none
     )
     val target = lorasRoot.resolve(placed.folderRelativePath)
     val files = weightNames.map { diskName =>
@@ -109,7 +111,8 @@ final private[lora] class LoraAdoption(
         source = source,
         stage = LoraManager.stageOf(diskName, versionName),
         sizeBytes =
-          if (Files.isRegularFile(onDisk)) Some(Files.size(onDisk)) else None
+          if (Files.isRegularFile(onDisk)) Some(Files.size(onDisk)) else None,
+        sha256 = None
       )
     }
     val lora = placed.copy(files = files)

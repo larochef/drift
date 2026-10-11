@@ -1,7 +1,7 @@
 # 20 — Prompt assistant conversation
 
-**Status:** done in code, not yet run live with an assistant (compaction in
-particular)
+**Status:** done; the conversation is used and picked up again after restarts, compaction
+not yet run live
 **Depends on:** 18 (a running assistant), 19 (a project to talk about), 21 (the chat components)
 
 Inside a project, the user talks to the assistant about what to generate,
@@ -75,7 +75,7 @@ version vN → generate → look → ask the assistant → proposal → apply �
   `services/AssistantPrompts` (`DefaultSystemPrompt`, `PromptRules`,
   `GenericPromptingNote`, `CompactionPrompt`, the fence parser),
   `components/PromptDiff` (LCS over words; rewrite view; "not carried over"
-  ignoring case, punctuation and filler), `pages/projects/VersionHistory`
+  ignoring case, punctuation and filler), `workspace/VersionHistory`
   (the compare modal). `GenerationPanel` publishes the working prompt, the
   target and the CFG and clears them on unmount.
 

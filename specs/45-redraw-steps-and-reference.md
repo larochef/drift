@@ -20,7 +20,7 @@ Three changes make redraw finish what it starts, whatever the source:
   its edge. Today its colour drifts and the edge shows.
 
 All three were measured on 2026-10-03 (Measurements, below) on a
-purpose-made subject, through François's chain (PiD); the files are in
+purpose-made subject, through the usual chain (PiD); the files are in
 `~/dev/redraw-experiments/2026-10-03/`.
 
 ## Part 1 — steps as asked
@@ -38,7 +38,7 @@ uses the same floor). At redraw's default strength of 0.4:
 
 - **Too few steps.** A single step is one Euler jump from σ≈0.4 straight to
   the clean image. The result reads as unfinished: strange textures on
-  Klein redraws, seen by François.
+  Klein redraws, as seen in use.
 - **Strength is coarse.** At 4 steps, strength has four positions: 0.25–0.49
   runs 1 step, 0.5–0.74 runs 2, 0.75–0.99 runs 3. Moving the slider inside a
   band changes nothing.
@@ -150,7 +150,7 @@ context reference (`Edit` and `Unused` architectures) get nothing at all.
 Measured on 16k-scale tiles (Measurements), a tile that knows nothing of its
 surroundings is repainted as something else. Through PiD, RedQW21 (Qwen
 Image 2.1, today's drift: no reference) erased an areola entirely, leaving
-smooth skin and the nipple — what François saw on his 16k redraws — and
+smooth skin and the nipple — what was seen on real 16k redraws — and
 turned sand into rock. Klein made the face older and its skin rough. The
 whole picture at 768 did no better: the areola faded, the sand was rock.
 The tile is too small in it to say anything. Through ESRGAN, sand became
@@ -172,14 +172,14 @@ skin on every model.
 - **The whole picture is no longer sent.** Not measured beside the block
   (one reference was enough to fix every failure seen); see Open questions.
 - **Redraw is offered only on configurations whose architecture takes a
-  reference as context** (`ReferenceImageUse.Context`). François accepts
-  fewer models for a better result (2026-10-03). The redraw panel's
+  reference as context** (`ReferenceImageUse.Context`). Fewer models
+  for a better result is the accepted trade. The redraw panel's
   configuration picker lists only those; the endpoint refuses the others
   with the reason.
 - **Qwen Image 2.1 becomes `Context`.** On the drift runner and on sd-cpp
   alike it used the block (or the whole picture) as context and never
   painted it into the tile; it had been classed `Edit` on the conservative
-  side, unproven (27). Migration 010 reseeds it.
+  side, unproven (27).
 - **The reference size stays 768.** It was not really compared: the
   runner's Qwen Image 2.1 scales every reference to about a megapixel
   (`QwenImage21Pipeline.reference`), so 768 and 1280 reached the model
@@ -239,7 +239,7 @@ model still sees the scene, not by 16k tiles.
 ### The problem
 
 A redraw of one part (a box, 27) pasted back into the untouched picture
-often shows its edge, so François redrew whole pictures instead. Measured on
+often shows its edge, so whole pictures got redrawn instead. Measured on
 a single 1280 window at the 16k stage, pasted as drift does (full weight in
 the box, a ramp across the 64 px margin): every raw redraw shifts the box's
 colour, by 3 to 28 levels of 255 on average (blur 24 px, the box against
@@ -269,7 +269,7 @@ shift but does not remove it.
   draws a fresh tile: much rougher, more detailed skin than its
   surroundings. Corrected, its colour matches, but the texture density still
   shows as an edge. That is the "good alone, does not blend in" result
-  François remembers. Texture follows strength: keep a part's redraw at the
+  reported from use. Texture follows strength: keep a part's redraw at the
   strength its surroundings were redrawn at.
 - **Not taken: noise anchored to the picture.** Each latent position's
   starting noise drawn from (seed, its place in the whole picture) instead
@@ -294,9 +294,9 @@ shift but does not remove it.
 
 ## Measurements (2026-10-03)
 
-### Through PiD (François's chain)
+### Through PiD (the usual chain)
 
-Base: RedQW21 + its turbo LoRA at 10 steps (François's configuration),
+Base: RedQW21 + its turbo LoRA at 10 steps (the configuration in use),
 1024×1536, the same beach scene, its sand clean at 1:1. PiD 1.5 (FLUX.2,
 the runner, 4 steps) to the 4k stage around three targets (face, chest,
 sand); for three more (eye, areola, sand), a 1280 window there redrawn
@@ -316,13 +316,13 @@ run) and PiD again to the 16k stage. 1280² tiles, strength 0.7, seed 42.
 The subject: official Qwen Image 2.1 (25 steps, cfg 6), 1024×1536, a topless
 woman sitting on a beach (sand with footprints, rocks, sea, a pine, green
 eyes). Its sand already shows a woven grid at 1k, before any upscale or
-redraw: a redraw keeps it, being built to keep structure. François's chain
-was approximated around six targets, with ESRGAN where he uses PiD: ESRGAN ×4 to the
+redraw: a redraw keeps it, being built to keep structure. The usual chain
+was approximated around six targets, with ESRGAN in place of PiD: ESRGAN ×4 to the
 4k stage (face, chest, sand tiles), then a 1280 window there redrawn with
 RedQW21 (strength 0.5) and ESRGAN ×4 again for the 16k stage (eye, areola,
 sand tiles). Every job went straight to sd-server or the drift runner, 1280²
-tiles, seed 42, one seed only. Models: RedQW21 (Qwen Image 2.1, François's
-redraw model), Flux.2 Klein 9B SNOFS, Flux.2 dev Q4, Krea 2 SNOFS + turbo
+tiles, seed 42, one seed only. Models: RedQW21 (Qwen Image 2.1, the
+redraw model in use), Flux.2 Klein 9B SNOFS, Flux.2 dev Q4, Krea 2 SNOFS + turbo
 LoRA, all on the drift runner unless said.
 
 | Model (runner) | Uses a reference as context | 3×3 fixes sand / areola | s per tile: none → one 768 reference |

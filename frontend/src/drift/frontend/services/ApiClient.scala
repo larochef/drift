@@ -16,8 +16,8 @@ import sttp.tapir.client.sttp.SttpClientInterpreter
   * Every service used to carry its own `FetchBackend`, base uri, interpreter
   * and `Future`-to-`EventStream` bridge. Eight copies meant eight places to get
   * error handling right, which is how the search paths ended up without the
-  * `recoverToTry` the entity services had (see
-  * `bugs/14-silent-failure-and-dead-pipeline.md`).
+  * `recoverToTry` the entity services had: one failed call ended the stream,
+  * and the form behind it went dead.
   *
   * `toClientThrowErrors` rejects the promise on any non-2xx, so every stream
   * this hands out can fail; callers are expected to `recoverToTry` and report

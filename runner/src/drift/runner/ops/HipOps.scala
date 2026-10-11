@@ -1,7 +1,6 @@
 package drift.runner.ops
 
 import drift.runner.native.*
-import drift.runner.state.KvCache
 import drift.runner.tensor.*
 
 import java.lang.foreign.*
@@ -9,6 +8,7 @@ import java.lang.foreign.ValueLayout.*
 import scala.collection.mutable
 import scala.jdk.CollectionConverters.*
 import scala.jdk.OptionConverters.*
+import scala.util.control.NonFatal
 
 /** The GPU backend: each operation launches kernels of `runner/kernels` on the
   * default stream. Every allocation is freed when the backend closes.
@@ -26,7 +26,54 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
 
   import KernelArgument.{F32, I32, I64, Pointer}
 
-  private val allocations = mutable.ArrayBuffer.empty[MemorySegment]
+  /** Every buffer handed out and not released yet, by its address. */
+  private val allocations = mutable.HashMap.empty[Long, MemorySegment]
+
+  /** Released buffers kept for the next allocation of their size, by address
+    * and oldest first, with the addresses of each size beside. A model
+    * allocates the same few sizes over and over — a VAE's frames, a block's
+    * work buffers — and each `hipMalloc` and `hipFree` is a call into the
+    * driver, the second one waiting for the GPU: thousands a decode. Kept up to
+    * `SpareBudget` bytes, the oldest given back first, and all of them when the
+    * device has no room left.
+    */
+  private val spare = mutable.LinkedHashMap.empty[Long, (MemorySegment, Long)]
+  private val spareBySize =
+    mutable.HashMap.empty[Long, mutable.ArrayDeque[Long]]
+  private var spareBytes = 0L
+
+  /** How much released memory is kept for reuse: 2 GiB, or
+    * `-Ddrift.hip.spare=<MiB>` — 0 gives every buffer back at once.
+    */
+  private val spareBudget: Long =
+    sys.props.get("drift.hip.spare").flatMap(_.toLongOption).getOrElse(2048L) *
+      1024 * 1024
+
+  private def takeSpare(bytes: Long): Option[MemorySegment] =
+    spareBySize.get(bytes).filter(_.nonEmpty).map { addresses =>
+      // The newest of its size: the likeliest still in the driver's caches.
+      val (pointer, _) = spare.remove(addresses.removeLast()).get
+      spareBytes -= bytes
+      pointer
+    }
+
+  private def freeOldestSpare(): Unit = {
+    val (address, (pointer, bytes)) = spare.head
+    spare.remove(address)
+    spareBySize(bytes).removeHead()
+    spareBytes -= bytes
+    hip.free(pointer)
+  }
+
+  private def keepSpare(pointer: MemorySegment, bytes: Long): Unit =
+    if (bytes > spareBudget) hip.free(pointer)
+    else {
+      while (spareBytes + bytes > spareBudget) freeOldestSpare()
+      spare(pointer.address()) = (pointer, bytes)
+      spareBySize.getOrElseUpdate(bytes, mutable.ArrayDeque.empty) +=
+        pointer.address()
+      spareBytes += bytes
+    }
   private val elementwiseKernels = new KernelModule(hip, "elementwise")
   private val normKernels = new KernelModule(hip, "norm")
   private val ropeKernels = new KernelModule(hip, "rope")
@@ -86,18 +133,24 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
 
   def allocate(dtype: DType, shape: Shape): Tensor = {
     val bytes = math.max(dtype.byteSize(shape.elementCount), 1)
-    val pointer = hip.allocate(bytes)
-    allocations += pointer
+    val pointer = takeSpare(bytes).getOrElse(
+      try hip.allocate(bytes)
+      catch {
+        // No room on the device: the spares are room.
+        case NonFatal(_) if spare.nonEmpty =>
+          while (spare.nonEmpty) freeOldestSpare()
+          hip.allocate(bytes)
+      }
+    )
+    allocations(pointer.address()) = pointer
     Tensor(dtype, shape, Storage.Device(pointer, bytes), 0)
   }
 
   def release(tensor: Tensor): Unit = tensor.storage match {
-    case Storage.Device(pointer, _) if tensor.byteOffset == 0 =>
-      val at = allocations.indexWhere(_.address() == pointer.address())
-      if (at >= 0) {
-        allocations.remove(at)
-        hip.free(pointer)
-      }
+    case Storage.Device(pointer, bytes) if tensor.byteOffset == 0 =>
+      allocations
+        .remove(pointer.address())
+        .foreach(owned => keepSpare(owned, bytes))
     case _ => () // views, registered mappings: not ours to free
   }
 
@@ -3022,8 +3075,8 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
   /** The most one launch of the tiled kernel is given, in query rows × keys ×
     * key heads: about 50 ms on the Radeon 8060S. PiD's attention over a 4096²
     * tile was one launch of 2.1 s, 56 times a tile, and the desktop's frames
-    * waited behind each (bug 38); cut in launches this size the GPU is free for
-    * them in between, and the tile takes the same time.
+    * waited behind each; cut in launches this size the GPU is free for them in
+    * between, and the tile takes the same time.
     */
   private val TiledLaunchWork = 1.5e9
 
@@ -3189,8 +3242,9 @@ final class HipOps(hip: HipRuntime, inputs: MatVecInputs) extends Ops {
   }
 
   def close(): Unit = {
-    allocations.foreach(hip.free)
+    allocations.values.foreach(hip.free)
     allocations.clear()
+    while (spare.nonEmpty) freeOldestSpare()
     if (scratchBytes > 0) hip.free(scratchPointer)
     scratchBytes = 0
     blasHandle.foreach(_.close())

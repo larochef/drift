@@ -9,7 +9,7 @@ import sttp.tapir.DecodeResult.Error.JsonDecodeException
 /** A JSON body that carries pictures or videos as base64 text — an import, a
   * generation's input images. `jsonBody` reads with jsoniter's defaults, which
   * refuse a string above 4 MiB: an 8 MB PNG was "too long string exceeded
-  * 'maxCharBufSize'" (`bugs/41`).
+  * 'maxCharBufSize'".
   */
 object LargeJsonBody {
   private val readerConfig = ReaderConfig.withMaxCharBufSize(256 * 1024 * 1024)

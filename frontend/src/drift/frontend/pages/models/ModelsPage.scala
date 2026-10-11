@@ -2,15 +2,14 @@ package drift.frontend.pages.models
 
 import drift.frontend.Page
 import drift.frontend.components.Component
-import drift.frontend.pages.architectures.ArchitecturesPage
-import drift.frontend.pages.inference.RunConfigurationsPage
+import drift.frontend.models.architectures.ArchitecturesPage
+import drift.frontend.models.inference.RunConfigurationsPage
 import drift.frontend.services.*
 import drift.shared.RuntimeTool
 
 import com.raquo.laminar.api.L.*
 
-/** Everything about the models drift can run, in one place (François,
-  * 2026-09-10).
+/** Everything about the models drift can run, in one place.
   *
   * Inference, Assistant and Architectures were three sidebar entries for one
   * subject. Inference and Assistant were literally the same page with a
@@ -23,7 +22,7 @@ import com.raquo.laminar.api.L.*
   * allow: they replaced themselves with the panel, so a loaded model meant no
   * way back to the configuration that launched it. Each tab is a URL —
   * `/models/configurations`, `/models/architectures` — so a refresh or a link
-  * lands on it (François, 2026-09-11).
+  * lands on it.
   */
 class ModelsPage(
     runConfigurationService: RunConfigurationService,

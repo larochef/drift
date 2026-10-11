@@ -1,9 +1,10 @@
 package drift.backend.postprocess
 
-import drift.backend.postprocess.PostProcessImages.*
+import drift.backend.images.PostProcessImages.*
+import drift.backend.nativejobs.NativeJobs
 import drift.backend.runtime.LaunchRuntime
-import drift.backend.sdserver.{NativeJobs, NativeUpscale}
 import drift.backend.session.SessionManager
+import drift.protocol.UpscaleJobRequest
 import drift.shared.*
 
 import java.awt.image.BufferedImage
@@ -462,7 +463,8 @@ final private[postprocess] class EditCarry(
                    NativeJobs
                      .upscale(
                        server.port,
-                       NativeUpscale(dataUrl(crop), scale, work.request.seed),
+                       UpscaleJobRequest
+                         .picture(dataUrl(crop), scale, work.request.seed),
                        server.exitCode,
                        nativeJob => jobs.waitingFor(job, server.port, nativeJob)
                      )

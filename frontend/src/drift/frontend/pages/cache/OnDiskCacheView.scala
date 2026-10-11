@@ -113,7 +113,9 @@ class OnDiskCacheView(
           label = base,
           source = source,
           format = if (extension.nonEmpty) extension.toLowerCase else "unknown",
-          parameters = Map.empty
+          parameters = Map.empty,
+          removedParameters = List.empty,
+          builtIn = false
         )
       )
     )

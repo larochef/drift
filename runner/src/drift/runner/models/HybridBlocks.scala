@@ -2,8 +2,9 @@ package drift.runner.models
 
 import drift.runner.formats.GgufFile
 import drift.runner.ops.*
-import drift.runner.state.{KvCache, Sequence}
+import drift.runner.state.Sequence
 import drift.runner.tensor.*
+import drift.runner.weights.WeightSource
 
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout.JAVA_BYTE

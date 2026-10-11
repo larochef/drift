@@ -129,10 +129,8 @@ class UpscalerSection(
   lazy val element: HtmlElement = div(
     p(
       cls := "text-secondary is-size-7",
-      "Upscalers live in ~/.cache/drift/upscale and are passed to every " +
-        "session as --hires-upscalers-dir. sd-server scans the directory at " +
-        "launch, so a session already running needs a restart to see a new " +
-        "one."
+      "Upscalers live in ~/.cache/drift/upscale. The gallery's Upscale " +
+        "task offers them on a picture; an installed one is there at once."
     ),
     div(
       cls := "box bg-table-header py-2 px-3 mb-3",

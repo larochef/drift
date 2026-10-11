@@ -108,8 +108,8 @@ object CivitaiModelListStats {
   /** Civitai serves a literal `null` count on some entries (seen on Flux.2
     * Klein models). jsoniter applies a field default only when the key is
     * *absent* — a null `Int` throws, and one such entry failed the decode of
-    * the whole search page, which surfaced as "No models found" (bugs/20). So
-    * decode through nullable counts and read null as 0.
+    * the whole search page, which surfaced as "No models found". So decode
+    * through nullable counts and read null as 0.
     */
   private case class Raw(
       downloadCount: Option[Int] = None,
@@ -359,8 +359,6 @@ val searchCivitaiModels: PublicEndpoint[
   CivitaiSearchResult,
   Any
 ] =
-  // Under `/api` like every endpoint (bugs/16) — Vite's dev proxy forwards
-  // nothing else.
   base
     .in("civitai-search")
     .in(query[Option[String]]("q"))
@@ -381,7 +379,7 @@ val getCivitaiModelDetail
 /** One image or video posted on Civitai with a model (`specs/24`) — only what a
   * gallery tile and its viewer need: the post's `meta` (its recipe) came back
   * empty on every image probed on 2026-09-11. All but `id` and `url` is
-  * optional, since one null count once failed a whole search page (bugs/20).
+  * optional, since one null count once failed a whole search page.
   */
 case class CivitaiPostedImage(
     id: Long,

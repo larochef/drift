@@ -15,8 +15,10 @@ shows beside every LoRA in the list, so you can see where each came from.
 
 - **Civitai** opens in LoRA type, filtered to that architecture's base models.
   It is greyed out when the architecture declares no Civitai base model
-  (SenseNova U1.5, which Civitai files under "Other"); hover it for the reason,
-  and it is not offered at all for a chat model. Here the unit is a **version**,
+  (SenseNova U1.5, which Civitai files under "Other"); hover it for the reason.
+  The base models of a built-in architecture come with drift and cannot be
+  changed; an architecture you created takes the ones you give it. The button
+  is not offered at all for a chat model. Here the unit is a **version**,
   not a file.
 - **HuggingFace** lists the LoRAs trained on the architecture's model, most
   downloaded first. The **trained on** choice switches between that model's
@@ -140,7 +142,9 @@ The generation form has a LoRA picker:
   there rather than leaving the picture unchanged without a word.
 - A LoRA belongs to the checkpoint it was trained on. HiDream O1's are
   trained on the full checkpoint: on the distilled Dev one they wash the
-  picture out ([settings.md](settings.md) has the way around it).
+  picture out ([settings.md](settings.md) has the way around it). The drift
+  runner warns above the picture when a generation at CFG 1 has only LoRAs
+  whose files say they were trained on the full checkpoint.
 
 ## LoRAs for a chat model
 

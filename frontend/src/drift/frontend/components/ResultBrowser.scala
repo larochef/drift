@@ -9,7 +9,7 @@ import com.raquo.laminar.api.L.*
   * view with Back. What a site does its own way is passed in -- its filters,
   * its cards, its detail view -- and what none of them do differently lives
   * here once: the modal and its width, the error banner, the grid, Load More,
-  * Back and Cancel, and the scroll the list is left at (François, 2026-09-17).
+  * Back and Cancel, and the scroll the list is left at.
   */
 class ResultBrowser(
     browsing: BrowserView,

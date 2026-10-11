@@ -1,45 +1,67 @@
-# drift — bug tracker
+# drift — open bugs
 
-Each file in this directory documents **one bug** in this codebase, written to be self-contained: a fixer should be able to work from a single file without any other context. Every file contains: status, severity, symptom, root cause (with file/line references and code excerpts), suggested fix, and verification steps.
+One file, open bugs only, kept short, in the order of their numbers. A bug that is fixed and confirmed is removed
+from here; so is one that is not drift's to fix. Code and specs do not name bugs by number: a comment says what
+the code guards against. Next number: **5**.
 
-## Project context (shared by all bugs)
+## Open
 
-- **drift** manages Stable Diffusion model configurations and runs inference via sd-cpp.
-  See [`../specs/`](../specs) for what the app is meant to become; `00-overview.md`
-  there carries the domain vocabulary these bug reports use.
-- **Layout**: `shared/` (Scala 3 case classes + tapir endpoint definitions, cross-compiled JVM/JS), `backend/` (tapir + Netty JVM server), `frontend/` (Laminar/Scala.js SPA), `backend/resources/reference/` (seed data).
-- **Persistence**: no database. Each entity is one JSON file at `~/.config/drift/<entityType>/<id>.json` (`architectures`, `models`, `running`), read/written by `backend/src/drift/backend/storage/StorageService.scala`. Entities are defined in `shared/src/drift/shared/Api.scala`; generic CRUD endpoints are generated in `backend/src/drift/backend/routes/RouteHelpers.scala` from the endpoint values in `Api.scala`.
-- **Frontend pattern**: services (`frontend/src/drift/frontend/services/*`) own an `EventBus` of commands and a `Var` of state, exposing `effects` (bindings to apply on mount) and `events` (outcomes to observe). Pages/forms are classes holding `Var` state with a `snapshot()` method read on save. Laminar is used; note that `defaultValue :=` on inputs is a one-shot uncontrolled attribute (this is the root cause of Bug 4).
-- **Build**: Mill (`build.mill`); frontend is compiled to JS and served by the backend on port 4321.
+### 1 — Redrawing a part already redrawn ruins the skin (medium)
 
-## Interdependencies (fix order hints)
+The reported chain, all Qwen Image 2.1 at 0.4: SeedVR2 1k → 4k, full redraw, then a one-tile selection redrawn to remove
+a line — the last pass made the skin much worse. Measured on a generated subject
+(`~/dev/redraw-experiments/2026-10-05-edit`, `FINDINGS.md` §8):
 
-- **Bug 1 ↔ Bug 7**: both are in the inference edit/create form. Bug 7 (select shows no selection) is invisible while Bug 1 (wrong instance saved) exists; fix 1 first, then 7.
-- **Bug 3 ↔ Bug 10 ↔ Bug 14**: the slashed-id 500 (3) is a classic trigger of the dead pipeline (14); the backend hardening suggested in 10 (create parent dir / atomic write) also mitigates 3.
-- **Bug 4** is independent of the others but touches the same forms as 1 and 7 — re-check those flows after changing input bindings.
-- **Bug 5 and 6** are both "a field is dropped on save" in the architecture edit path; a single pass over `snapshot()`/`handleSave` can fix both.
-- **Bug 8, 12, 13** are isolated; any order.
-- **Bug 16** is fixed (2026-09-11, with `specs/24`): both halves landed — the
-  Civitai endpoints are under `/api`, and unmatched `/api/*` paths answer 404
-  instead of the SPA shell.
-- **Bug 15** was the actual cause of "saving doesn't work" and gates any
-  manual test of the model list, including the checks for Bug 9.
-- **Bug 11** is backend-only and latent; do it with a quick API-level check.
+- no redraw removes the line, at any strength, masked or not;
+- the full redraw at 0.4 is what costs the texture of a SeedVR2 picture (grain 2.46 → 1.98; kept at 0.25);
+- the redraw's paste moves the skin around the selection by 1.1–2.2 levels; with the ramp kept within 64 px
+  (`TileBlending.paste`'s `reach`, which edit uses), 0.2–0.3.
 
-## Dead code
+To do:
+1. **To decide:** the redraw's paste kept within 64 px instead of fading to the window's edge.
+2. **"Upscale this selection again"** (designed, not built): on a picture that is an upscale, the window around
+   the selection is cut from the picture it was upscaled from, upscaled by the same model, and the selection
+   pasted within 64 px. Measured: the line is gone, the texture is the picture's, no join, 44 s.
 
-All entries previously listed here have been resolved: `GenericRowEditor`,
-`SearchBrowser` and `EntityService` were deleted, `CivitaiService` is now what
-`CivitaiBrowser` talks to, and `InferenceForm.valid` was a non-reactive `val` that
-is now a `def`.
+### 2 — SeedVR2 leaves the GPU idle while the CPU works (low to medium, speed only)
 
-Remaining known dead code lives in `ArchitectureService` — a complete, unused model
-pipeline (four commands, four events, a second `_allModels`). It is tracked as a work
-item in [`../specs/04-run-configurations.md`](../specs/04-run-configurations.md)
-rather than here, because removing it belongs with that feature's refactor.
+Measured (`~/dev/redraw-experiments/2026-10-06-seam`): drift spends 6 s between two tiles (decode, checks,
+colour match, paint) with the runner idle — about 5 % of a tiled upscale; inside a job the runner's own gaps
+(PNG encode, VAE stitch, per-layer `hipFree`) cost 1 to 9 %.
 
-## Conventions
+To do:
+1. drift: submit tile n + 1 as soon as tile n's answer is in and finish tile n in an ox fork — upscales only; a
+   redraw or an edit cuts the next crop from the painted picture.
+2. Runner: the PNG encode and the stitch off the worker thread; the next VAE tile cut while one runs; a buffer
+   pool in the SeedVR2 VAE.
 
-- One file per bug, numbered in priority order; file name = `NN-short-slug.md`.
-- When a bug is fixed: set **Status** in the file to `fixed`.
-- Line numbers in the files are from the tree as of the date of writing; use the quoted code snippets as anchors, not the exact line numbers.
+### 3 — Klein 9B with a 2048² reference fails on the runner (low to medium)
+
+`requirement failed: 83968 ints at once`, 2048² picture with one 2048² reference, 4 steps; 1536² runs in 100 s.
+Not looked into — a buffer of ints (positions?) outgrows a limit in or under `Flux2Pipeline`. Worth it because
+a 4096² edit would run at half size and come back ×2 instead of ×4, which is gentler on faces.
+
+### 4 — LTX decode crawls on long videos (high for long videos)
+
+A 10 s, 48 fps, 40 step video (473 frames of 512²) was not done an hour after its last step. The decode is not
+computing: memory is oversubscribed, the kernel reclaims pages of the mapped weight files, each reclaim evicts
+the GPU queues, and every `hipFree` in `LtxVideoVae.conv` waits for them. GPU at 1–3 %, memory pressure `full`
+45 %, 60 GB on the GPU + 42 GB of mapped files on a 121 GB machine. The decode holds every frame at every stage
+(about 12 GB for 473 frames).
+
+Done: the decode line and bar for LTX; quantized weights read in place (no decoded copy, 10 GB on the GPU
+instead of 51 for the transformer).
+
+To do:
+1. Measure the 17 GB of the 60 unaccounted for: `hipMemGetInfo` after the load, after the last step, at each
+   decode stage.
+2. Decode in a window of frames (the 3×3×3 convolutions need one frame each side), so the peak no longer grows
+   with the length.
+3. Reuse the buffers — done for every model at once (2026-10-11): `HipOps` keeps released buffers for the next
+   allocation of their size and finds one by address. Same output to the byte on SeedVR2, decode 12 % faster with
+   memory to spare; not yet run on a long LTX decode, where it should count most.
+4. A memory warning when a video's own weights and decode exceed the machine (`MemoryHeadroom`).
+5. Decode bars for Wan and MiniMax H3 (they have the line only).
+
+Declined (2026-10-08): releasing Gemma between the prompt and the decode — every component stays loaded for the
+next generation.

@@ -35,7 +35,7 @@ now shows both, and the model card no longer loses its gallery.
 - `ModelExample(url, video, prompt)`; `HuggingFaceModelInfo.preview` and
   `exampleCount`, `HuggingFaceModelDetail.examples` (`shared/.../Api.scala`),
   filled by drift.
-- `backend/.../routes/HuggingFaceExamples.scala` reads the examples of a
+- `backend/.../huggingface/HuggingFaceExamples.scala` reads the examples of a
   listing (`expand[]=cardData`, `expand[]=siblings`, with every other field
   the tiles use: an expanded listing carries only what it names), of a model's
   info, and a card's gallery. `widget` is lenient — a list, a single entry,

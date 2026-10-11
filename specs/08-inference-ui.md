@@ -10,7 +10,7 @@ built from what the loaded model reports it supports, not from hardcoded lists.
 ## What it does
 
 - While a session is live the configuration list swaps to the generation
-  panel (`pages/generate/GenerationPanel`), during loading too, with an honest
+  panel (`generate/GenerationPanel`), during loading too, with an honest
   loading state; Stop returns to the list. Projects host the same panel in
   their workspace (19).
 - **↻ Restart** (`POST /api/sessions/{id}/restart`, `SessionManager.restart`:
@@ -52,7 +52,7 @@ built from what the loaded model reports it supports, not from hardcoded lists.
   and the Stop where they are —, then the next one waiting, falling back to
   the newest when none is: showing the newest submission meant cancelling a queued job
   replaced a live generation on screen with that cancellation, which read as
-  the running job having been cancelled too (François, 2026-09-18).
+  the running job having been cancelled too.
 - **⏹ Cancel is always offered** while a job is active. Where the server says
   it can cancel (`cancel_queued` / `cancel_generating` in `features_by_mode`),
   it cancels. Where it says it cannot, the button asks first — killing sd-cpp
@@ -70,9 +70,9 @@ built from what the loaded model reports it supports, not from hardcoded lists.
   queued instead — upstream drops them on request (`cancel_queued: true`,
   `cancel_generating: false` for img_gen), so the interrupt is the real case
   and that one is theoretical.
-- `pages/generate/GenerationCancel` holds the rule — the `features_by_mode`
+- `generate/GenerationCancel` holds the rule — the `features_by_mode`
   reading, the warning, the two commands and the button itself — for the result
-  and the queue alike; `pages/generate/GenerationQueue` is the list.
+  and the queue alike; `generate/GenerationQueue` is the list.
 - A stop is never instant (a running job ends at sd-cpp's next step boundary, a
   forced one once the server is down), so the button spins and stops taking
   clicks until it lands: `GenerationService.cancelling` holds the ids asked for,
@@ -116,11 +116,12 @@ built from what the loaded model reports it supports, not from hardcoded lists.
   already ended alone, so the polls failing after the kill do not turn it into
   a failure),
   `GET /api/outputs/{date}/{file}`.
-- `backend/.../sdserver/`: `GenerationManager` (facade) over
-  `GenerationSubmissions`, `GenerationMonitor` (one daemon poll thread per
-  native job, so results persist with no browser watching),
-  `GenerationRegistry`, `GenerationFiles`, `NativeJobs` (the sdcpp client),
-  `ScratchGenerations` (22).
+- `backend/.../generation/`: `GenerationManager` (facade) over
+  `GenerationSubmissions`, `GenerationMonitor` (one poll per native job, so
+  results persist with no browser watching), `GenerationRegistry` and
+  `ScratchGenerations` (22); `outputs/GenerationFiles` writes what a job made;
+  `nativejobs/NativeJobs` is the client of the job protocol
+  (`drift.protocol`, 55).
 - Outputs: `~/.local/share/drift/outputs/<date>/<id>-<n>.<ext>` with an
   `<id>.json` sidecar (the `Generation`). Input images are externalized to
   `<id>-init.png`, `<id>-ref-<n>.png` etc. and the recorded parameters carry
@@ -129,7 +130,7 @@ built from what the loaded model reports it supports, not from hardcoded lists.
 
 ## Notes
 
-- **Reference images keep their shape** (`sdserver/ReferenceImages`, 2026-09-22).
+- **Reference images keep their shape** (`nativejobs/ReferenceImages`, 2026-09-22).
   sd-server's `auto_resize_ref_image` decides two resizes: with the default it
   stretches every reference to the output's width × height while decoding the
   request (leejet/stable-diffusion.cpp#2004 — still the default after the fix)

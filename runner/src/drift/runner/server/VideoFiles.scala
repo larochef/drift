@@ -72,9 +72,8 @@ final case class SoundFile(file: Path, codec: Seq[String])
 
 /** A clip's frames, read from `ffmpeg` one at a time: a frame is on the heap
   * while its reader holds it and no longer, so a clip of any length is read in
-  * the room of one frame (`bugs/54`). The frames are `width × height` at
-  * `rate`; `count` is the probe's (`FramesProbe`). Closing it stops the
-  * decoder.
+  * the room of one frame. The frames are `width × height` at `rate`; `count` is
+  * the probe's (`FramesProbe`). Closing it stops the decoder.
   */
 final class ClipFrames private[server] (
     val width: Int,
@@ -139,9 +138,9 @@ final class ClipFrames private[server] (
 /** A webm being written: `ffmpeg` runs from the first line, takes each frame as
   * it is made and writes `output` as it goes, so a video of any length is
   * encoded in the room of one frame, and what is written when the frames stop
-  * coming is a video that plays (`bugs/54`). Frames are `width × height` at
-  * `rate`; `sound` is muxed beside them, whatever it lasts: ffmpeg's
-  * `-shortest` would cut the frames at a shorter soundtrack's end.
+  * coming is a video that plays. Frames are `width × height` at `rate`; `sound`
+  * is muxed beside them, whatever it lasts: ffmpeg's `-shortest` would cut the
+  * frames at a shorter soundtrack's end.
   */
 final class WebmWriter private[server] (
     output: Path,
@@ -281,8 +280,7 @@ object VideoFiles {
     * lasts: one that runs past the last frame is cut there, a shorter one ends
     * in silence. ffmpeg's own `-shortest` cut the frames instead, and closed
     * its input on a run that still had frames to write — the "Broken pipe" a
-    * restored clip failed on once its soundtrack was a second short
-    * (`bugs/54`).
+    * restored clip failed on once its soundtrack was a second short.
     */
   def webm(video: Video): Array[Byte] = {
     require(video.frames.nonEmpty, "a video without frames")

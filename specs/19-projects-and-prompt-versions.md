@@ -126,7 +126,7 @@ them.
   `services/ProjectService` (folds the status socket's completions, reloads
   projects when a pushed generation names an unknown version).
   `GenerationPanel` takes a `ProjectBinding` and exposes `applyVersion`,
-  `applyProposal`, `applyProposalAndRun` and `sessionControls`; `pages/gallery/GenerationDetailHost` serves both the
+  `applyProposal`, `applyProposalAndRun` and `sessionControls`; `gallery/GenerationDetailHost` serves both the
   gallery and the workspace, parameterized by the pool it resolves in.
 
 ## Notes

@@ -48,7 +48,7 @@ private[storage] case class Migration(
 )
 
 /** Versioned migrations over the stored entities, the way flyway versions a
-  * database (`specs/38-entity-migrations.md`, François, 2026-09-19).
+  * database (`specs/38-entity-migrations.md`).
   *
   * The configuration directory carries one version in `schema.json`; each
   * migration above it runs in order, and the version is written last. Before
@@ -122,7 +122,7 @@ final class Migrations(configDir: Path, resource: String = "migrations") {
     if (from > target) {
       // A directory written by a newer drift. Refusing to start is the honest
       // answer and will be the answer later; while drift is pre-release the
-      // warning is loud and the app goes on (François, 2026-09-19).
+      // warning is loud and the app goes on.
       logger.warn(
         s"!!! The configuration in $configDir is at schema version $from, " +
           s"and this build knows only $target. It was written by a newer " +
@@ -318,107 +318,7 @@ private[storage] object Migrations {
     (ujson.Value, (String, String) => Option[ujson.Value]) => Option[
       ujson.Value
     ]
-  ] = Map(
-    // `specs/43`: a configuration runs on its architecture's upstream engine,
-    // whose name is its tool's ("SdCpp", "LlamaCpp"); sd-cpp when the
-    // architecture is gone, as a launch reads it
-    "runner-from-architecture" -> { (record, stored) =>
-      Option.when(!record.obj.contains("runner")) {
-        val tool = record.obj
-          .get("architectureId")
-          .flatMap(id => stored("architectures", id.str))
-          .flatMap(_.obj.get("tool"))
-          .getOrElse(ujson.Str("SdCpp"))
-        record.obj("runner") = tool
-        record
-      }
-    },
-    // `specs/46`: a starter configuration still on its upstream engine runs on
-    // the drift runner when its architecture does and the runner for its tool
-    // is installed — the runner is the default wherever it is available
-    // (François, 2026-10-03); a PiD starter left on sd-cpp cut a 4096²
-    // upscale into nine tiles where the runner decodes it in one
-    "starters-on-runner" -> { (record, stored) =>
-      val seeded = stored("settings", "seeded-run-configurations")
-        .flatMap(_.obj.get("ids"))
-        .map(_.arr.map(_.str).toSet)
-        .getOrElse(Set.empty)
-      val runnerOf =
-        Map("SdCpp" -> "drift-runner-images", "LlamaCpp" -> "drift-runner")
-      val architecture = record.obj
-        .get("architectureId")
-        .flatMap(id => stored("architectures", id.str))
-      Option.when(
-        record.obj.get("id").exists(id => seeded.contains(id.str)) &&
-          !record.obj.get("runner").contains(ujson.Str("DriftRunner")) &&
-          architecture.exists(
-            _.obj
-              .get("runners")
-              .exists(_.arr.contains(ujson.Str("DriftRunner")))
-          ) &&
-          architecture
-            .flatMap(_.obj.get("tool"))
-            .flatMap(tool => runnerOf.get(tool.str))
-            .flatMap(stored("runtimes", _))
-            .exists(_.obj.get("valid").contains(ujson.Bool(true)))
-      ) {
-        record.obj("runner") = ujson.Str("DriftRunner")
-        record
-      }
-    },
-    // `bugs/55`: the turbo LoRAs of Qwen Image 2.1 are told apart by their
-    // file, whatever site they were installed from. Each takes the noise
-    // levels its authors give (nodes the model shifts for the image's size;
-    // Fun-Acc's are final, hence its shift of 1) where a flow shift of 3 stood
-    // in for them. One whose levels were typed already is left alone.
-    "qwen-turbo-lora-levels" -> { (record, _) =>
-      val levels = Map(
-        // Viggle 6-step v0.2.1, rank 256
-        "2a0148f5c73abbed5f97da5ea356e439318aadb281d01fce4af39cdf43728803" ->
-          (6, List(1.0, 0.9375, 0.875, 0.75, 0.5, 0.25), None),
-        // Pruna 5-step v0.1
-        "021a6228a0fcd217275190b89072416a2f28548e8e18fe049531dc9b77ef89bd" ->
-          (5, List(1.0, 0.887, 0.75, 0.5, 0.25), None),
-        // alibaba-pai Fun-Acc 4-step
-        "764c56ae94f330b6d06ccc322f95e1b8ce46424ddde5899a15432f95f720d558" ->
-          (4, List(1.0, 0.917, 0.7862, 0.5495), Some(1.0))
-      )
-      val known = record.obj
-        .get("files")
-        .flatMap(_.arrOpt)
-        .getOrElse(Nil)
-        .flatMap(_.obj.get("sha256"))
-        .flatMap(_.strOpt)
-        .flatMap(levels.get)
-        .headOption
-      val sampling = record.obj.get("sampling").flatMap(_.objOpt)
-      val typed =
-        sampling.flatMap(_.get("sigmas")).flatMap(_.arrOpt).exists(_.nonEmpty)
-      known.filterNot(_ => typed).map { (steps, nodes, shift) =>
-        val settings = ujson.Obj.from(sampling.getOrElse(Nil))
-        settings("steps") = steps
-        settings("cfg") = 1.0
-        settings("sigmas") = ujson.Arr.from(nodes)
-        shift match {
-          case Some(value) => settings("flowShift") = value
-          case None        => settings.obj.remove("flowShift")
-        }
-        record.obj("sampling") = settings
-        record
-      }
-    },
-    // `specs/03`: a checkpoint slot's family is what the browser searches,
-    // and Wan 2.2's text encoder is umt5-xxl — `t5xxl` found Google's T5s
-    "umt5-xxl-family" -> { (record, _) =>
-      val slots = record.obj.get("checkpoints").map(_.arr).getOrElse(Nil)
-      val renamed =
-        slots.filter(_.obj.get("familyId").contains(ujson.Str("t5xxl")))
-      Option.when(renamed.nonEmpty) {
-        renamed.foreach(_.obj("familyId") = ujson.Str("umt5-xxl"))
-        record
-      }
-    }
-  )
+  ] = Map.empty
 
   /** A stored value as the text a `map` is keyed by: `true`, `7`, `"Context"`
     * all read as themselves, without their JSON quotes.

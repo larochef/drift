@@ -3,14 +3,18 @@ package drift.backend
 import drift.backend.assistant.{AssistantMedia, AssistantProxy}
 import drift.backend.auth.AuthTokens
 import drift.backend.cache.{CacheInventory, ModelCache}
+import drift.backend.civitai.CivitaiClient
 import drift.backend.conversion.ConversionManager
 import drift.backend.download.*
+import drift.backend.generation.*
+import drift.backend.huggingface.{HuggingFaceApi, HuggingFaceDownloads}
 import drift.backend.lora.LoraManager
+import drift.backend.outputs.*
 import drift.backend.postprocess.PostProcessManager
+import drift.backend.process.ChildProcesses
 import drift.backend.projects.ProjectManager
 import drift.backend.routes.*
 import drift.backend.runtime.{RuntimeCatalog, RuntimeManager}
-import drift.backend.sdserver.*
 import drift.backend.session.{MachineMonitor, SessionManager}
 import drift.backend.storage.StorageService
 import drift.backend.upscale.UpscalerManager
@@ -80,7 +84,6 @@ import sttp.tapir.server.netty.sync.*
     modelScope = modelScopeDownloads,
     downloader = downloader,
     client = httpClient,
-    civitaiToken = () => authTokens.civitai,
     background = background
   )
 
@@ -100,7 +103,6 @@ import sttp.tapir.server.netty.sync.*
     modelScope = modelScopeDownloads,
     downloader = downloader,
     client = httpClient,
-    civitaiToken = () => authTokens.civitai,
     catalog = storage.loraCatalog,
     lorasRoot = locations.lorasRoot,
     background = background
@@ -112,7 +114,6 @@ import sttp.tapir.server.netty.sync.*
     storage = storage,
     civitaiClient = civitaiClient,
     downloader = downloader,
-    civitaiToken = () => authTokens.civitai,
     upscaleRoot = locations.upscaleRoot,
     background = background
   )
@@ -123,7 +124,6 @@ import sttp.tapir.server.netty.sync.*
     runtimeManager,
     logsRoot = locations.logsRoot,
     lorasRoot = locations.lorasRoot,
-    upscaleRoot = locations.upscaleRoot,
     background = background
   )
   val outputsRoot = locations.outputsRoot
@@ -141,7 +141,8 @@ import sttp.tapir.server.netty.sync.*
     storage,
     locations.lorasRoot
   )
-  val generationHistory = GenerationHistory(outputsRoot, generationManager)
+  val generationHistory =
+    GenerationHistory(outputsRoot, generationManager.forget)
   val generationImports = GenerationImports(outputsRoot)
   val projectCovers =
     drift.backend.projects.ProjectCovers(
@@ -207,7 +208,7 @@ import sttp.tapir.server.netty.sync.*
       upscalerEndpoints(upscalerManager) ++
       authEndpoints(storage, authTokens) ++
       fileEndpoints ++
-      huggingFaceEndpoints(() => authTokens.huggingFace) ++
+      huggingFaceEndpoints(HuggingFaceApi(() => authTokens.huggingFace)) ++
       modelScopeEndpoints(modelScopeApi) ++
       civitaiEndpoints(civitaiClient)
 
@@ -254,6 +255,8 @@ import sttp.tapir.server.netty.sync.*
     logger.info("Stopping sessions and server")
     // Children first: killing drift must not orphan an sd-server.
     sessionManager.stopAll()
+    // And whatever else is running: an sd-cli of an upscale or a conversion.
+    ChildProcesses.stopAll()
     server.stop()
   }))
 

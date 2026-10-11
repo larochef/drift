@@ -1,6 +1,6 @@
 # 54 — Step preview: the picture while it is sampled
 
-**Status:** done in code; previews read from the runner's job endpoint on FLUX.2 [klein], Krea 2, Qwen Image 2.1, Mage-Flow and HiDream O1, and a video's on Wan 2.2 A14B, LTX 2.5 and MiniMax H3; images seen in the Sandbox on an isolated drift (HiDream O1, a batch of two on Qwen Image 2.1, and sd-cpp's own on ERNIE-Image); a video's preview and the checkbox not seen in a page
+**Status:** done; pictures and videos seen in the page, with the checkbox and a video's Pause
 **Depends on:** 08 (the inference UI), 11 (the status socket), 42 (the drift runner), 43 (a runner per configuration), 44 (generation progress)
 
 A picture takes seconds to minutes, a video longer, and the bar says only
@@ -146,7 +146,7 @@ instead of the last.
   session's whole list) nor of `Session` (resent with each progress
   redraw).
 - **The page.** `GenerationService.previews` mirrors the topic;
-  `StepPreviewView` (`frontend/.../pages/generate`) shows the entry of the
+  `StepPreviewView` (`frontend/.../generate`) shows the entry of the
   generation on screen, in `GenerationResult` under `LogProgressView`: one
   `<img>` on a data URL, enlarged by CSS (`.step-preview`: 24rem wide at
   most, 60 % of the window's height at most, its shape kept), which plays a
@@ -227,13 +227,8 @@ instead of the last.
 
 ## Remaining
 
-- The paused preview (`StepPreviewView`'s Pause, a video's only) seen in a
-  page.
-
-
-- Not looked at in a page: a video's preview (wide and tall), the checkbox,
-  the project page, a tall picture, a generation queued behind another,
-  Cancel.
+- Not looked at in a page: a tall picture, a generation queued behind
+  another, Cancel.
 - FLUX.2 and Mage-Flow deserve a better reading than one matrix a token: a
   small decoder (a tiny autoencoder, as sd-cpp's `--preview tae`), or a
   projection over a token's neighbours, within the same cost.

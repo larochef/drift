@@ -4,11 +4,11 @@ import drift.frontend.components.{Component, ScrollLock}
 
 import com.raquo.laminar.api.L.*
 
-/** Adding a runtime is a modal with the ways of doing it behind tabs (François,
-  * 2026-09-10): the page itself lists what is installed, which is what it is
-  * usually consulted for, and the forms are a step away rather than two
-  * sections always open below. The forms are built once by the section, so
-  * switching tabs - or closing and reopening - does not lose what was typed.
+/** Adding a runtime is a modal with the ways of doing it behind tabs: the page
+  * itself lists what is installed, which is what it is usually consulted for,
+  * and the forms are a step away rather than two sections always open below.
+  * The forms are built once by the section, so switching tabs - or closing and
+  * reopening - does not lose what was typed.
   */
 class AddRuntimeModal(
     installForm: => InstallRuntimeForm,

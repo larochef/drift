@@ -53,8 +53,8 @@ class PostProcessService(statusSocket: StatusSocketService)
   /** The jobs whose card is still open: `jobs` minus the finished ones closed
     * with the card's × (`specs/15-post-hoc-resize.md`). The job itself is kept
     * — its result is in the gallery — but a card left over from the first
-    * redraw of an output must not be read as the second one's (François,
-    * 2026-09-20). Browser-session state: a reload brings the cards back.
+    * redraw of an output must not be read as the second one's. Browser-session
+    * state: a reload brings the cards back.
     */
   val visibleJobs: Signal[List[PostProcessJob]] =
     _jobs.signal

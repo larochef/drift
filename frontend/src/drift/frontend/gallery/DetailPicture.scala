@@ -1,0 +1,196 @@
+package drift.frontend.gallery
+
+import drift.shared.*
+
+import com.raquo.laminar.api.L.*
+
+/** The picture the detail view shows and everything drawn over it
+  * (`specs/12-gallery.md`, `specs/15-post-hoc-resize.md`): which output is on
+  * screen, the box dragged on it, the tile grid and its offset, and the tiles a
+  * job is painting there right now.
+  *
+  * These belong together and are read together — the viewer draws them, the
+  * post-processing panels write them — and they are one signal chain: what is
+  * shown decides which job's tiles are drawn, which decides what each tile
+  * looks like. Kept in the detail view's body among its view fragments, a new
+  * link in that chain lands above the one it reads and is `null` when the class
+  * is built (`specs/29-split-oversized-files.md`). Here the order is the file's
+  * own, and the compiler holds it.
+  */
+class DetailPicture(
+    generation: Generation,
+    /** The original this entry was made from, once the gallery holds it. */
+    parent: Signal[Option[Generation]],
+    /** Every post-processing job, to find the one on this picture. */
+    jobs: Signal[List[PostProcessJob]],
+    /** Which section of the right column is open, and whether it is folded
+      * away: a box may only be drawn while a task that acts on one is on
+      * screen.
+      */
+    openSection: Var[String],
+    panelHidden: Var[Boolean],
+    openTask: Var[String],
+    initialOutputIndex: Int
+) {
+
+  val selectedIndex = Var(initialOutputIndex)
+
+  /** Comparing a derived entry with what it was made from. The header offers
+    * it, the viewer shows what it names.
+    */
+  val showOriginal = Var(false)
+
+  /** The parent's output this entry was made from. */
+  val originalOutput: Signal[Option[GenerationOutput]] =
+    parent
+      .map(loaded =>
+        generation.derivation.map { d =>
+          loaded
+            .flatMap(_.outputs.find(_.fileName == d.parentFileName))
+            .getOrElse {
+              // until the parent is loaded: a picture, unless the file's
+              // name says a video (a SeedVR2 upscale's parent may be one)
+              val format = d.parentFileName.split('.').last.toLowerCase
+              val video = Set("webm", "mp4", "mkv", "mov").contains(format)
+              GenerationOutput(
+                date = d.parentDate,
+                fileName = d.parentFileName,
+                url = s"/api/outputs/${d.parentDate}/${d.parentFileName}",
+                mimeType = if (video) s"video/$format" else "image/png",
+                format = if (video) format else "png"
+              )
+            }
+        }
+      )
+      .distinct
+
+  /** The task on screen, if one is: only on the result, and only while the
+    * post-processing panel is the one showing.
+    */
+  private val taskOnScreen: Signal[Option[String]] =
+    showOriginal.signal
+      .combineWith(openSection.signal, panelHidden.signal, openTask.signal)
+      .map((original, section, hidden, task) =>
+        Option.when(!original && !hidden && section == "post")(task)
+      )
+      .distinct
+
+  /** Whether a tiled task is on screen: its grid is drawn over the picture. */
+  val tiled: Signal[Boolean] =
+    taskOnScreen.map(_.exists(PostProcessSection.TiledTasks.contains)).distinct
+
+  /** Whether a box may be drawn on the picture: only while a task that takes a
+    * selection is the one on screen — the upscalers work the whole picture.
+    * Drawing one that nothing on screen can act on was the tool appearing where
+    * it does not belong.
+    */
+  val selectable: Signal[Boolean] =
+    taskOnScreen
+      .map(_.exists(PostProcessSection.SelectionTasks.contains))
+      .distinct
+
+  /** The output on screen: the one the strip points at, or the original. */
+  val shownOutput: Signal[Option[GenerationOutput]] =
+    selectedIndex.signal
+      .combineWith(showOriginal.signal, originalOutput)
+      .map((index, original, parentOutput) =>
+        if (original) parentOutput else generation.outputs.lift(index)
+      )
+      .distinct
+
+  /** The image the viewer shows and the part of it a redraw should repaint
+    * (`specs/27-redraw.md`): the viewer writes it, the tiled tasks read it.
+    */
+  val viewed = Var(Option.empty[ViewedImage])
+
+  /** How the task on screen would cut the picture — its tile size, and for a
+    * task that takes a selection its margin and window. The panel writes it as
+    * its fields are typed; the viewer reads it to draw the grid, to count tiles
+    * under the box and to stick to their boundaries.
+    */
+  val tileGeometry = Var[TileGeometry](RedrawGeometry())
+
+  /** Whether the tiles the open task would run are drawn over the picture. The
+    * task's checkbox writes it, the viewer reads it; it belongs to the image on
+    * screen rather than to the host, like the rest of the panel's fields.
+    */
+  val showTileGrid = Var(true)
+
+  /** Where that grid is cut. Dragging a line of it on the picture moves it, so
+    * a face can be put inside one tile instead of across the seam between two;
+    * the task sends it with the job.
+    */
+  val gridOffset = Var(TileOffset(0, 0))
+
+  /** The job whose tiles the picture shows, if one is on this very output: only
+    * one job runs on an image at a time (`specs/15-post-hoc-resize.md`), so
+    * there is never a choice to make.
+    */
+  val jobOnPicture: Signal[Option[PostProcessJob]] =
+    jobs
+      .combineWith(shownOutput)
+      .map((all, output) =>
+        output.flatMap(shown =>
+          all.find(job =>
+            job.sourceDate == shown.date &&
+              job.sourceFileName == shown.fileName &&
+              job.tiles.nonEmpty &&
+              (job.state.isActive || job.state == PostProcessState.Paused)
+          )
+        )
+      )
+      .distinct
+
+  /** The picture the job on this output has made so far, as it would end now:
+    * the address of a copy scaled for the screen and of the file at full size
+    * (`specs/15-post-hoc-resize.md`). Each finished tile is a new address, so a
+    * tile painted in is the only thing that fetches it again.
+    */
+  val jobPicture: Signal[Option[DetailPicture.JobPicture]] =
+    jobOnPicture
+      .map(_.flatMap { job =>
+        job.paintedTiles.filter(_ > 0).map { painted =>
+          val base = s"/api/post-process-jobs/${job.id}/picture?v=$painted"
+          DetailPicture.JobPicture(
+            s"$base&side=${PostProcessPicture.ScreenSide}",
+            base
+          )
+        }
+      })
+      .distinct
+
+  /** The tiles drawn over the picture, each with what has become of it
+    * (`specs/15-post-hoc-resize.md`): a job's own while one is on this image —
+    * done, running, still to come — else the open task's, which follow the
+    * panel's fields and the box drawn on the picture.
+    */
+  val drawnTiles: Signal[List[TilePaint]] =
+    jobOnPicture
+      .combineWith(viewed.signal, tileGeometry.signal)
+      .map { (job, shown, geometry) =>
+        job match {
+          case Some(running) =>
+            val done = running.progress.fold(0)(_.completed)
+            val active = running.state.isActive
+            running.tiles.zipWithIndex.map { (tile, index) =>
+              if (index < done) TilePaint(tile, TileState.Done)
+              else if (index == done && active)
+                TilePaint(tile, TileState.Running)
+              else TilePaint(tile, TileState.Waiting)
+            }
+          case None =>
+            shown.toList
+              .flatMap(picture =>
+                geometry
+                  .layoutFor(picture.selection, picture.width, picture.height)
+              )
+              .map(TilePaint(_, TileState.Waiting))
+        }
+      }
+      .distinct
+}
+
+object DetailPicture {
+
+  case class JobPicture(screen: String, fullSize: String)
+}

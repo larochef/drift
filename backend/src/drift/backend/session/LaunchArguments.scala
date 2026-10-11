@@ -18,11 +18,7 @@ final private[session] class LaunchArguments(
     /** The LoRA root; a server is given its architecture's folder in it as
       * `--lora-model-dir` (`specs/09-lora-management.md`).
       */
-    lorasRoot: Path,
-    /** The flat upscaler store passed as `--hires-upscalers-dir`
-      * (`specs/10-generation-time-upscaling.md`).
-      */
-    upscaleRoot: Path
+    lorasRoot: Path
 ) {
 
   /** The configuration, its architecture and the argv of a one-shot `sd-cli`
@@ -89,9 +85,9 @@ final private[session] class LaunchArguments(
 
   /** The argv `configuration` launches with on `launchRuntime` — cached weight
     * paths, the rule of the runtime it actually runs on — or the blockers. With
-    * a `port` it is a server's, listening there with the LoRA and upscaler
-    * roots it scans; a session and a job server launch the same way. Without, a
-    * one-shot `sd-cli` run's, which scans neither.
+    * a `port` it is a server's, listening there with the LoRA root it scans; a
+    * session and a job server launch the same way. Without, a one-shot `sd-cli`
+    * run's, which scans none.
     */
   def argumentsFor(
       configuration: RunConfiguration,
@@ -122,7 +118,6 @@ final private[session] class LaunchArguments(
             ),
         port,
         loraModelDirectory = port.map(_ => lorasRoot.toString),
-        hiresUpscalersDirectory = port.map(_ => upscaleRoot.toString),
         rule =
           RuntimeRule.forRuntime(launchRuntime.runtime, storage.runtimeRules),
         // Only files on disk: llama-server refuses to start on a missing one.

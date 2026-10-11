@@ -1,9 +1,10 @@
 package drift.backend.postprocess
 
 import drift.backend.Background
-import drift.backend.process.ProcessOutput
+import drift.backend.nativejobs.NativeJobs
+import drift.backend.outputs.GenerationHistory
+import drift.backend.process.ChildProcesses
 import drift.backend.runtime.LaunchRuntime
-import drift.backend.sdserver.{GenerationHistory, NativeJobs}
 import drift.backend.session.SessionLog
 import drift.backend.storage.StorageService
 import drift.shared.*
@@ -360,7 +361,7 @@ final private[postprocess] class PostProcessJobs(
           // loop, seeing the pause flag, records a pause rather than a
           // failure. That tile is run again on resume.
           if (force) {
-            cancellation.process.get().foreach(_.destroyForcibly())
+            cancellation.process.get().foreach(ChildProcesses.terminate)
             cancellation.nativeJob
               .get()
               .foreach((port, nativeJobId) =>
@@ -447,7 +448,7 @@ final private[postprocess] class PostProcessJobs(
     case Some(job) if job.state.isActive =>
       Option(cancellations.get(id)).foreach { cancellation =>
         cancellation.stopped.set(true)
-        cancellation.process.get().foreach(_.destroyForcibly())
+        cancellation.process.get().foreach(ChildProcesses.terminate)
         cancellation.nativeJob
           .get()
           .foreach((port, nativeJobId) => NativeJobs.cancel(port, nativeJobId))
@@ -524,13 +525,11 @@ final private[postprocess] class PostProcessJobs(
       s"# ${command.mkString(" ")}\n",
       StandardOpenOption.APPEND
     )
-    val builder = ProcessBuilder(command*)
-      .directory(Path.of(command.head).getParent.toFile)
-      .redirectErrorStream(true)
-    launch.environment.foreach((name, value) =>
-      builder.environment().put(name, value)
+    val process = ChildProcesses.start(
+      command,
+      launch.environment,
+      Some(Path.of(command.head).getParent)
     )
-    val process = builder.start()
     Option(cancellations.get(job.id)).foreach(_.process.set(Some(process)))
     // The output is drained here rather than redirected to the file by the OS:
     // the file is written just the same (`ProcessOutput` mirrors it verbatim),
@@ -538,45 +537,31 @@ final private[postprocess] class PostProcessJobs(
     // a bar on screen while sd-cli draws it.
     val error = AtomicReference(Option.empty[String])
     try
-      supervised {
-        val drained = fork(
-          ProcessOutput.drain(s"postprocess-${job.id}", process, logFile) {
-            line =>
-              noteLine(job, line)
-              // sd-cpp pads its level names: "[ERROR  ]". Only this run's lines
-              // are looked at, since a job's log may already hold earlier ones.
-              if (line.contains("[ERROR"))
-                error.compareAndSet(None, Some(LogProgress.clean(line))).discard
-          }
-        )
-        judge(process, error, drained)
+      ChildProcesses.runToEnd(
+        s"postprocess-${job.id}",
+        process,
+        logFile,
+        Some(PostProcessJobs.TimeoutMinutes.toInt.minutes),
+        background
+      ) { line =>
+        noteLine(job, line)
+        // sd-cpp pads its level names: "[ERROR  ]". Only this run's lines
+        // are looked at, since a job's log may already hold earlier ones.
+        if (line.contains("[ERROR"))
+          error.compareAndSet(None, Some(LogProgress.clean(line))).discard
+      } match {
+        // The exit code alone proves nothing (see `EsrganUpscale`), so the
+        // run's own `[ERROR]` lines decide.
+        case None =>
+          Some(
+            s"sd-cli did not finish within ${PostProcessJobs.TimeoutMinutes} minutes"
+          )
+        case Some(exit) if exit != 0 => Some(s"sd-cli exited with $exit")
+        case Some(_)                 =>
+          error.get().map(line => s"sd-cli reported an error: $line")
       }
     finally Option(cancellations.get(job.id)).foreach(_.process.set(None))
   }
-
-  /** How a finished `sd-cli` run is judged: the exit code alone proves nothing
-    * (see `EsrganUpscale`), so the run's own `[ERROR]` lines decide — read once
-    * the reader has drained what was still in flight when the process ended.
-    */
-  private def judge(
-      process: Process,
-      error: AtomicReference[Option[String]],
-      drained: Fork[Unit]
-  ): Option[String] =
-    if (!process.waitFor(PostProcessJobs.TimeoutMinutes, TimeUnit.MINUTES)) {
-      process.destroyForcibly()
-      Some(
-        s"sd-cli did not finish within ${PostProcessJobs.TimeoutMinutes} minutes"
-      )
-    } else {
-      // A pipe some other process still holds open never ends: closing it
-      // ends the draining, so the scope around it can.
-      if (timeoutOption(10.seconds)(drained.join()).isEmpty)
-        process.getInputStream.close()
-      if (process.exitValue() != 0)
-        Some(s"sd-cli exited with ${process.exitValue()}")
-      else error.get().map(line => s"sd-cli reported an error: $line")
-    }
 
   /** A cancelled job ends here too — its process was killed, or its tile's job
     * cancelled on the server, so the run reports a failure the user asked for.

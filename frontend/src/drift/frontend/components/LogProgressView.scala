@@ -18,9 +18,9 @@ import com.raquo.laminar.api.L.*
   *
   * With no bar in flight there is no animated placeholder: Bulma's
   * indeterminate progress animates `background-position`, which repaints the
-  * element every frame for as long as it is on screen (François, 2026-09-09:
-  * the interface went laggy until the tab lost focus). The last log line says
-  * more than a moving stripe anyway.
+  * element every frame for as long as it is on screen: the interface went laggy
+  * until the tab lost focus. The last log line says more than a moving stripe
+  * anyway.
   */
 class LogProgressView(
     /** The bar in flight, and the last line that was not one. */

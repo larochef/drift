@@ -1,6 +1,7 @@
 package drift.backend.routes
 
-import drift.backend.sdserver.*
+import drift.backend.generation.{GenerationManager, StoredGenerationPreferences}
+import drift.backend.outputs.{OutputPreviews, Outputs}
 import drift.shared.*
 
 import java.nio.file.Files
@@ -63,7 +64,7 @@ def generationEndpoints(
         case -1 => ""
         case i  => fileName.substring(i + 1).toLowerCase
       }
-      val contentType = GenerationManager.mimeTypeFor(extension)
+      val contentType = Outputs.mimeTypeFor(extension)
       val size = Files.size(file)
       ByteRanges.of(range, size) match {
         case ByteRanges.Request.Whole =>

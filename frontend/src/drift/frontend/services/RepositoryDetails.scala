@@ -8,9 +8,9 @@ import com.raquo.laminar.api.L.*
   * asks for exactly that one again.
   *
   * ModelScope answers a tree request with its own failure often enough that a
-  * Retry is what the modal needs ("获取模型目录树失败", François, 2026-09-22): the next
-  * attempt usually works, and until it does the repository shows no file and no
-  * picture, which reads like an empty repository rather than a failure.
+  * Retry is what the modal needs ("获取模型目录树失败"): the next attempt usually works,
+  * and until it does the repository shows no file and no picture, which reads
+  * like an empty repository rather than a failure.
   */
 trait RepositoryDetails[Detail] {
 

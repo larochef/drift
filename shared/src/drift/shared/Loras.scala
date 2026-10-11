@@ -37,12 +37,12 @@ case class LoraFile(
       * interrupted transfer is re-queued after a restart without asking anyone.
       */
     source: ModelSource,
-    stage: LoraFileStage = LoraFileStage.General,
-    sizeBytes: Option[Long] = None,
+    stage: LoraFileStage,
+    sizeBytes: Option[Long],
     /** The content hash the source publishes (Civitai's, HuggingFace's LFS
       * hash), when it does — verified after every fetch, resumed ones included.
       */
-    sha256: Option[String] = None
+    sha256: Option[String]
 ) {
 
   /** The source's own name for the file, without the Civitai prefix or the
@@ -104,21 +104,21 @@ object ConfiguredLora {
   */
 case class LoraSampling(
     /** The count it was made for: more is fine, fewer break the image. */
-    steps: Option[Int] = None,
-    cfg: Option[Double] = None,
-    flowShift: Option[Double] = None,
+    steps: Option[Int],
+    cfg: Option[Double],
+    flowShift: Option[Double],
     /** Its exact noise levels, which replace the schedule and are their own
       * step count. Not for a two-expert model.
       */
-    sigmas: List[Double] = List.empty,
-    sampler: Option[String] = None,
-    scheduler: Option[String] = None,
-    distilledGuidance: Option[Double] = None,
+    sigmas: List[Double],
+    sampler: Option[String],
+    scheduler: Option[String],
+    distilledGuidance: Option[Double],
     /** A pair's high-noise expert, on a two-expert model (wan 2.2). */
-    highNoiseSteps: Option[Int] = None,
-    highNoiseCfg: Option[Double] = None
+    highNoiseSteps: Option[Int],
+    highNoiseCfg: Option[Double]
 ) {
-  def isEmpty: Boolean = this == LoraSampling()
+  def isEmpty: Boolean = this == LoraSampling.none
   def nonEmpty: Boolean = !isEmpty
 
   /** The form fields it sets, by the names the generation form knows them. */
@@ -199,12 +199,28 @@ case class LoraSampling(
     )
 }
 object LoraSampling {
-  given JsonValueCodec[LoraSampling] = JsonCodecMaker.make
+
+  /** A LoRA that asks for nothing. */
+  val none: LoraSampling = LoraSampling(
+    steps = None,
+    cfg = None,
+    flowShift = None,
+    sigmas = List.empty,
+    sampler = None,
+    scheduler = None,
+    distilledGuidance = None,
+    highNoiseSteps = None,
+    highNoiseCfg = None
+  )
+
+  given JsonValueCodec[LoraSampling] = JsonCodecMaker.make(storedRecord)
   given Schema[LoraSampling] = Schema.derived
 
   /** The settings of `loras` together, the last one's over the others'. */
   def of(loras: List[Lora]): LoraSampling =
-    loras.foldLeft(LoraSampling())((merged, lora) => lora.sampling.over(merged))
+    loras.foldLeft(LoraSampling.none)((merged, lora) =>
+      lora.sampling.over(merged)
+    )
 }
 
 /** One LoRA the user has installed (`specs/09-lora-management.md`), or one
@@ -228,16 +244,16 @@ case class Lora(
     id: String,
     architectureId: String,
     label: String,
-    nsfw: Boolean = false,
+    nsfw: Boolean,
     /** Seeds the picker's strength input. Some LoRAs need values that are easy
       * to forget; this is where they are remembered.
       */
-    defaultStrength: Double = 1.0,
-    triggerWords: List[String] = List.empty,
-    tags: List[String] = List.empty,
-    description: Option[String] = None,
-    files: List[LoraFile] = List.empty,
-    createdAt: Long = 0,
+    defaultStrength: Double,
+    triggerWords: List[String],
+    tags: List[String],
+    description: Option[String],
+    files: List[LoraFile],
+    createdAt: Long,
     /** The sampling it was made for (`specs/49-lora-sampling-settings.md`);
       * empty for most LoRAs.
       */
@@ -282,11 +298,11 @@ object Lora {
   // as a plain string. The config must be inline — the macro needs a constant
   // expression.
   given JsonValueCodec[Lora] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
   given JsonValueCodec[List[Lora]] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
   given JsonValueCodec[Option[Lora]] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
   given Schema[Lora] = Schema.derived
 }
 
@@ -341,7 +357,7 @@ object LoraGrouping {
   case object Together extends LoraGrouping
 
   /** One LoRA per file, so two versions of the same LoRA can sit side by side
-    * in the picker and be compared (François, 2026-09-18).
+    * in the picker and be compared.
     */
   case object Separate extends LoraGrouping
 
@@ -366,9 +382,9 @@ object InstallLoraRequest {
 
 /** Makes one LoRA of two (`specs/33-lora-sources.md`): a wan 2.2 pair whose
   * halves were published apart — two ModelScope repositories, one for the high
-  * noise and one for the low (François, 2026-09-18) — installs as two LoRAs,
-  * each holding one stage. Pairing moves `otherId`'s files beside `loraId`'s,
-  * under the name the user gives the result, and the other entity goes.
+  * noise and one for the low — installs as two LoRAs, each holding one stage.
+  * Pairing moves `otherId`'s files beside `loraId`'s, under the name the user
+  * gives the result, and the other entity goes.
   */
 case class PairLoraRequest(loraId: String, otherId: String, label: String)
 object PairLoraRequest {
@@ -414,30 +430,26 @@ object LoraDownloadJob {
     JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
 }
 
-// `base` in Api.scala is private to that file (tracked as bug 16); the same
-// prefix is rebuilt here so these endpoints live under /api like the rest.
-private val lorasBase = endpoint.in("api")
-
 val listLoras: PublicEndpoint[Unit, Unit, List[Lora], Any] =
-  lorasBase.get.in("loras").out(jsonBody[List[Lora]])
+  base.get.in("loras").out(jsonBody[List[Lora]])
 
 /** The LoRAs drift offers to install (`specs/33-lora-sources.md`), read from
   * `reference/loras.json` — installed ones included, the UI tells them apart by
   * id.
   */
 val listLoraCatalog: PublicEndpoint[Unit, Unit, List[Lora], Any] =
-  lorasBase.get.in("loras" / "catalog").out(jsonBody[List[Lora]])
+  base.get.in("loras" / "catalog").out(jsonBody[List[Lora]])
 
 val installLora
     : PublicEndpoint[InstallLoraRequest, Unit, InstallLoraResponse, Any] =
-  lorasBase.post
+  base.post
     .in("loras" / "install")
     .in(jsonBody[InstallLoraRequest])
     .out(jsonBody[InstallLoraResponse])
 
 val adoptLora
     : PublicEndpoint[AdoptLoraRequest, Unit, InstallLoraResponse, Any] =
-  lorasBase.post
+  base.post
     .in("loras" / "adopt")
     .in(jsonBody[AdoptLoraRequest])
     .out(jsonBody[InstallLoraResponse])
@@ -447,7 +459,7 @@ val adoptLora
   * picker's visibility check surfaces that.
   */
 val updateLora: PublicEndpoint[(String, Lora), Unit, Option[Lora], Any] =
-  lorasBase.put
+  base.put
     .in("loras" / path[String])
     .in(jsonBody[Lora])
     .out(jsonBody[Option[Lora]])
@@ -456,22 +468,22 @@ val updateLora: PublicEndpoint[(String, Lora), Unit, Option[Lora], Any] =
   * "remove this LoRA" means the gigabytes too.
   */
 val deleteLora: PublicEndpoint[String, Unit, Boolean, Any] =
-  lorasBase.delete.in("loras" / path[String]).out(jsonBody[Boolean])
+  base.delete.in("loras" / path[String]).out(jsonBody[Boolean])
 
 /** The two LoRAs become one, holding both stages. */
 val pairLoras: PublicEndpoint[PairLoraRequest, Unit, InstallLoraResponse, Any] =
-  lorasBase.post
+  base.post
     .in("loras" / "pair")
     .in(jsonBody[PairLoraRequest])
     .out(jsonBody[InstallLoraResponse])
 
 val listLoraDownloads: PublicEndpoint[Unit, Unit, List[LoraDownloadJob], Any] =
-  lorasBase.get.in("lora-downloads").out(jsonBody[List[LoraDownloadJob]])
+  base.get.in("lora-downloads").out(jsonBody[List[LoraDownloadJob]])
 
 /** Stops one LoRA file's transfer; the job as it stands, none if unknown. */
 val cancelLoraDownload
     : PublicEndpoint[(String, String), Unit, Option[LoraDownloadJob], Any] =
-  lorasBase.post
+  base.post
     .in("lora-downloads" / path[String]("loraId") / path[String]("fileName"))
     .in("cancel")
     .out(jsonBody[Option[LoraDownloadJob]])

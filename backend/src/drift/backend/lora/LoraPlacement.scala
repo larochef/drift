@@ -96,9 +96,14 @@ final private[lora] class LoraPlacement(
             id = id,
             architectureId = architectureId,
             label = label,
+            nsfw = false,
+            defaultStrength = 1.0,
+            triggerWords = List.empty,
+            tags = List.empty,
+            description = None,
             files = files,
             createdAt = System.currentTimeMillis(),
-            sampling = LoraSampling()
+            sampling = LoraSampling.none
           )
         )
     }

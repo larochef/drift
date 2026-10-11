@@ -61,8 +61,8 @@ flag again if it wants it.
   removal is picked, never retyped — a misspelled flag removes nothing while
   looking like it did — and the layer is half the answer: a model that sets
   `--attn-scale` to the number its architecture already had is invisible
-  without it, which is how François came to “remove” one by overriding it with
-  its own value (2026-09-20).
+  without it, which is how one came to be “removed” by overriding it with its
+  own value.
 
 ## Shape
 

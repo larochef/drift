@@ -1,10 +1,7 @@
 package drift.shared
 
 import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
-import com.github.plokhotnyuk.jsoniter_scala.macros.{
-  CodecMakerConfig,
-  JsonCodecMaker
-}
+import com.github.plokhotnyuk.jsoniter_scala.macros.JsonCodecMaker
 import sttp.model.StatusCode
 import sttp.tapir.*
 import sttp.tapir.generic.auto.*
@@ -51,6 +48,15 @@ enum ProjectKind derives CanEqual {
   }
 }
 object ProjectKind {
+
+  /** What an architecture's models make: text for a chat model, video for a
+    * video model that makes no images, images otherwise.
+    */
+  def of(architecture: Architecture): ProjectKind =
+    if (architecture.tool == RuntimeTool.LlamaCpp) Text
+    else if (Video.accepts(architecture) && !Image.accepts(architecture)) Video
+    else Image
+
   given Schema[ProjectKind] =
     Schema.derivedEnumeration[ProjectKind].defaultStringBased
 }
@@ -76,8 +82,8 @@ case class PromptVersion(
     runConfigurationId: String,
     /** "img_gen" or "vid_gen": which of the two parameters below is set. */
     kind: String,
-    imageParameters: Option[ImageGenerationParameters] = None,
-    videoParameters: Option[VideoGenerationParameters] = None
+    imageParameters: Option[ImageGenerationParameters],
+    videoParameters: Option[VideoGenerationParameters]
 ) {
   def prompt: String = imageParameters
     .map(_.prompt)
@@ -100,43 +106,52 @@ case class Project(
     brief: String,
     createdAt: Long,
     lastUsedAt: Long,
-    versions: List[PromptVersion] = List.empty,
+    versions: List[PromptVersion],
     /** Hidden from the projects list unless asked for, and its workspace offers
       * the NSFW LoRAs — a project is SFW unless flagged.
       */
-    nsfw: Boolean = false,
+    nsfw: Boolean,
     /** Chosen at creation, changeable in the workspace. A project saved before
       * kinds existed has no such field and reads as an image project — every
       * one of them was.
       */
-    kind: ProjectKind = ProjectKind.Image,
+    kind: ProjectKind,
     /** The output the user chose to show on the project's card; none means the
       * newest result, as it was before covers could be chosen.
       */
-    cover: Option[ProjectCover] = None,
+    cover: Option[ProjectCover],
     /** The assistant system template chosen for this project's conversation,
       * and the compaction template; none means the built-in
       * (`specs/32-prompt-library.md`).
       */
-    assistantTemplateId: Option[String] = None,
-    compactionTemplateId: Option[String] = None
-)
+    assistantTemplateId: Option[String],
+    compactionTemplateId: Option[String]
+) {
+
+  /** The version an id names, falling back to the newest — the one rule, so
+    * that what the form was seeded with and what the submit names cannot drift
+    * apart on a stale id.
+    */
+  def versionFor(id: Option[String]): Option[PromptVersion] =
+    id.flatMap(wanted => versions.find(_.id == wanted))
+      .orElse(versions.lastOption)
+}
 object Project {
   given Schema[Project] = Schema.derived
   // Snake case like the sidecars, so an embedded request reads the same in
   // both files; no discriminator, the enum has only singleton cases.
   given JsonValueCodec[Project] = JsonCodecMaker.make(
-    CodecMakerConfig
+    storedRecord
       .withDiscriminatorFieldName(None)
       .withFieldNameMapper(JsonCodecMaker.enforce_snake_case)
   )
   given JsonValueCodec[List[Project]] = JsonCodecMaker.make(
-    CodecMakerConfig
+    storedRecord
       .withDiscriminatorFieldName(None)
       .withFieldNameMapper(JsonCodecMaker.enforce_snake_case)
   )
   given JsonValueCodec[Option[Project]] = JsonCodecMaker.make(
-    CodecMakerConfig
+    storedRecord
       .withDiscriminatorFieldName(None)
       .withFieldNameMapper(JsonCodecMaker.enforce_snake_case)
   )
@@ -168,20 +183,18 @@ case class SubmitContext(
     origin: Option[String] = None
 )
 
-private val projectsBase = endpoint.in("api")
-
 val listProjects: PublicEndpoint[Unit, Unit, List[Project], Any] =
-  projectsBase.get.in("projects").out(jsonBody[List[Project]])
+  base.get.in("projects").out(jsonBody[List[Project]])
 
 val getProject: PublicEndpoint[String, Unit, Option[Project], Any] =
-  projectsBase.get.in("projects" / path[String]).out(jsonBody[Option[Project]])
+  base.get.in("projects" / path[String]).out(jsonBody[Option[Project]])
 
 val createProject: PublicEndpoint[Project, Unit, Project, Any] =
-  projectsBase.post.in("projects").in(jsonBody[Project]).out(jsonBody[Project])
+  base.post.in("projects").in(jsonBody[Project]).out(jsonBody[Project])
 
 val updateProject
     : PublicEndpoint[(String, Project), Unit, Option[Project], Any] =
-  projectsBase.put
+  base.put
     .in("projects" / path[String])
     .in(jsonBody[Project])
     .out(jsonBody[Option[Project]])
@@ -192,7 +205,7 @@ val updateProject
   * not the images" stays possible.
   */
 val deleteProject: PublicEndpoint[String, Unit, Boolean, Any] =
-  projectsBase.delete.in("projects" / path[String]).out(jsonBody[Boolean])
+  base.delete.in("projects" / path[String]).out(jsonBody[Boolean])
 
 /** Deletes every generation tagged with the project — output files,
   * externalized inputs and sidecars — and answers with the ids that went. The
@@ -200,23 +213,22 @@ val deleteProject: PublicEndpoint[String, Unit, Boolean, Any] =
   * user confirms both.
   */
 val deleteProjectGenerations: PublicEndpoint[String, Unit, List[String], Any] =
-  projectsBase.delete
+  base.delete
     .in("projects" / path[String] / "generations")
     .out(jsonBody[List[String]])
 
 /** A project's cover - the output chosen for it, else the newest result it made -
-  * as bytes an `img` or a `video` can point straight at (François, 2026-09-10).
-  * An image project's is its newest image, as a downscaled JPEG rather than the
-  * original: a cover sits in a 20rem tile, and the generations behind it are
-  * multi-megabyte PNGs. A video project's is its newest video's first frame,
-  * the same JPEG, so the list loads no video (`specs/31-project-kinds.md`, bug
-  * 37).
+  * as bytes an `img` or a `video` can point straight at. An image project's is
+  * its newest image, as a downscaled JPEG rather than the original: a cover
+  * sits in a 20rem tile, and the generations behind it are multi-megabyte PNGs.
+  * A video project's is its newest video's first frame, the same JPEG, so the
+  * list loads no video (`specs/31-project-kinds.md`, bug 37).
   *
   * 404 when the project has made nothing yet, which is not an error - the card
   * shows its placeholder and says so.
   */
 val getProjectCover: PublicEndpoint[String, Unit, (Array[Byte], String), Any] =
-  projectsBase.get
+  base.get
     .in("projects" / path[String] / "cover")
     .errorOut(statusCode(StatusCode.NotFound))
     .out(byteArrayBody)
@@ -233,7 +245,7 @@ def projectCoverPath(projectId: String): String =
   */
 val listProjectGenerations
     : PublicEndpoint[String, Unit, List[Generation], Any] =
-  projectsBase.get
+  base.get
     .in("projects" / path[String] / "generations")
     .out(jsonBody[List[Generation]])
 
@@ -248,7 +260,7 @@ case class PromptProposal(
       * taken out of the prompt): applying the proposal sets the form's size to
       * it (`specs/32-prompt-library.md`).
       */
-    aspectRatio: Option[String] = None
+    aspectRatio: Option[String]
 )
 object PromptProposal {
   given Schema[PromptProposal] = Schema.derived
@@ -264,20 +276,20 @@ case class ConversationMessage(
     id: Int,
     role: String,
     text: String,
-    reasoning: String = "",
-    previews: List[String] = List.empty,
+    reasoning: String,
+    previews: List[String],
     /** The working prompt this reply was asked about — what its proposal is
       * diffed against.
       */
-    promptBase: Option[PromptProposal] = None,
-    promptTokens: Option[Int] = None,
-    completionTokens: Option[Int] = None,
-    error: Option[String] = None,
-    createdAt: Long = 0,
+    promptBase: Option[PromptProposal],
+    promptTokens: Option[Int],
+    completionTokens: Option[Int],
+    error: Option[String],
+    createdAt: Long,
     /** The proposal read from an assistant reply when it arrived, kept so a
       * reload shows the same card whatever template is chosen now (`specs/32`).
       */
-    proposal: Option[PromptProposal] = None
+    proposal: Option[PromptProposal]
 )
 object ConversationMessage {
   given Schema[ConversationMessage] = Schema.derived
@@ -290,15 +302,24 @@ object ConversationMessage {
   */
 case class Conversation(
     projectId: String,
-    messages: List[ConversationMessage] = List.empty,
-    archive: List[ConversationMessage] = List.empty,
-    compactedAt: Option[Long] = None
+    messages: List[ConversationMessage],
+    archive: List[ConversationMessage],
+    compactedAt: Option[Long]
 )
 object Conversation {
+
+  /** A project's conversation before its first message. */
+  def empty(projectId: String): Conversation = Conversation(
+    projectId = projectId,
+    messages = List.empty,
+    archive = List.empty,
+    compactedAt = None
+  )
+
   given Schema[Conversation] = Schema.derived
   // Snake case, like the project document it belongs to.
   given JsonValueCodec[Conversation] = JsonCodecMaker.make(
-    CodecMakerConfig
+    storedRecord
       .withDiscriminatorFieldName(None)
       .withFieldNameMapper(JsonCodecMaker.enforce_snake_case)
   )
@@ -306,7 +327,7 @@ object Conversation {
 
 /** The project's conversation — an empty one when nothing is stored yet. */
 val getConversation: PublicEndpoint[String, Unit, Conversation, Any] =
-  projectsBase.get
+  base.get
     .in("projects" / path[String] / "conversation")
     .out(jsonBody[Conversation])
 
@@ -315,7 +336,7 @@ val getConversation: PublicEndpoint[String, Unit, Conversation, Any] =
   */
 val saveConversation
     : PublicEndpoint[(String, Conversation), Unit, Conversation, Any] =
-  projectsBase.put
+  base.put
     .in("projects" / path[String] / "conversation")
     .in(jsonBody[Conversation])
     .out(jsonBody[Conversation])

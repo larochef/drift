@@ -51,7 +51,6 @@ class CivitaiBrowser(
   private val browsing = BrowserView()
   private val tab = Var(Tab.Files)
   private val searchQuery = Var(initialQuery)
-  private val selectedModel = Var("")
   private val modelId = Var("")
   private val modelLabel = Var("")
   // Seeded from the search payload so files show instantly, then refined by
@@ -62,10 +61,9 @@ class CivitaiBrowser(
   private val results = service.results
   private val searching = service.searching
   private val sortFilter = Var(sortOptions.head._1)
-  private val baseModelsVar = Var(civitaiBaseModels)
   // Sent explicitly either way — Civitai's absent-parameter default hides
-  // models the site shows, some of them SFW-flagged (bugs/19). Off by
-  // default, per François.
+  // models the site shows, some of them SFW-flagged. Off by
+  // default.
   private val includeNsfw = Var(false)
 
   /** Civitai answers every download 401 without a token, so while none is set
@@ -73,7 +71,6 @@ class CivitaiBrowser(
     * saving it makes it active, which swaps the browser in.
     */
   lazy val element: HtmlElement = div(
-    authTokens.effects,
     onMountCallback(_ => authTokens.push(AuthTokenService.Command.Load)),
     child <-- authTokens.hasToken(AuthProvider.Civitai).map {
       case None        => emptyNode
@@ -123,15 +120,11 @@ class CivitaiBrowser(
   private lazy val browser = ResultBrowser(
     browsing = browsing,
     searchTitle = Val("Browse Civitai Models"),
-    detailTitle = selectedModel.signal.map(name => s"Select a file for $name"),
+    detailTitle = modelLabel.signal.map(name => s"Select a file for $name"),
     service = service,
     modalMods = Seq(
       styleAttr := "overflow: hidden;",
       onMountCallback { _ => doSearch() },
-      // `.changes` and not `.signal`: a signal replays its current value on
-      // subscribe, which fired a duplicate search on every open alongside the
-      // mount callback above (bugs/13).
-      baseModelsVar.signal.changes --> Observer { _ => doSearch() },
       includeNsfw.signal.changes --> Observer { _ => doSearch() },
       service.events --> Observer {
         case CivitaiService.Event.FilesLoaded(versions) =>
@@ -167,8 +160,7 @@ class CivitaiBrowser(
       .combineWith(modelId.signal)
       .map((known, id) => known.fromCivitaiModel(id)),
     onSelectFile = (version, file) => {
-      val modelName = selectedModel.now().split("/")(1)
-      val base = if (modelLabel.now().isEmpty) modelName else modelLabel.now()
+      val base = modelLabel.now()
       // The precision goes into the label so two registered quants of the
       // same version stay distinguishable everywhere models are listed.
       val label = file.quantization.map(q => s"$base ($q)").getOrElse(base)
@@ -191,7 +183,7 @@ class CivitaiBrowser(
           q,
           Some(sortFilter.now()),
           initialModelType,
-          baseModelsVar.now(),
+          civitaiBaseModels,
           includeNsfw.now()
         )
     )
@@ -212,7 +204,7 @@ class CivitaiBrowser(
       BrowserFilters.checkbox(
         "Include NSFW",
         "Civitai hides models it flags NSFW unless they are asked for, " +
-          "some of them flagged safe-for-work (bugs/19)",
+          "some of them flagged safe-for-work",
         includeNsfw
       )
     )
@@ -237,7 +229,6 @@ class CivitaiBrowser(
   private def open(model: CivitaiModelListInfo): Unit = {
     // Another model, its own ticks.
     versionList.clearSelection()
-    selectedModel.set(s"${model.id}/${model.name}")
     modelId.set(model.id.toString)
     modelLabel.set(model.name)
     modelFiles.set(model.modelVersions)

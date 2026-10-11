@@ -64,7 +64,7 @@ gallery image, same size in and out; after an upscale you redraw its result.
   visible, and keep every element exactly where it is." Naming a larger
   photograph and quoting percentages of a frame the model cannot see described
   a scene it could only imagine, and ERNIE duly imagined one — repainting the
-  whole picture inside a single tile (François, 2026-09-19).
+  whole picture inside a single tile.
 - The identity sentence moved out of the built-in restoration template into
   that framing, for the same reason: it spoke of "the reference image" in
   every job, including the ones where none is sent (32; built-ins re-seed, so
@@ -167,7 +167,7 @@ gallery image, same size in and out; after an upscale you redraw its result.
   launches the configuration's argv on a free port from the session range,
   never listed or counted as a session, output appended to the job log,
   stopped when the job ends and by `stopAll` at shutdown. Tiles are img_gen
-  jobs through `sdserver/NativeJobs` over the server's capabilities defaults,
+  jobs through `nativejobs/NativeJobs` over the server's capabilities defaults,
   every field written so a small tile cannot fall back to the server's
   default width.
 - Tiling: the source padded to multiples of 16, `Tiling.layout` at most
@@ -196,8 +196,7 @@ gallery image, same size in and out; after an upscale you redraw its result.
     tile-as-its-own-reference variant being a cost with no visible gain. The
     job note says which of the three cases it is — asked off, no preset at
     all, or an editing preset withheld — rather than reporting all three as
-    "no reference preset in sd-cpp" (François, 2026-09-20, redrawing with
-    Qwen Image 2.1).
+    "no reference preset in sd-cpp" (met redrawing with Qwen Image 2.1).
     Classified there: krea2 (proven), and qwen-image, z-image-turbo, boogu ×2,
     mage-flow ×2 on the conservative side, unproven.
   - `Unused` — no preset at all: ernie-image, ideogram-4, hidream-o1,
@@ -218,7 +217,7 @@ gallery image, same size in and out; after an upscale you redraw its result.
   `vae_scale_factor × diffusion_model_down_factor`) and answers with the bigger
   image, which `TiledJobs` then refuses as the wrong size — a redraw with Qwen
   Image 2.1 (multiple 32) died on "the image is 1280×1280, not 1280×1264"
-  (François, 2026-09-20). PiD keeps its own numbers (64 for the layout, 16 for
+. PiD keeps its own numbers (64 for the layout, 16 for
   the window): a pixel decoder has no latent to align to.
 - **The reference is a property of the architecture, not of the server.**
   sd-server answers `ref_images: true` for every model — `features_by_mode`
@@ -242,7 +241,7 @@ gallery image, same size in and out; after an upscale you redraw its result.
   as context on their engine. `useReference = false` on the request still
   switches it off for a job.
 - The trade, measured on Krea2 at 768 with strength 0.4, 8 steps
-  (François, 2026-09-18): with the reference, composition holds far better
+: with the reference, composition holds far better
   (block luminance drift 26 against 41) but less texture is repainted (detail
   6.9 against 11.1) and the tile takes **2.8× longer** (152s against 55s).
   Worth it for the one or two tiles of a partial redraw, which is what the
@@ -284,7 +283,7 @@ gallery image, same size in and out; after an upscale you redraw its result.
 
 Measured on one 768 skin crop of a 4096 upscale, ERNIE Image (big-love fp8),
 cfg 1, seed fixed, `PostProcessImages` detail at 1 px (grain, pores) and 4 px
-(smudges, strokes) — source 4.24 / 8.12 (François, 2026-09-19):
+(smudges, strokes) — source 4.24 / 8.12:
 
 | run | fine | coarse |
 |---|---|---|
@@ -313,8 +312,8 @@ cfg 1, seed fixed, `PostProcessImages` detail at 1 px (grain, pores) and 4 px
   restoration one stays the gentle default.
 - **What an eager model does with a restoration prompt** — measured
   2026-09-22 on 1280² crops of a RealESRGAN ×4 of a 1024×1536 Qwen-Image 2.1
-  beach portrait, strength 0.4, one seed, each model as François redraws with
-  it. Krea 2 SNOFS + its turbo LoRA (8 steps, no reference) adds what the
+  beach portrait, strength 0.4, one seed, each model as it is used for
+  redraws here. Krea 2 SNOFS + its turbo LoRA (8 steps, no reference) adds what the
   prompt names and more: the old default ("realistic skin texture with pores,
   fine hair and fabric detail") put freckles on the cheeks, moles on the belly
   and a dozen backlit hairs along the sunlit edge of an arm, none in the
@@ -332,11 +331,11 @@ cfg 1, seed fixed, `PostProcessImages` detail at 1 px (grain, pores) and 4 px
   minus "fine hair"; `redraw-women-portrait` asks for the same texture and
   says the arms, legs and body are "freshly waxed, bare and smooth" with "a
   clean, smooth highlight" where the light grazes the skin — with soften 1 px
-  it was François's pick on Krea 2. Soften stays a per-job field: it helps an
+  it was the look picked on Krea 2. Soften stays a per-job field: it helps an
   eager model and hurts a quiet one. Scripts and sheets were scratch work.
 - **Context, measured 2026-09-22** on a ×2 zoom of the beach portrait's belly
   and arm (a 1024 tile covering a sixth of the body's width, as close as
-  François's 8192 redraws), Krea 2 SNOFS with its turbo LoRA, strength 0.4,
+  an 8192 redraw), Krea 2 SNOFS with its turbo LoRA, strength 0.4,
   soften 1, the women's portrait text, two neighbouring tiles, one seed. The
   tile alone (≈130 s at 1280): the waist reshaped, a fold drawn across the
   belly, a red blotch on the arm — the "mess". A 1536 window, 256 px fixed
@@ -352,7 +351,7 @@ cfg 1, seed fixed, `PostProcessImages` detail at 1 px (grain, pores) and 4 px
   reference to the tile's width × height while decoding the request
   (leejet/stable-diffusion.cpp#2004), so the whole picture sent beside a tile
   took the tile's shape — a portrait beside a square tile came out half again
-  as wide (François, 2026-09-22). On such a build each tile's reference is
+  as wide. On such a build each tile's reference is
   letterboxed to the tile's shape with neutral grey, so the scaling is even; on
   a later one (`SdCppBuilds.keepsReferenceSize`) the request says
   `auto_resize_ref_image: false` and the reference keeps its own size. The job
@@ -371,7 +370,7 @@ cfg 1, seed fixed, `PostProcessImages` detail at 1 px (grain, pores) and 4 px
   images — no detect-only call, no mask out), and its YOLOv8 detectors must be
   converted from Ultralytics `.pt` with upstream's Python script, or taken
   pre-converted from `exeterminal/adetailer-yolov8-safetensors`. Getting the
-  boxes into drift needs a detect-only mode upstream, which François does not
-  want to push for (2026-09-20): the lead was explored, not adopted. Closed.
+  boxes into drift needs a detect-only mode upstream, which is not being asked for:
+  the lead was explored, not adopted. Closed.
 - An assistant-written one-sentence summary of the source prompt if the
   identity sentence is not enough; the assistant writing the instructions.

@@ -1,6 +1,7 @@
 # 35 — LoRAs on chat models
 
-**Status:** done in code, not yet run against a real llama-server
+**Status:** done in code, never run against a real llama-server — set aside: no use for
+it today, to look at again if it misbehaves
 **Depends on:** 09, 18, 28, 33
 
 A chat architecture had a LoRA section and nothing behind it: its LoRAs were

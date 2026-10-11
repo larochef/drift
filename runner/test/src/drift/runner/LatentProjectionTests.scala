@@ -1,11 +1,12 @@
 package drift.runner
 
+import drift.runner.tensor.Noise
 import scala.io.Source
 import java.util.SplittableRandom
 
 import utest.*
 
-import drift.runner.diffusion.{Images, LatentProjection}
+import drift.runner.diffusion.LatentProjection
 
 /** The step preview's latent-to-RGB projection (`specs/54-step-preview.md`):
   * the fit, the picture's layout, and the resources the families read.
@@ -75,7 +76,7 @@ object LatentProjectionTests extends TestSuite {
       )
       val samples = Seq.fill(3) {
         val tokens =
-          Array.fill(height * width * channels)(Images.gaussian(random) / 2)
+          Array.fill(height * width * channels)(Noise.gaussian(random) / 2)
         val pixels = new Array[Float](height * block * width * block * 3)
         for {
           gridY <- 0 until height

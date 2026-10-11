@@ -24,11 +24,11 @@ case class RepositoryResult(
 )
 
 /** What the HuggingFace and ModelScope browsers do the same way — which is
-  * nearly everything they do (François, 2026-09-18: a behaviour asked for once
-  * is wanted in both). The two stay separate classes, each with its own client
-  * and service, and put here only what they do identically: the shell and its
-  * title, the opening search, the tiles, opening a repository, and the Examples
-  * · Files · Model card view over it.
+  * nearly everything they do: a behaviour wanted in one is wanted in both. The
+  * two stay separate classes, each with its own client and service, and put
+  * here only what they do identically: the shell and its title, the opening
+  * search, the tiles, opening a repository, and the Examples · Files · Model
+  * card view over it.
   *
   * A site says the rest: how it sorts and filters, what its search command
   * takes, how its results and its card map onto the shapes above.

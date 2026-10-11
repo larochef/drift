@@ -2,19 +2,11 @@ package drift.runner.diffusion
 
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
-import java.util.SplittableRandom
 
 /** Pixels in and out of the pipelines: RGB or RGBA channels-last in [−1, 1],
   * and the starting noise.
   */
 object Images {
-
-  /** A standard normal value: Box–Muller on two uniforms in (0, 1]. */
-  def gaussian(random: SplittableRandom): Float = {
-    val u = 1 - random.nextDouble()
-    val v = random.nextDouble()
-    (math.sqrt(-2 * math.log(u)) * math.cos(2 * math.Pi * v)).toFloat
-  }
 
   /** The log's line between the last step and the pixels: a decode prints
     * nothing until it is done, minutes later for a long video.

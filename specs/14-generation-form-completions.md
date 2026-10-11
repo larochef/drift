@@ -41,7 +41,7 @@ and SLG, and the high-noise pass of two-expert video models.
 
 ## Shape
 
-- `pages/generate/`: `GenerationForm` assembles `CoreFields` and the
+- `generate/`: `GenerationForm` assembles `CoreFields` and the
   sections `SamplingSection`, `InputsSection`, `HiresSection`,
   `VaeTilingSection`, `GuidanceSection`, `BatchSection`; `GenerationFormState`
   holds the Vars, `RecipeSeeding` seeds them from capabilities or a recording,

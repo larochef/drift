@@ -4,6 +4,7 @@ import drift.runner.formats.FormatException
 import drift.runner.models.Flux2.Grid
 import drift.runner.ops.*
 import drift.runner.tensor.*
+import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
 import scala.collection.mutable

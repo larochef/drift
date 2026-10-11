@@ -37,7 +37,7 @@ promotes a result that turns out to matter.
 - `shared/.../Scratch.scala`: `POST /api/scratch/{generationId}/keep` with
   `KeepRequest(projectId)` answering the promoted `Generation`;
   `DELETE /api/scratch` answering the removed ids.
-- Backend `sdserver/ScratchGenerations`; frontend `GenerationPanel` derives
+- Backend `generation/ScratchGenerations`; frontend `GenerationPanel` derives
   `scratch = project.isEmpty` rather than taking a flag, so the invariant is
   structural.
 - `HistoryService.fold` and `ProjectService.fold` skip scratch generations:

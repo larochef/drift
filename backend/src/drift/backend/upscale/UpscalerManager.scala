@@ -1,12 +1,11 @@
 package drift.backend.upscale
 
 import drift.backend.{Background, WorkQueue}
+import drift.backend.civitai.CivitaiClient
 import drift.backend.download.{DownloadOutcome, Downloader}
-import drift.backend.routes.CivitaiClient
 import drift.backend.storage.StorageService
 import drift.shared.*
 
-import java.net.URI
 import java.nio.file.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -16,10 +15,10 @@ import scala.util.control.NonFatal
 import com.typesafe.scalalogging.Logger
 
 /** Owns the upscaler store (`specs/10-generation-time-upscaling.md`): a flat
-  * `~/.cache/drift/upscale/` directory that every session receives as
-  * `--hires-upscalers-dir`. Flat because sd-server scans only the top level —
-  * subdirectories would hide the files — so unlike models and LoRAs there is no
-  * grouping structure, just weight files whose stems become the upscaler names.
+  * `~/.cache/drift/upscale/` directory of ESRGAN weight files, read by the
+  * post-hoc upscale (`specs/15-post-hoc-resize.md`) and handed to no launch.
+  * Unlike models and LoRAs there is no grouping structure, just weight files
+  * whose stems are the upscaler names.
   *
   * Transfers share [[Downloader]] (resume, sha256, progress) with the other
   * stores. `resumeInterrupted` queues every installed entity at startup: files
@@ -34,7 +33,6 @@ final class UpscalerManager(
     /** Resolved per request, so a token saved in Settings applies without a
       * restart.
       */
-    civitaiToken: () => Option[String],
     val upscaleRoot: Path,
     /** Where its downloads run. */
     background: Background
@@ -97,6 +95,8 @@ final class UpscalerManager(
             fileName = fileName,
             downloadUrl = url,
             sha256 = request.sha256.map(_.trim.toLowerCase).filter(_.nonEmpty),
+            sizeBytes = None,
+            civitaiModelId = None,
             createdAt = System.currentTimeMillis()
           )
         ) match {
@@ -159,7 +159,8 @@ final class UpscalerManager(
                       else s"${detail.name} — ${file.name}",
                     fileName = fileName,
                     downloadUrl = file.downloadUrl.getOrElse(
-                      s"https://civitai.com/api/download/models/${version.id}?fileId=${file.id}"
+                      civitaiClient
+                        .downloadAddress(version.id.toString, file.id.toString)
                     ),
                     sha256 = file.sha256,
                     sizeBytes = file.sizeKB.map(kb => (kb * 1024).toLong),
@@ -244,7 +245,7 @@ final class UpscalerManager(
                 ),
                 finalFile = target,
                 expectedSha256 = upscaler.sha256,
-                headers = authHeaders(upscaler.downloadUrl),
+                headers = civitaiClient.headersFor(upscaler.downloadUrl),
                 isCancelled = () => entry.cancelled.get(),
                 onProgress = (done, total) =>
                   entry.job = entry.job.copy(
@@ -278,20 +279,6 @@ final class UpscalerManager(
             }
         }
     }
-  }
-
-  /** The Civitai token authorizes Civitai downloads only — sending it to
-    * github.com or huggingface.co would leak it.
-    */
-  private def authHeaders(url: String): Map[String, String] = {
-    val isCivitai =
-      try {
-        val host = Option(URI.create(url).getHost).getOrElse("")
-        host == "civitai.com" || host.endsWith(".civitai.com")
-      } catch { case NonFatal(_) => false }
-    if (isCivitai)
-      civitaiToken().map(t => "Authorization" -> s"Bearer $t").toMap
-    else Map.empty
   }
 
   // ------------------------------------------------------------------ delete

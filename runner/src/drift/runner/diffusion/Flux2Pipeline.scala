@@ -1,6 +1,7 @@
 package drift.runner.diffusion
 
 import drift.runner.formats.Gguf
+import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
 import drift.runner.models.Flux2.Grid
 import drift.runner.ops.Ops
@@ -167,7 +168,7 @@ final class Flux2Pipeline(
         )
       )
       val random = new SplittableRandom(request.seed)
-      val noise = Array.fill(grid.tokens * features)(Images.gaussian(random))
+      val noise = Array.fill(grid.tokens * features)(Noise.gaussian(random))
       val x = hold(ops.fromFloats(Shape.of(grid.tokens, features), noise))
       val inpainting =
         request.mask.filter(_ => request.initImage.isDefined).map { mask =>

@@ -2,6 +2,7 @@ package drift.backend.session
 
 import drift.backend.Background
 import drift.backend.cache.ModelCache
+import drift.backend.process.ChildProcesses
 import drift.backend.runtime.{LaunchRuntime, RuntimeManager}
 import drift.backend.storage.StorageService
 import drift.shared.*
@@ -42,10 +43,6 @@ final class SessionManager(
       * `--lora-model-dir` (`specs/09-lora-management.md`).
       */
     lorasRoot: Path,
-    /** The flat upscaler store passed as `--hires-upscalers-dir` on every
-      * launch (`specs/10-generation-time-upscaling.md`).
-      */
-    upscaleRoot: Path,
     /** Where each session is watched, its output drained and its server reaped.
       */
     background: Background
@@ -68,14 +65,13 @@ final class SessionManager(
   private val logs = ConcurrentHashMap[String, SessionLog]()
 
   private val arguments =
-    LaunchArguments(storage, modelCache, lorasRoot, upscaleRoot)
+    LaunchArguments(storage, modelCache, lorasRoot)
 
   private val jobServers = JobServers(
     storage,
     runtimeManager,
     arguments,
     lorasRoot,
-    upscaleRoot,
     allocatePort,
     this,
     background
@@ -105,7 +101,7 @@ final class SessionManager(
   def settings: SessionSettings =
     storage
       .get[SessionSettings]("settings", "sessions")
-      .getOrElse(SessionSettings())
+      .getOrElse(SessionSettings.initial)
 
   // ------------------------------------------------------------------- launch
 
@@ -286,7 +282,7 @@ final class SessionManager(
 
   /** The architecture and runtime a session runs, while both still resolve —
     * what a generation sent to it needs to know to hand sd-server its reference
-    * images (`sdserver/ReferenceImages`).
+    * images (`nativejobs/ReferenceImages`).
     */
   def architectureAndRuntimeOf(
       sessionId: String
@@ -355,14 +351,12 @@ final class SessionManager(
       CommandLine.render(argv, launchRuntime.executable.toString)
     try {
       Files.createDirectories(logsRoot)
-      // sd-server scans --lora-model-dir and --hires-upscalers-dir at
-      // startup; they must at least exist. The LoRA directory is the
-      // architecture's own folder (`CommandLine.resolve`).
+      // sd-server scans --lora-model-dir at startup; it must at least
+      // exist. It is the architecture's own folder (`CommandLine.resolve`).
       if (launchRuntime.runtime.tool == RuntimeTool.SdCpp)
         Files.createDirectories(lorasRoot.resolve(configuration.architectureId))
-      Files.createDirectories(upscaleRoot)
       // The spawn header goes into the log before the process does: a crash
-      // that prints nothing (bugs/17) still leaves the exact environment and
+      // that prints nothing still leaves the exact environment and
       // command behind, and the log tail attached to a failure carries them.
       val workingDirectory = launchRuntime.executable.getParent
       val environmentLines = launchRuntime.environment.toList.sorted
@@ -374,19 +368,15 @@ final class SessionManager(
           :: environmentLines)
           .mkString("", "\n", s"\n# $commandLine\n")
       )
-      val builder =
-        ProcessBuilder((launchRuntime.executable.toString :: argv)*)
-          // Beside its own libraries: sd-server may resolve resources
-          // relative to itself, and the replaced shell scripts ran there.
-          .directory(workingDirectory.toFile)
-          // Merged, then drained by drift itself rather than redirected to the
-          // file: the buffer, the progress and the file all come off the one
-          // reader fork (`specs/13-log-streaming.md`).
-          .redirectErrorStream(true)
-      launchRuntime.environment.foreach { (name, value) =>
-        builder.environment().put(name, value)
-      }
-      val process = builder.start()
+      // Beside its own libraries: sd-server may resolve resources relative to
+      // itself. Its output is drained by drift itself rather than redirected
+      // to the file: the buffer, the progress and the file all come off the
+      // one reader fork (`specs/13-log-streaming.md`).
+      val process = ChildProcesses.start(
+        launchRuntime.executable.toString :: argv,
+        launchRuntime.environment,
+        Some(workingDirectory)
+      )
       val log = SessionLog()
       logs.put(sessionId, log)
       SessionOutput.capture(sessionId, process, logFile, log, background)
@@ -414,7 +404,15 @@ final class SessionManager(
         configuration.id,
         configuration.copy(lastUsedAt = startedAt)
       )
-      monitor(entry, process, port, logFile, current, tool)
+      monitor(
+        entry,
+        process,
+        port,
+        logFile,
+        current,
+        tool,
+        runner = launchRuntime.runtime.engine == RuntimeEngine.DriftRunner
+      )
       session
     } catch {
       case NonFatal(err) =>
@@ -441,10 +439,11 @@ final class SessionManager(
       port: Int,
       logFile: Path,
       current: SessionSettings,
-      tool: RuntimeTool
+      tool: RuntimeTool,
+      runner: Boolean
   ): Unit = {
     background.start(s"drift-session-${entry.session.id}")(
-      follow(entry, process, port, logFile, current, tool)
+      follow(entry, process, port, logFile, current, tool, runner)
     )
   }
 
@@ -482,7 +481,8 @@ final class SessionManager(
       port: Int,
       logFile: Path,
       current: SessionSettings,
-      tool: RuntimeTool
+      tool: RuntimeTool,
+      runner: Boolean
   ): Unit = {
     val deadline = System.currentTimeMillis() +
       current.readinessTimeoutMinutes.toLong * 60 * 1000
@@ -516,9 +516,24 @@ final class SessionManager(
       }
       if (entry.session.status == SessionStatus.Starting) {
         if (ServerProcesses.answersProbe(port, tool)) {
-          entry.session = entry.session.copy(status = SessionStatus.Ready)
-          logger.info(s"Session ${entry.session.id}: ready on :$port")
-          refreshMemoryWarning(current)
+          // An image server is driven through the job protocol: one that
+          // speaks another version of it is not served by this drift.
+          val mismatch =
+            if (tool == RuntimeTool.SdCpp)
+              ServerProcesses.protocolMismatch(port, runner)
+            else None
+          mismatch match {
+            case Some(reason) =>
+              entry.session = entry.session
+                .copy(status = SessionStatus.Failed, error = Some(reason))
+              logger.warn(s"Session ${entry.session.id}: $reason")
+              ChildProcesses.terminate(process)
+              return
+            case None =>
+              entry.session = entry.session.copy(status = SessionStatus.Ready)
+              logger.info(s"Session ${entry.session.id}: ready on :$port")
+              refreshMemoryWarning(current)
+          }
         } else if (System.currentTimeMillis() > deadline) {
           val tail = SessionOutput.tail(logFile)
           entry.session = entry.session.copy(
@@ -528,7 +543,7 @@ final class SessionManager(
                 (if (tail.isEmpty) "" else s"\n$tail")
             )
           )
-          ServerProcesses.terminate(process)
+          ChildProcesses.terminate(process)
           return
         }
       }
@@ -566,7 +581,7 @@ final class SessionManager(
           entry.session = entry.session.copy(status = SessionStatus.Stopped)
           logger.info(s"Session $sessionId: stopping pid ${process.pid()}")
           background.start(s"drift-session-reaper-$sessionId")(
-            ServerProcesses.terminate(process)
+            ChildProcesses.terminate(process)
           )
           entry.session
       }
@@ -590,7 +605,7 @@ final class SessionManager(
       val stopped = stop(sessionId).getOrElse(entry.session)
       background.start(s"drift-session-restart-$sessionId") {
         dying.foreach(
-          _.waitFor(SessionManager.GraceSeconds + 5, TimeUnit.SECONDS)
+          _.waitFor(ChildProcesses.GraceSeconds + 5, TimeUnit.SECONDS)
         )
         logger.info(
           s"Session $sessionId: restarting '$configurationId'"
@@ -611,21 +626,11 @@ final class SessionManager(
         entry.session = entry.session.copy(status = SessionStatus.Stopped)
       entry.process.filter(_.isAlive)
     } ++ jobServers.drain()
-    alive.foreach(_.destroy())
-    val deadline =
-      System.nanoTime() + TimeUnit.SECONDS.toNanos(SessionManager.GraceSeconds)
-    alive.foreach { process =>
-      val remaining = deadline - System.nanoTime()
-      if (remaining <= 0 || !process.waitFor(remaining, TimeUnit.NANOSECONDS)) {
-        process.destroyForcibly()
-        process.waitFor(5, TimeUnit.SECONDS)
-      }
-    }
+    ChildProcesses.stop(alive)
   }
 }
 
 object SessionManager {
 
   /** How long SIGTERM gets before SIGKILL. */
-  val GraceSeconds: Long = 10
 }

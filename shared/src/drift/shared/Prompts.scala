@@ -1,10 +1,7 @@
 package drift.shared
 
 import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
-import com.github.plokhotnyuk.jsoniter_scala.macros.{
-  CodecMakerConfig,
-  JsonCodecMaker
-}
+import com.github.plokhotnyuk.jsoniter_scala.macros.JsonCodecMaker
 import sttp.tapir.*
 import sttp.tapir.generic.auto.*
 import sttp.tapir.json.jsoniter.*
@@ -39,17 +36,30 @@ object ProposalFormat {
   * writer converts an idea, so the editing rules stay out.
   */
 case class AssistantAppends(
-    brief: Boolean = true,
-    promptingNotes: Boolean = true,
-    workingPrompt: Boolean = true,
-    rules: Boolean = true,
-    cfgNote: Boolean = true,
+    brief: Boolean,
+    promptingNotes: Boolean,
+    workingPrompt: Boolean,
+    rules: Boolean,
+    cfgNote: Boolean,
     /** The form's aspect ratio, for templates that want one (Ideogram's expects
       * it with the idea).
       */
-    aspectRatio: Boolean = false
+    aspectRatio: Boolean
 )
 object AssistantAppends {
+
+  /** What a template appends unless it says otherwise: everything but the
+    * aspect ratio.
+    */
+  val standard: AssistantAppends = AssistantAppends(
+    brief = true,
+    promptingNotes = true,
+    workingPrompt = true,
+    rules = true,
+    cfgNote = true,
+    aspectRatio = false
+  )
+
   given Schema[AssistantAppends] = Schema.derived
 }
 
@@ -62,9 +72,9 @@ case class PromptTemplate(
     kind: PromptKind,
     label: String,
     text: String,
-    appends: AssistantAppends = AssistantAppends(),
-    proposalFormat: ProposalFormat = ProposalFormat.Fenced,
-    builtIn: Boolean = false
+    appends: AssistantAppends,
+    proposalFormat: ProposalFormat,
+    builtIn: Boolean
 )
 object PromptTemplate {
 
@@ -76,30 +86,28 @@ object PromptTemplate {
   val DefaultRedrawDiagnosisId = "redraw-diagnosis"
 
   given JsonValueCodec[PromptTemplate] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
   given JsonValueCodec[List[PromptTemplate]] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
   given JsonValueCodec[Option[PromptTemplate]] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
   given Schema[PromptTemplate] = Schema.derived
 }
 
-private val promptTemplatesBase = endpoint.in("api")
-
 val listPromptTemplates: PublicEndpoint[Unit, Unit, List[PromptTemplate], Any] =
-  promptTemplatesBase.get
+  base.get
     .in("prompt-templates")
     .out(jsonBody[List[PromptTemplate]])
 
 val getPromptTemplate
     : PublicEndpoint[String, Unit, Option[PromptTemplate], Any] =
-  promptTemplatesBase.get
+  base.get
     .in("prompt-templates" / path[String])
     .out(jsonBody[Option[PromptTemplate]])
 
 val createPromptTemplate
     : PublicEndpoint[PromptTemplate, Unit, PromptTemplate, Any] =
-  promptTemplatesBase.post
+  base.post
     .in("prompt-templates")
     .in(jsonBody[PromptTemplate])
     .out(jsonBody[PromptTemplate])
@@ -110,12 +118,12 @@ val updatePromptTemplate: PublicEndpoint[
   Option[PromptTemplate],
   Any
 ] =
-  promptTemplatesBase.put
+  base.put
     .in("prompt-templates" / path[String])
     .in(jsonBody[PromptTemplate])
     .out(jsonBody[Option[PromptTemplate]])
 
 val deletePromptTemplate: PublicEndpoint[String, Unit, Boolean, Any] =
-  promptTemplatesBase.delete
+  base.delete
     .in("prompt-templates" / path[String])
     .out(jsonBody[Boolean])

@@ -17,7 +17,7 @@ class LoraPicker(
     architectureId: Signal[Option[String]],
     selectedIds: Var[List[String]],
     strengths: Var[Map[String, String]],
-    // Unchecked by default, per François.
+    // Unchecked by default.
     includeNsfw: Var[Boolean] = Var(false),
     /** The LoRA paths the live server listed at its launch; a selected LoRA
       * whose files it does not list needs a restart. None where no server is
@@ -89,8 +89,7 @@ class LoraPicker(
 
   /** One line of the picker: what it names on the left, taking the room there
     * is and wrapping when it runs out, and its controls on the right, never
-    * squeezed — so a long LoRA name never runs under a control (François,
-    * 2026-09-15).
+    * squeezed — so a long LoRA name never runs under a control.
     */
   private def row(name: HtmlElement, controls: HtmlElement*): HtmlElement =
     div(
@@ -244,8 +243,7 @@ class LoraPicker(
       onInput.mapToValue --> searchVar
     ),
     // Every matching LoRA, in a list of fixed height that scrolls: a long
-    // collection neither stretches the form nor hides past a cut (François,
-    // 2026-09-15).
+    // collection neither stretches the form nor hides past a cut.
     div(
       cls := "lora-picker-choices",
       children <-- collection

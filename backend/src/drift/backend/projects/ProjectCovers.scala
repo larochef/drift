@@ -1,7 +1,7 @@
 package drift.backend.projects
 
 import drift.backend.images.{Thumbnail, VideoFrames}
-import drift.backend.sdserver.GenerationHistory
+import drift.backend.outputs.GenerationHistory
 import drift.backend.storage.StorageService
 import drift.shared.*
 
@@ -38,8 +38,8 @@ final class ProjectCovers(
 
   /** An image is scaled once and held as JPEG bytes; a video too, from its
     * first frame (read by ffmpeg): the list shows stills, only the players load
-    * videos (bug 37). `thumbnail` is empty only for a video ffmpeg could not
-    * read, served as it is.
+    * videos. `thumbnail` is empty only for a video ffmpeg could not read,
+    * served as it is.
     */
   final private case class Entry(
       source: Path,

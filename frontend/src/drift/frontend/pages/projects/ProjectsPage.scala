@@ -4,6 +4,7 @@ import drift.frontend.Page
 import drift.frontend.components.{Component, ErrorBanner}
 import drift.frontend.services.ProjectService
 import drift.frontend.services.ProjectService.Command
+import drift.frontend.workspace.NewProjectModal
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -18,15 +19,15 @@ class ProjectsPage(service: ProjectService) extends Component {
   private lazy val newProject =
     NewProjectModal(service, () => showForm.set(false))
 
-  /** NSFW projects stay out of the list unless asked for (François,
-    * 2026-09-08); the choice lasts for the page's life.
+  /** NSFW projects stay out of the list unless asked for; the choice lasts for
+    * the page's life.
     */
   private val showNsfw = Var(false)
 
-  /** Two questions, because they have different answers (François, 2026-09-09):
-    * the project always goes, and the images it made go with it only when that
-    * is said out loud — deleting them removes the files and their gallery
-    * entries, and nothing here is undoable.
+  /** Two questions, because they have different answers: the project always
+    * goes, and the images it made go with it only when that is said out loud —
+    * deleting them removes the files and their gallery entries, and nothing
+    * here is undoable.
     */
   private def confirmDelete(project: Project): Unit =
     if (
@@ -43,8 +44,8 @@ class ProjectsPage(service: ProjectService) extends Component {
     }
 
   /** One project as a tile: the newest image it made on top - what a project
-    * actually looks like is the fastest way to recognise it (François,
-    * 2026-09-10) - then the name, what it holds, and the actions.
+    * actually looks like is the fastest way to recognise it - then the name,
+    * what it holds, and the actions.
     */
   private def card(project: Project): HtmlElement = div(
     cls := "card bg-card project-card",
@@ -61,7 +62,7 @@ class ProjectsPage(service: ProjectService) extends Component {
       ),
       project.kind match {
         // A video project's cover is its newest video's first frame, a JPEG
-        // like an image project's: the list loads no video (bug 37).
+        // like an image project's: the list loads no video.
         case ProjectKind.Image | ProjectKind.Video =>
           img(
             src := projectCoverPath(project.id),
@@ -101,8 +102,7 @@ class ProjectsPage(service: ProjectService) extends Component {
     ),
     div(
       cls := "project-card-actions",
-      // What the project makes, at a glance beside the way in (François,
-      // 2026-09-15).
+      // What the project makes, at a glance beside the way in.
       span(
         cls := "project-card-kind",
         title := s"${project.kind.noun.capitalize} project",
@@ -131,7 +131,6 @@ class ProjectsPage(service: ProjectService) extends Component {
 
   lazy val element: HtmlElement = div(
     cls := "content",
-    service.effects,
     onMountCallback(_ => service.push(Command.Load)),
     ErrorBanner(service),
     div(

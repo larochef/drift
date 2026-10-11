@@ -38,7 +38,7 @@ class BaseModelManager(initialModels: List[String] = Nil) {
   * filter Civitai by: each configured one removable, followed in the same row
   * by a "+" tag of the same look — or a "Configure Civitai base models" button
   * while there are none — that opens a box where Enter adds the name typed and
-  * Escape closes it (François, 2026-09-15).
+  * Escape closes it.
   */
 class CivitaiBaseModelsEditor(
     manager: BaseModelManager,
@@ -46,7 +46,11 @@ class CivitaiBaseModelsEditor(
     /** Called once a name is added, for a caller that saves at once. */
     onSave: () => Unit = () => (),
     /** Whether to show its own title; a form labels its fields itself. */
-    heading: Boolean = true
+    heading: Boolean = true,
+    /** A built-in architecture's base models come from drift's reference data
+      * and are shown only: the names without their "x", and nothing to add.
+      */
+    editable: Boolean = true
 ) extends Component {
 
   private val adding = Var(false)
@@ -75,12 +79,14 @@ class CivitaiBaseModelsEditor(
       cls := chipClass,
       styleAttr := chipStyle,
       span(styleAttr := "display: inline-block;", bm),
-      span(
-        styleAttr := "display: inline-flex; align-items: center; line-height: 1; font-size: 1em; cursor: pointer; padding: 0 0.4em; margin-left: 0.4em;",
-        title := s"Remove $bm",
-        onClick --> (_ => onRemove(bm)),
-        "x"
-      )
+      if (!editable) emptyNode
+      else
+        span(
+          styleAttr := "display: inline-flex; align-items: center; line-height: 1; font-size: 1em; cursor: pointer; padding: 0 0.4em; margin-left: 0.4em;",
+          title := s"Remove $bm",
+          onClick --> (_ => onRemove(bm)),
+          "x"
+        )
     )
 
   private def plusChip: HtmlElement =
@@ -128,7 +134,7 @@ class CivitaiBaseModelsEditor(
         .combineWith(adding.signal)
         .map { (models, open) =>
           models.map(chip) ++
-            Option.when(models.nonEmpty && !open)(plusChip).toList
+            Option.when(editable && models.nonEmpty && !open)(plusChip).toList
         }
     ),
     child <-- adding.signal

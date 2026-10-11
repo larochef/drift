@@ -164,5 +164,25 @@ object HiDreamO1PipelineTests extends TestSuite {
       // another shape keeps the official `max_size`
       assert(HiDreamO1Pipeline.editedSide(1024, 1024, 1664, 2496) == 2496)
     }
+    test("a LoRA trained on the full checkpoint is known by its metadata") {
+      def trained(on: String) =
+        HiDreamO1Pipeline.trainedOnFull(Map("ss_sd_model_name" -> on))
+      assert(
+        // ai-toolkit's, as Civitai's files carry it
+        trained(
+          "urn:air:hidream-o1:repository:huggingface:HiDream-ai/HiDream-O1-Image@main.tar"
+        ),
+        !trained("HiDream-ai/HiDream-O1-Image-Dev"),
+        !trained("black-forest-labs/FLUX.2-klein-9B"),
+        !HiDreamO1Pipeline.trainedOnFull(Map.empty)
+      )
+      val full = Map("ss_sd_model_name" -> "HiDream-ai/HiDream-O1-Image")
+      assert(
+        HiDreamO1Pipeline.fullOnly(Seq(full, full)),
+        // a file that says nothing may be the Dev distillation
+        !HiDreamO1Pipeline.fullOnly(Seq(full, Map.empty)),
+        !HiDreamO1Pipeline.fullOnly(Nil)
+      )
+    }
   }
 }

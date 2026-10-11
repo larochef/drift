@@ -13,7 +13,7 @@ object LaunchPrerequisites {
   case class PendingWeights(idle: List[String], underway: Int)
 
   /** What a tool's runtimes are for, as the notices say it — the use, not the
-    * technology (François, 2026-09-28).
+    * technology.
     */
   def useOf(architecture: Architecture): String =
     if (architecture.tool == RuntimeTool.LlamaCpp) "text"
@@ -28,8 +28,8 @@ object LaunchPrerequisites {
     (if ("aeiou".contains(use.head)) "an " else "a ") + s"$use runtime"
 
   /** The order builds are offered in, the first preselected: drift's runner
-    * where it can run the model (François, 2026-09-28), then the recommended
-    * upstream build, then the rest.
+    * where it can run the model, then the recommended upstream build, then the
+    * rest.
     */
   def preference(option: RuntimeInstallOption): (Boolean, Boolean) =
     (option.engine != RuntimeEngine.DriftRunner, !option.recommended)
@@ -313,13 +313,16 @@ class LaunchPrerequisites(
 
   val effects: Modifier[HtmlElement] = Seq(
     followInstalls,
-    cacheService.effects,
-    downloadService.effects,
-    runtimeService.effects,
+    // A finished download is a new file in the cache, and one download fewer.
     downloadService.events --> Observer[DownloadService.Event] {
       case DownloadService.Event.Finished(_) =>
         cacheService.push(CacheService.Command.Load)
-    },
+        downloadService.push(DownloadService.Command.Load)
+    }
+  )
+
+  /** What a page that launches needs fresh when it opens. */
+  val loads: Modifier[HtmlElement] = Seq(
     onMountCallback { _ =>
       runConfigurationService.modelService.push(ModelService.Command.Load)
       cacheService.push(CacheService.Command.Load)

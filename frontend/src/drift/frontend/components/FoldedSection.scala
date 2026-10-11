@@ -7,8 +7,8 @@ import com.raquo.laminar.api.L.*
   *
   * The shape is the architecture page's LoRA collection, which had it first
   * (`specs/09-lora-management.md`); the post-processing panels' advanced
-  * parameters asked for the same one rather than a button of their own
-  * (François, 2026-09-21), so it lives here and both use it.
+  * parameters asked for the same one rather than a button of their own, so it
+  * lives here and both use it.
   *
   * `keepBody` says what folding does to the body. `false` removes it — a list
   * rebuilt from a signal loses nothing and a card stays light. `true` only

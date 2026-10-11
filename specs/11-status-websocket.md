@@ -35,8 +35,7 @@ generations — so an idle app makes no requests.
   unchanged.
 - The Vite dev server must proxy the upgrade (`ws: true` in `vite.config.js`):
   without it the socket never connects behind `:5173` and every live update is
-  silently dead, which is how a finished runtime install kept showing as queued
-  (François, 2026-09-20).
+  silently dead, which is how a finished runtime install kept showing as queued.
 - Frontend `services/StatusSocketService.scala`: a raw `dom.WebSocket` with a
   2-second reconnect loop hung off `onclose`, one typed `EventStream` per
   topic. Mounted once, by `AppShell`. Consuming services subscribe inside their
@@ -58,9 +57,9 @@ generations — so an idle app makes no requests.
   Every topic travels in one message, so a page that cannot read one reads none
   of them — it goes quiet while looking merely idle, the socket stays up and
   nothing recovers by itself, which is how a finished runtime install can sit
-  there saying "queued" (François, 2026-09-20). Throwing out of `onmessage` was
+  there saying "queued". Throwing out of `onmessage` was
   loud only to a console nobody had open.
-- Mounting the service twice opens two sockets (the bugs/15 class); it belongs
+- Mounting the service twice opens two sockets; it belongs
   in `AppShell` only.
 - What stays REST: all commands and CRUD, the per-page list loads on mount,
   and the generation panel's bounded capabilities retry until the first answer.

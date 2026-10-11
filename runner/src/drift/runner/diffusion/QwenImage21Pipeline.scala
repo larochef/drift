@@ -2,6 +2,7 @@ package drift.runner.diffusion
 
 import drift.runner.decode.Prompt
 import drift.runner.formats.Gguf
+import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
 import drift.runner.ops.Ops
 import drift.runner.tensor.*
@@ -257,7 +258,7 @@ final class QwenImage21Pipeline(
         s"noise levels: ${sigmas.map(level => f"$level%.4f").mkString(", ")}"
       )
       val random = new SplittableRandom(request.seed)
-      val noise = Array.fill(tokens * channels)(Images.gaussian(random))
+      val noise = Array.fill(tokens * channels)(Noise.gaussian(random))
       val x = hold(ops.fromFloats(Shape.of(tokens, channels), noise))
       val inpainting =
         request.mask.filter(_ => request.initImage.isDefined).map { mask =>

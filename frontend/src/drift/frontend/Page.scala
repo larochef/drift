@@ -13,10 +13,10 @@ sealed trait Page {
 
 object Page {
 
-  /** Models and how they are run (François, 2026-09-10): the run configurations
-    * of both runners and the architectures behind them, on one page. Replaces
-    * the separate Inference, Assistant and Architectures entries, whose paths
-    * still route here.
+  /** Models and how they are run: the run configurations of both runners and
+    * the architectures behind them, on one page. Replaces the separate
+    * Inference, Assistant and Architectures entries, whose paths still route
+    * here.
     */
   case object Models extends Page {
     val path = "/models"
@@ -73,7 +73,7 @@ object Page {
   }
 
   /** The sidebar, in the order the work happens: projects are what drift is for
-    * and are what `/` shows (François, 2026-09-10).
+    * and are what `/` shows.
     */
   val navPages: List[Page] = List(
     Projects,

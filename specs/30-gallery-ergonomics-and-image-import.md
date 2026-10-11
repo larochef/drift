@@ -1,6 +1,6 @@
 # 30 — Gallery ergonomics, image import, visible post-processing
 
-**Status:** planned — three items built, three remain
+**Status:** partial — three items built, three remain
 **Depends on:** 12, 15, 26, 27, 29
 
 The gallery detail view is where post-processing happens, and a few things

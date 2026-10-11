@@ -1,6 +1,7 @@
 package drift.backend.routes
 
-import drift.backend.sdserver.*
+import drift.backend.generation.GenerationMoves
+import drift.backend.outputs.{GenerationHistory, GenerationImports}
 import drift.shared.*
 
 import sttp.shared.Identity

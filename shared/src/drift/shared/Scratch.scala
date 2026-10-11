@@ -29,15 +29,13 @@ object KeepRequest {
   )
 }
 
-private val scratchBase = endpoint.in("api")
-
 /** Promotes one scratch generation to a kept one. Answers `None` when the id is
   * not a live scratch generation — it was already kept, or the session that
   * made it is gone, which takes its files with it.
   */
 val keepScratchGeneration
     : PublicEndpoint[(String, KeepRequest), Unit, Option[Generation], Any] =
-  scratchBase.post
+  base.post
     .in("scratch" / path[String]("generationId") / "keep")
     .in(jsonBody[KeepRequest])
     .out(jsonBody[Option[Generation]])
@@ -47,4 +45,4 @@ val keepScratchGeneration
   * button.
   */
 val clearScratch: PublicEndpoint[Unit, Unit, List[String], Any] =
-  scratchBase.delete.in("scratch").out(jsonBody[List[String]])
+  base.delete.in("scratch").out(jsonBody[List[String]])

@@ -1,13 +1,13 @@
 package drift.runner
 
+import drift.runner.weights.WeightSource
 import drift.runner.models.Flux2.Grid
 import drift.runner.models.{
   Llada2,
   LladaImage,
   LladaQueryFormer,
   LladaSigVq,
-  LladaTextProjection,
-  WeightSource
+  LladaTextProjection
 }
 import drift.runner.ops.Ops
 import drift.runner.tensor.{DType, Shape}

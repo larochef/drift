@@ -5,11 +5,10 @@ import drift.shared.*
 
 import com.raquo.laminar.api.L.*
 
-/** One browser for every place a file can come from (François, 2026-09-17: "I'm
-  * getting sick of these + civitai, + huggingface and so on, this makes too
-  * many buttons"): the source is a row of buttons at the top of the modal, and
-  * what comes back carries the source it was picked from, so nothing about it
-  * is ever typed.
+/** One browser for every place a file can come from, instead of a button per
+  * site: the source is a row of buttons at the top of the modal, and what comes
+  * back carries the source it was picked from, so nothing about it is ever
+  * typed.
   *
   * Both callers open it: the LoRA section of an architecture
   * (`specs/33-lora-sources.md`), where a Civitai *version* installs as one

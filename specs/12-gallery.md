@@ -29,7 +29,7 @@ in-memory state.
   first frame, `…/preview` of a video being that still (ffmpeg, cached like
   the scaled images); a player that leaves the page drops its download
   (`components/VideoRelease`). drift serves HTTP/1.1, so every `<video>` a
-  page holds keeps one of the browser's six connections to it (bug 37).
+  page holds keeps one of the browser's six connections to it.
 - The detail view: the media (a `<video>` player for video formats), every
   recorded parameter, the input images, the lineage of derived entries with an
   original ↔ result toggle (15), and the post-processing section (15, 26, 27).
@@ -45,8 +45,8 @@ in-memory state.
   tick instead of opening, each day heading offers "select all", and one
   confirmation deletes the ticked set.
 
-- **The detail view is a height budget, not a stack** (François, 2026-09-19:
-  "there shouldn't be any need to scroll in that page"). The header carries
+- **The detail view is a height budget, not a stack**: nothing in that page
+  needs a scroll. The header carries
   what is being *looked at* — the title, `n of m` for a batch, Result/Original,
   ⤢ Full size — and the footer what is *done* with it. Between them the image
   takes whatever height is left (`flex: 1 1 0`, no fixed `vh` cap), and the
@@ -58,7 +58,7 @@ in-memory state.
   the size of the batch (`--strip-count`, against the height the card leaves),
   so eight fit as readably as two. Picture and strip are both centred on the
   card's middle line, so an image shorter than the height available does not
-  hang from the top over a band of nothing (François, 2026-09-20).
+  hang from the top over a band of nothing.
 - **The right column is tabbed**, one section at a time: *Parameters*,
   *Redraw & upscale* (badged while jobs run), *Inputs* — only when the
   generation *has* input images, an empty section being a question with no
@@ -74,14 +74,13 @@ in-memory state.
   one is ever run, redraw has the fields of a small form and wants the height,
   and the task is also what says whether the selection tool belongs on the
   picture. A task shows its model and folds the rest behind Advanced (15). The open task lives on `GenerationDetailHost` too — a run of
-  redraws over a batch would otherwise pick the task again on every image
-  (François, 2026-09-20).
+  redraws over a batch would otherwise pick the task again on every image.
 - **The selection tool belongs to its task.** A box can be drawn on the
   picture only while *Redraw & upscale* is the tab on screen **and redraw is
   the task** — the upscalers have no use for a box — only on the result rather
   than the original, and not while the panel is folded away: drawing one that
   nothing visible can act on is the tool turning up where it does not belong
-  (François, 2026-09-19). The selection itself survives the switch.
+. The selection itself survives the switch.
 - **◨ Hide details** folds the right column away and gives the whole card to
   the picture, for the landscape images where width is the limit and height is
   not. Like the tab, it lives on `GenerationDetailHost`: it follows the shape
@@ -90,7 +89,7 @@ in-memory state.
   instructions are prose, and the table's label column left them a sliver of
   the width for the field the page is most often read for. They sit full
   width above the table, cut to four lines, and a click — on the text or its
-  ⤢ — opens the whole of it over the page (François, 2026-09-19).
+  ⤢ — opens the whole of it over the page.
 - **The pages show a scaled copy, never the file.** drift makes big images on
   purpose — a PiD upscale of a 2048 picture is 8192², 150 MB on disk and about
   256 MB decoded — and the detail view gives it a 700 px box. Fetching and
@@ -102,7 +101,7 @@ in-memory state.
   small, and any video, is served unchanged.
 - **⤢ Full size** opens the file itself in a new tab — there is no zoom in the
   detail view, so that is where full resolution is looked at
-  (François, 2026-09-19). It carries `rel="external"`, which is the only thing
+. It carries `rel="external"`, which is the only thing
   frontroute's `LinkHandler` consults: a same-origin `<a>` without it is
   swallowed, `preventDefault`ed and pushed into the router, which finds no
   route for `/api/outputs/…` and renders the shell around nothing. `target`
@@ -116,13 +115,13 @@ in-memory state.
   and `/projects/<id>/<generation id>[/<output index>]` for a workspace. A
   refresh, a bookmark or the back button reopens what the address names —
   which matters while repainting, where a pass takes minutes and the page is
-  reloaded to see the result (François, 2026-09-19).
+  reloaded to see the result.
   `GenerationDetailHost.boundToUrl` wires it both ways, each side checking the
   other before it writes, so they do not chase each other. The gallery holds
   only its newest days, so a named generation that is in none of them has its
   day looked up and loaded on arrival (`HistoryService.Command.LoadGeneration`)
   — before that it appeared only once the visitor happened to page back far
-  enough to reach it (François, 2026-09-20);
+  enough to reach it;
   `AppShell` routes `pathPrefix("gallery")` and
   `pathPrefix("projects" / segment)` with `extractUnmatchedPath.signal`, the
   page tab convention of `specs/01`.
@@ -136,7 +135,7 @@ in-memory state.
   `DELETE /api/history/{date}/{id}` (every file named `<id>-*` or `<id>.*`,
   then the day directory once empty). Ids are `g<millis>-<n>`, so one id is
   never a prefix of another's files.
-- Backend `sdserver/GenerationHistory` walks the outputs root; undecodable
+- Backend `outputs/GenerationHistory` walks the outputs root; undecodable
   sidecars are logged and skipped. Failed generations write no sidecar, so
   history is implicitly "things that produced an output".
 - Frontend `services/HistoryService` (day index + loaded days, outlives the
@@ -168,8 +167,7 @@ in-memory state.
   endpoint would be a second path to the same thing.
 - The detail host must build one detail per opened generation and feed it
   only fast, `.distinct` signals: rebuilding on every status tick lags the
-  page, flickers the original/result toggle and loses typed upscale fields
-  (bugs/24).
+  page, flickers the original/result toggle and loses typed upscale fields.
 - Laminar/Bulma traps: `emptyNode.asInstanceOf[HtmlElement]` throws (it is a
   `CommentNode`); `.card:not(:last-child)` margin breaks a stretched grid row;
   Bulma's table paints its own background under the theme's text.

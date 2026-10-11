@@ -59,8 +59,8 @@ final private[runtime] class RuntimeInstalls(
 
   // Two at a time, the same figure the model downloads use
   // (`Downloader.MaxTransfersPerHost`) - a runtime install is a download like
-  // any other and had no business being the one thing that queued
-  // (François, 2026-09-10). Bandwidth needs no separate rule here: installs
+  // any other and had no business being the one thing that queued.
+  // Bandwidth needs no separate rule here: installs
   // fetch through that same `Downloader`, so they share its per-host permits
   // with everything else drift is pulling.
   private val installs = WorkQueue(
@@ -497,6 +497,10 @@ final private[runtime] class RuntimeInstalls(
         // the runner is drift's own, whatever registered it before
         adopted = !runner && previous.exists(_.adopted),
         tracksLatest = tracksLatest,
+        // not known until `validateAndSave` runs it
+        valid = false,
+        validationError = None,
+        reportedVersion = None,
         createdAt =
           previous.map(_.createdAt).getOrElse(System.currentTimeMillis()),
         modelKinds = None

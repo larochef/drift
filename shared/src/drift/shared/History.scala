@@ -21,31 +21,26 @@ object HistoryDay {
   given JsonValueCodec[Option[HistoryDay]] = JsonCodecMaker.make
 }
 
-// `base` in Api.scala is private to that file (tracked as bug 16); the same
-// prefix is rebuilt here so these endpoints live under /api like the rest.
-private val historyBase = endpoint.in("api")
-
 /** Every day that has recorded generations, newest first. */
 val listHistoryDays: PublicEndpoint[Unit, Unit, List[HistoryDay], Any] =
-  historyBase.get.in("history").out(jsonBody[List[HistoryDay]])
+  base.get.in("history").out(jsonBody[List[HistoryDay]])
 
 /** One day's recorded generations, newest first. A sidecar that no longer
   * decodes is skipped (and logged) rather than failing the day.
   */
 val listHistoryDay: PublicEndpoint[String, Unit, List[Generation], Any] =
-  historyBase.get
+  base.get
     .in("history" / path[String]("date"))
     .out(jsonBody[List[Generation]])
 
 /** Which day holds one generation, or nothing when no generation by that id is
   * recorded. A detail view opened straight from its URL — a refresh, a link,
   * the back button — sits on a page that has loaded only the newest days, and
-  * this is how it finds the day to load for the one it was asked to show
-  * (François, 2026-09-20).
+  * this is how it finds the day to load for the one it was asked to show.
   */
 val findHistoryGenerationDay
     : PublicEndpoint[String, Unit, Option[HistoryDay], Any] =
-  historyBase.get
+  base.get
     .in("history" / "generation" / path[String]("generationId"))
     .out(jsonBody[Option[HistoryDay]])
 
@@ -54,7 +49,7 @@ val findHistoryGenerationDay
   */
 val deleteHistoryGeneration
     : PublicEndpoint[(String, String), Unit, Boolean, Any] =
-  historyBase.delete
+  base.delete
     .in("history" / path[String]("date") / path[String]("generationId"))
     .out(jsonBody[Boolean])
 
@@ -73,7 +68,7 @@ object ImageImport {
   * today. The failure is why it was refused — not a PNG or JPEG, unreadable.
   */
 val importHistoryImage: PublicEndpoint[ImageImport, String, Generation, Any] =
-  historyBase.post
+  base.post
     .in("history" / "imports")
     .in(LargeJsonBody[ImageImport])
     .errorOut(stringBody)
@@ -86,7 +81,7 @@ val importHistoryImage: PublicEndpoint[ImageImport, String, Generation, Any] =
   */
 val importHistoryVideo
     : PublicEndpoint[(String, TapirFile), String, Generation, Any] =
-  historyBase.post
+  base.post
     .in("history" / "imports" / "videos")
     .in(query[String]("fileName"))
     .in(fileBody)
@@ -121,7 +116,7 @@ object GenerationReference {
   */
 val moveHistoryGenerations
     : PublicEndpoint[GenerationMove, String, List[Generation], Any] =
-  historyBase.post
+  base.post
     .in("history" / "moves")
     .in(jsonBody[GenerationMove])
     .errorOut(stringBody)

@@ -85,7 +85,7 @@ validationError?, reportedVersion?, createdAt
   part (`commit 6b3edaa`, since release builds print "version unknown"). The
   banner is looked for anywhere in the output and behind a log prefix, not on
   the first line alone: llama.cpp b11060 logs `llama_server: initializing ...`
-  in front of it, and the chip showed that log line (François, 2026-09-20). A
+  in front of it, and the chip showed that log line. A
   line drift cannot parse is kept as printed, so a build older than the banner
   it knows reads as it always did. Valid
   means "loads its libraries", not "sees the GPU". An invalid runtime is kept and

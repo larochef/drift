@@ -22,8 +22,7 @@ import com.raquo.laminar.api.L.*
   * `UpscalerSection`).
   *
   * Every tab is a URL — `/model-cache/<view>`, and for the on-disk view
-  * `/model-cache/on-disk/<cache>` — so a refresh or a link lands on it
-  * (François, 2026-09-11).
+  * `/model-cache/on-disk/<cache>` — so a refresh or a link lands on it.
   */
 class ModelCachePage(
     cacheService: CacheService,
@@ -95,15 +94,6 @@ class ModelCachePage(
 
   lazy val element: HtmlElement = div(
     cls := "content",
-    cacheService.effects,
-    // Composed effects: this brings modelService's and architectureService's
-    // pipelines along. Mounting those two directly as well would run every
-    // command twice; mounting neither drops run-configuration loads entirely.
-    runConfigurationService.effects,
-    downloadService.effects,
-    loraService.effects,
-    upscalerService.effects,
-    conversionService.effects,
     // A finished conversion is a new file on disk and a new registered
     // model: both listings change.
     conversionService.events --> Observer {

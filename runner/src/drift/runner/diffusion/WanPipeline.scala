@@ -1,5 +1,6 @@
 package drift.runner.diffusion
 
+import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
 import drift.runner.ops.Ops
 import drift.runner.tensor.*
@@ -210,7 +211,7 @@ final class WanPipeline(
       val latents = keep(
         ops.fromFloats(
           Shape.of(tokens, 4L * c.outChannels),
-          Array.fill(tokens * 4 * c.outChannels)(Images.gaussian(random))
+          Array.fill(tokens * 4 * c.outChannels)(Noise.gaussian(random))
         )
       )
       val (velocity, other) =

@@ -1,6 +1,6 @@
 # 38 — Entity migrations
 
-**Status:** done in code, not yet run live
+**Status:** done
 **Depends on:** 00 (the storage layer and its standing constraints)
 
 drift stores every entity as JSON, one file each, decoded by a codec per type.
@@ -8,7 +8,7 @@ Change a field and the stored records no longer fit the codec: they are skipped
 with a warning, and a built-in is rewritten by seeding while anything the user
 made is simply lost. The answer is not a codec that reads both shapes — that is
 legacy the code carries for ever — but a migration that runs once and leaves a
-single current format behind (François, 2026-09-19).
+single current format behind.
 
 ## What it does
 
@@ -57,16 +57,24 @@ single current format behind (François, 2026-09-19).
 - Records are read and written as `ujson` values — the AST the backend gained
   for this. A migration cannot use the entity's codec, since the shape it is
   fixing is the one the codec no longer describes.
-- `001-reference-image-use.json` is the first: `Architecture.referenceImages`
-  went from a boolean to `ReferenceImageUse` (27), and its `map` turns `true`
-  into `Context` and `false` into `Unused`. A record already carrying the enum
-  matches nothing in the map and is left alone, so the migration is safe to
-  re-run and a no-op on an install that never saw the boolean.
-- It is still the only one. `Architecture.sizeMultiple` (01, 27) was added
-  without a default on 2026-09-20 and needed none: every architecture on the
-  install was built-in, `list` skips a record the codec no longer reads, and
-  `seedFromResource` then finds nothing under that id and writes the reference
-  version — the case this spec's `reseed` op is named for (François).
+- **None is shipped today** (2026-10-11): the seventeen written while the
+  format moved weekly were retired together, the stored records rewritten in
+  full and the version set back to 0. The next change of a stored field is
+  migration 1.
+- **A stored record says every field** (`storedRecord`, the codec setting of
+  every stored type): an empty list and an absent value are written, and a
+  record lacking a field does not decode — it is skipped with a warning, as
+  loud as a record gets. The entity types carry no default values, so a field
+  added to one does not compile until every place that builds a record says
+  it, and does not load until a migration adds it to the stored ones. Two
+  limits: an optional field may still be left out of a file (the JSON library
+  reads it as absent), and the requests a record embeds — a prompt version's
+  generation parameters, a paused job's request — keep their defaults, an
+  absent field there meaning "whatever runs it decides".
+- A record that may not exist yet starts from a named value, not from a
+  constructor without arguments: `SessionSettings.initial`,
+  `LoraSampling.none`, `AssistantAppends.standard`, `Conversation.empty`,
+  `RuntimeSelection.none`, `AuthTokenSelection.none`.
 
 ## Tested
 
@@ -84,7 +92,7 @@ the runner needs nothing but a temporary directory. What it covers:
   earlier migration is not replayed), a current directory left alone, a newer
   one left alone, and a failure leaving the version where it was with a backup
   on disk.
-- That every migration drift ships parses, with unique versions in order.
+- That no migration is shipped.
 
 The test migrations live in `backend/test/resources/test-migrations/`, so the
 runner is exercised on a format the tests own rather than on the ones shipped.

@@ -86,7 +86,7 @@ talks to it through its own client, never HuggingFace's.
   models there yet. Wan 2.2 LoRAs name Wan 2.1 bases (ModelScope's AIGC
   section offers no 2.2 one), mixed with real 2.1 LoRAs: Wan 2.2 keeps no
   ModelScope base models on purpose and starts on a search for its name
-  instead — a text search over a model mismatch (François).
+  instead — a text search over a model mismatch.
 - A ModelScope token (Settings, `AuthProvider.ModelScope`, or
   `MODELSCOPE_API_TOKEN` as ModelScope's SDK reads it) goes with every request
   to modelscope.cn the way the SDK sends it: `Authorization: Bearer` for the

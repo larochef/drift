@@ -1,6 +1,6 @@
 # 28 — Default LoRAs on run configurations
 
-**Status:** done in code, not yet run live
+**Status:** done
 **Depends on:** 04, 09, 26, 27
 
 Some checkpoints need a LoRA to behave — a turbo LoRA for a model that is not
@@ -45,7 +45,7 @@ jobs that have no form (PiD, redraw) apply them too.
   the recorded ones; `Reuse.Task` restores the defaults.
 - `TiledJobs` resolves the configured LoRAs through `LoraManager` before a
   job is recorded. Redraw and PiD tiles send them as `lora`.
-- `pages/architectures/LoraSection` folds with the generation form's
+- `models/architectures/LoraSection` folds with the generation form's
   collapsible-section pattern.
 
 ## Notes

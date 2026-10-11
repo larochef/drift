@@ -30,8 +30,8 @@ object AssistantPrompts {
     "There are no notes on how this model reads prompts: write clear, " +
       "specific descriptions of what should be in the image."
 
-  // Forgiving about the fence the model actually writes (François,
-  // 2026-09-10: a proposal that went unrecognised had to be copied by hand):
+  // Forgiving about the fence the model actually writes — a proposal
+  // that goes unrecognised has to be copied by hand:
   // three or more backticks or tildes, the tag in any case, `positive` as a
   // synonym, and whatever else it puts on that line ("```prompt (positive)").
   // The block may also run to the end of the text - a reply cut off before its
@@ -64,7 +64,8 @@ object AssistantPrompts {
           .toList
           .lastOption
           .map(_.group(1).trim)
-          .getOrElse("")
+          .getOrElse(""),
+        aspectRatio = None
       )
     }
 
@@ -147,7 +148,7 @@ object AssistantPrompts {
       summary: Option[String]
   ): String = {
     val text = template.map(_.text).getOrElse("")
-    val appends = template.map(_.appends).getOrElse(AssistantAppends())
+    val appends = template.map(_.appends).getOrElse(AssistantAppends.standard)
     val brief = projectBrief
       .filter(_ => appends.brief)
       .filter(_.trim.nonEmpty)

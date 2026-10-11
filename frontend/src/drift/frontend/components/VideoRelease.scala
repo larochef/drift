@@ -7,8 +7,8 @@ import org.scalajs.dom
   * keeps a removed player's range request open, half read, until the element is
   * garbage-collected; drift serves HTTP/1.1, so a few of those hold its six
   * connections and the next page's videos wait (tens of seconds) for them.
-  * Removing the source and reloading drops the download at once (bug 37). The
-  * source comes back if the same element is mounted again.
+  * Removing the source and reloading drops the download at once. The source
+  * comes back if the same element is mounted again.
   */
 object VideoRelease {
 

@@ -1,6 +1,6 @@
 package drift.runner
 
-import drift.runner.diffusion.Lora
+import drift.runner.lora.Lora
 import drift.runner.models.Flux2.Grid
 import drift.runner.models.{Flux2, FluxVae}
 import drift.runner.ops.Ops

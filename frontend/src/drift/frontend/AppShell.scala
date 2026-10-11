@@ -69,9 +69,8 @@ private class Layout(
 
 /** Chrome plus the route table. Pages are constructed here from services the
   * caller already built, so `main` stays responsible for wiring and this file
-  * stays responsible for display. Each page mounts its own `service.effects`
-  * (see `bugs/15-modelservice-effects-never-mounted.md`), so a page must keep
-  * being constructed inside its route rather than hoisted out of it.
+  * stays responsible for display. The services' pipelines (`effects`) are
+  * mounted once, here; a page only pushes its loads when it opens.
   */
 class AppShell(
     modelService: ModelService,
@@ -229,8 +228,27 @@ class AppShell(
       ).element
     ).amend(
       LinkHandler.bind,
+      // Every service's pipelines, mounted here and nowhere else: a page
+      // pushes commands and reads state whatever it is, and nothing runs
+      // twice or not at all for having been mounted by two pages or by none.
       statusSocketService.effects,
       globalDownloadsService.effects,
+      architectureService.effects,
+      modelService.effects,
+      runConfigurationService.effects,
+      cacheService.effects,
+      downloadService.effects,
+      runtimeService.effects,
+      prerequisites.effects,
+      authTokenService.effects,
+      sessionService.effects,
+      generationService.effects,
+      projectService.effects,
+      historyService.effects,
+      postProcessService.effects,
+      loraService.effects,
+      upscalerService.effects,
+      conversionService.effects,
       // The prompt library is read by the assistant and the redraw panel on
       // every page, so it loads with the shell (`specs/32`).
       promptTemplateService.effects,

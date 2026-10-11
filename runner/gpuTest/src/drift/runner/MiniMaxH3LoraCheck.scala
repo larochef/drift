@@ -1,7 +1,8 @@
 package drift.runner
 
-import drift.runner.diffusion.Lora
-import drift.runner.models.{MiniMaxH3, MiniMaxH3Partition, WeightSource}
+import drift.runner.lora.Lora
+import drift.runner.weights.WeightSource
+import drift.runner.models.{MiniMaxH3, MiniMaxH3Partition}
 import drift.runner.ops.CpuOps
 
 import java.nio.file.{Files, Path, Paths}

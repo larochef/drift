@@ -41,7 +41,7 @@ images posted with it, next to its file list.
 - Civitai: a version Civitai **charges for** carries a chip beside its name in
   the Files tab — "💲 paid", or "💲 early access until <date>" when the charge
   lapses. It is per version and not per model, since a model commonly publishes
-  a paid version beside free ones (François, 2026-09-18); the model's own
+  a paid version beside free ones; the model's own
   `hasActivePaidAccess` could only say that one of them is paid, without
   saying which. drift cannot buy one: the download works for an account that
   already owns it, and early access simply ends on its date.
@@ -57,12 +57,12 @@ images posted with it, next to its file list.
   above its tabs (`RepositoryDetails`, `RepositoryDetail`): its files and its
   pictures are a single request, and when that fails every tab is empty —
   which reads as an empty repository rather than a failure. ModelScope fails
-  it often enough to matter ("获取模型目录树失败", François, 2026-09-22); the next
+  it often enough to matter ("获取模型目录树失败"); the next
   attempt usually works.
 
 ## Shape
 
-- Backend `routes/ModelDescriptions.scala` renders Markdown with commonmark
+- Backend `sites/ModelDescriptions.scala` renders Markdown with commonmark
   (GFM tables, autolinks) and cleans everything with jsoup's relaxed safelist
   plus `align`, rules, `details` and `video`; relative URLs resolve against
   the repository (`…/resolve/main/`), links open outside drift. The page
@@ -82,9 +82,8 @@ images posted with it, next to its file list.
   BrowserUtils,RetryNotice}.scala`, `services/{CivitaiService,
   HuggingFaceService}.scala`.
 - The three browsers are the same two-phase component with site-specific
-  parts, factored out (François, 2026-09-17). What they do the same way lives
-  in the shell, so a change asked for once is a change everywhere (François,
-  2026-09-18); a site browser holds only what its site does its own way.
+  parts, factored out. What they do the same way lives
+  in the shell, so a change asked for once is a change everywhere; a site browser holds only what its site does its own way.
   `components/ResultBrowser.scala` is that shell — modal and its width, error
   banner, **search field**, filter slot, **busy/empty placeholder**, card grid
   (`cardsPerRow`, five while the row is wide enough for them, as many 280px

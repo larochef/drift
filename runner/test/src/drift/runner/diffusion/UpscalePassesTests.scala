@@ -4,7 +4,7 @@ import utest.*
 
 import java.awt.image.BufferedImage
 
-/** How far one SeedVR2 pass enlarges (bug 40), and what a mask keeps. */
+/** How far one SeedVR2 pass enlarges, and what a mask keeps. */
 object UpscalePassesTests extends TestSuite {
 
   val tests = Tests {

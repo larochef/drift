@@ -1,6 +1,7 @@
 package drift.runner
 
-import drift.runner.diffusion.{Lora, WanPipeline}
+import drift.runner.lora.Lora
+import drift.runner.diffusion.WanPipeline
 import drift.runner.models.{Umt5, Wan, WanVideoVae}
 import drift.runner.ops.Ops
 import drift.runner.tensor.{DType, Shape}

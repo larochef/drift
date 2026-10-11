@@ -1,8 +1,9 @@
 package drift.backend.postprocess
 
-import drift.backend.postprocess.PostProcessImages.*
-import drift.backend.sdserver.*
+import drift.backend.images.PostProcessImages.*
+import drift.backend.nativejobs.NativeJobs
 import drift.backend.session.SessionManager
+import drift.protocol.UpscaleJobRequest
 import drift.shared.*
 
 import java.awt.image.BufferedImage
@@ -18,10 +19,10 @@ import scala.util.control.NonFatal
   *     (`colourMatched`) and blended; it pauses and resumes as the others do.
   *   - **A video** goes whole, as one `upscale` job on a runner the job starts
   *     and stops: the runner reads the source's file and writes the result's, a
-  *     batch of frames at a time (`bugs/54`), so its length is no limit. Its
-  *     frame rate and soundtrack are kept. It does not pause; stopped, or
-  *     failed after its first frames, it leaves the video of the frames made,
-  *     which is saved with a warning saying so.
+  *     batch of frames at a time, so its length is no limit. Its frame rate and
+  *     soundtrack are kept. It does not pause; stopped, or failed after its
+  *     first frames, it leaves the video of the frames made, which is saved
+  *     with a warning saying so.
   */
 final private[postprocess] class SeedVr2Upscale(
     jobs: PostProcessJobs,
@@ -103,7 +104,7 @@ final private[postprocess] class SeedVr2Upscale(
               scale = scale,
               runConfigurationId = configuration.id,
               request = TileRequests.Upscales(input =>
-                NativeUpscale(input.image, scale, seeded.seed)
+                UpscaleJobRequest.picture(input.image, scale, seeded.seed)
               ),
               target = target,
               rows = rows,
@@ -183,7 +184,7 @@ final private[postprocess] class SeedVr2Upscale(
           else
             NativeJobs.upscaleVideo(
               server.port,
-              NativeVideoUpscale(
+              UpscaleJobRequest.video(
                 src.file.toAbsolutePath.toString,
                 written.toAbsolutePath.toString,
                 request.scale,

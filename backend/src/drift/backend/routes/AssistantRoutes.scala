@@ -1,6 +1,7 @@
 package drift.backend.routes
 
 import drift.backend.assistant.{AssistantMedia, AssistantProxy}
+import drift.backend.sites.ModelDescriptions
 import drift.shared.*
 
 import java.nio.charset.StandardCharsets

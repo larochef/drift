@@ -41,13 +41,13 @@ removedParameters: List[flag], builtIn
 fileId, filename)` | `Local(path)`, discriminated by a lowercase `type` key that
 may sit anywhere in the object.
 
-- CRUD at `/api/models` (`canDelete = !builtIn`); storage
+- CRUD at `/api/models` (a built-in is neither deleted nor changed); storage
   `~/.config/drift/models/<id>.json`. `PUT` is what the edit panel calls; a
   built-in is not offered it, since seeding overwrites the file on the next
   start.
 - `format` derives from the file extension; ids have `/` replaced by `-` because
   the id becomes a file name.
-- UI: `pages/architectures/ModelForm.scala`, `SourceTypeSelector.scala`;
+- UI: `models/architectures/ModelForm.scala`, `SourceTypeSelector.scala`;
   `services/ModelService.scala`.
 
 ## Notes

@@ -34,7 +34,7 @@ what a prompt is; [`20`](20-prompt-assistant-conversation.md) does.
   own tool. The runtime is resolved with the tool, so a chat configuration
   never launches on sd-server.
 - argv: the checkpoint flags and parameters, `--host 127.0.0.1 --port N`, no
-  `--lora-model-dir` / `--hires-upscalers-dir` (llama-server refuses them).
+  `--lora-model-dir` (llama-server refuses it).
   Ports come from the shared range.
 - `shared/Assistant.scala`: `ChatMessage(role, text, attachments)`,
   `ChatAttachment = OutputAttachment(date, fileName) | UploadAttachment(id)`

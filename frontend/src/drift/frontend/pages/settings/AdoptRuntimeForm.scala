@@ -50,9 +50,17 @@ class AdoptRuntimeForm(
             // Unknown for a directory drift did not fetch; validation
             // stores the version the binary itself reports.
             releaseTag = "unknown",
+            rocmVersion = None,
+            gfxTarget = None,
+            theRockVersion = None,
             installedAt = path,
             theRockPath = Some(adoptTheRockPath.now().trim).filter(_.nonEmpty),
             adopted = true,
+            tracksLatest = false,
+            // Registering validates it.
+            valid = false,
+            validationError = None,
+            reportedVersion = None,
             createdAt = System.currentTimeMillis().toLong,
             modelKinds = None
           )

@@ -3,8 +3,8 @@ package drift.shared
 import utest.*
 
 /** How an upscale cuts its target once the tile size and the grid's shift are
-  * the user's (`bugs/45`): whatever is asked, the tiles cover the target, stay
-  * inside it, and each remains an exact crop of the source.
+  * the user's: whatever is asked, the tiles cover the target, stay inside it,
+  * and each remains an exact crop of the source.
   */
 object UpscaleTilingTests extends TestSuite {
 

@@ -1,20 +1,21 @@
 # 10 — Generation-time upscaling
 
-**Status:** done; the ESRGAN side is to be removed (Remaining)
+**Status:** done
 **Depends on:** 08
 
-sd-cpp's highres-fix driven from the generation form, with the upscaler weights
-fetched and managed by drift. Post-hoc upscaling of an existing image is `15`.
+sd-cpp's highres-fix driven from the generation form, on the server's own
+modes, and the store of ESRGAN weights drift fetches and manages. Upscaling
+with a model is post-processing: `15`.
 
 ## What it does
 
-- The generation form's folded **Hires** section (`pages/generate/HiresSection
+- The generation form's folded **Hires** section (`generate/HiresSection
   .scala`), shown only when the session's capabilities flag `hires` on
-  `img_gen`: an **Upscaler** select grouped into upscaler models, latent modes
-  and plain filters (Lanczos, Nearest), a scale or explicit target
-  width/height, hires steps, denoising strength, and an upscale tile size for
-  model upscalers. Picking an upscaler seeds the denoising strength (model
-  0.35, latent 0.65, filter 0.5).
+  `img_gen`: an **Upscaler** select grouped into latent modes and plain filters
+  (Lanczos, Nearest), a scale or explicit target width/height, hires steps
+  and denoising strength. Picking an upscaler seeds the denoising strength
+  (latent 0.65, filter 0.5). No model is offered: a generation reused from
+  one made through an ESRGAN model comes back on **(server default)**, sent as `Latent`.
 - A folded **VAE tiling** section exposes the native `vae_tiling` block on
   image and video parameters, gated on the capability flag. Ticking it seeds a
   relative tile size of base ÷ target and overlap 0.25.
@@ -22,16 +23,15 @@ fetched and managed by drift. Post-hoc upscaling of an existing image is `15`.
   installs weights from a curated list of the RRDBNet RealESRGAN releases, a
   free-form URL (optional label, file name, sha256) or the Civitai browser in
   UPSCALER type, lists installed ones with progress, and deletes them.
-- Every sd-cpp launch passes the upscaler store as `--hires-upscalers-dir`, so
-  an installed upscaler is visible to the next session.
+- No launch is handed the store (`--hires-upscalers-dir` is not passed): the
+  post-hoc ESRGAN upscale of `15` reads a weight file by its path.
 
 ## Shape
 
 - Store: `~/.cache/drift/upscale/`, flat — sd-server scans only the top
   level. `Upscaler(id, label, fileName, downloadUrl, sha256, sizeBytes,
   civitaiModelId, createdAt)` in `shared/.../Upscalers.scala`; `id` is the
-  file stem, which is the name sd-server reports and `hires.upscaler`
-  carries. Civitai installs are stored `<fileId>-<name>`.
+  file stem. Civitai installs are stored `<fileId>-<name>`.
 - Endpoints: `GET /api/upscalers`, `POST /api/upscalers/install`
   (`InstallUpscalerRequest(url, label, fileName, sha256)`),
   `POST /api/upscalers/install-civitai`
@@ -44,12 +44,13 @@ fetched and managed by drift. Post-hoc upscaling of an existing image is `15`.
 - Request side: `HiresParameters` and `VaeTilingParameters` in
   `shared/.../Generation.scala` mirror the native `img_gen` `hires` and
   `vae_tiling` objects (`target_width`/`target_height` 0 = use scale, `steps`
-  0 = auto).
+  0 = auto). `HiresParameters.isBuiltIn` tells the modes the form offers
+  from a model's name.
 
 ## Notes
 
-- Upscalers are global: nothing on the run configuration, one launch flag on
-  every session. A RealESRGAN model upscales pixels whatever produced them.
+- Upscalers are global: nothing on the run configuration. A RealESRGAN model
+  upscales pixels whatever produced them.
 - sd-cpp loads RRDBNet-class ESRGAN only (`.pth` included), no SRVGG
   "compact" nets, and RealESRGAN **x2plus** fails to load (12-channel
   `conv_first`); x4plus works.
@@ -61,14 +62,3 @@ fetched and managed by drift. Post-hoc upscaling of an existing image is `15`.
   (15 min), not by count, while connection-refused still fails fast. Without
   this the finished output is lost.
 - The Civitai token is sent only to civitai.com hosts.
-
-## Remaining
-
-- **ESRGAN leaves the generation form.** Upscaling with a model is post
-  processing (15), not part of generating: the **Upscaler** select keeps the
-  latent modes only, the model upscalers go from it (and from the recipes that
-  seed it), and launches no longer pass `--hires-upscalers-dir`. The upscaler
-  store stays, for 15's ESRGAN upscale. Code: `frontend/.../generate/`
-  (`HiresSection`, `GenerationFormState`, `RecipeSeeding`,
-  `GenerationSubmission`), `backend/.../session/LaunchArguments.scala`; the
-  runner's `ImageOptions` can drop the flag from what it accepts.

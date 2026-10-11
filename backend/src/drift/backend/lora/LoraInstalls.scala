@@ -1,8 +1,8 @@
 package drift.backend.lora
 
 import drift.backend.cache.ModelCache
-import drift.backend.download.HuggingFaceDownloads
-import drift.backend.routes.CivitaiClient
+import drift.backend.civitai.CivitaiClient
+import drift.backend.huggingface.HuggingFaceDownloads
 import drift.backend.storage.StorageService
 import drift.shared.*
 
@@ -191,8 +191,8 @@ final private[lora] class LoraInstalls(
   /** What a Civitai LoRA is called: the model's name, and the version's too
     * when the model publishes several and this LoRA holds only that one — which
     * is what lets two versions of it sit side by side in the picker and be
-    * compared (François, 2026-09-18). `file` names the file as well, for when
-    * one version's files are installed apart from each other.
+    * compared. `file` names the file as well, for when one version's files are
+    * installed apart from each other.
     */
   private def civitaiLabel(
       detail: CivitaiModelDetail,
@@ -336,7 +336,8 @@ final private[lora] class LoraInstalls(
                   // The whole path: a file sorted into a `high_noise/` folder
                   // says so there and nowhere else.
                   stage = LoraManager.stageOf(path.toString),
-                  sizeBytes = Some(Files.size(path))
+                  sizeBytes = Some(Files.size(path)),
+                  sha256 = None
                 ),
                 LoraManager.labelOf(name)
               )

@@ -139,15 +139,11 @@ object ConversionJob {
   given Schema[ConversionJob] = Schema.derived
 }
 
-// `base` in Api.scala is private to that file (tracked as bug 16); the same
-// prefix is rebuilt here so these endpoints live under /api like the rest.
-private val conversionBase = endpoint.in("api")
-
 /** What a cached file holds, from its header. The failure is the reason the
   * file could not be read as a weight file.
   */
 val inspectCachedFile: PublicEndpoint[String, String, ModelFileInfo, Any] =
-  conversionBase.get
+  base.get
     .in("cache" / "files" / "inspect")
     .in(query[String]("path"))
     .errorOut(stringBody)
@@ -158,7 +154,7 @@ val inspectCachedFile: PublicEndpoint[String, String, ModelFileInfo, Any] =
   */
 val startConversion
     : PublicEndpoint[ConversionRequest, String, ConversionJob, Any] =
-  conversionBase.post
+  base.post
     .in("conversions")
     .in(jsonBody[ConversionRequest])
     .errorOut(stringBody)
@@ -166,10 +162,10 @@ val startConversion
 
 /** Every conversion of this drift run, newest first. */
 val listConversions: PublicEndpoint[Unit, Unit, List[ConversionJob], Any] =
-  conversionBase.get.in("conversions").out(jsonBody[List[ConversionJob]])
+  base.get.in("conversions").out(jsonBody[List[ConversionJob]])
 
 /** Cancels a queued or running conversion; its partial output is removed. */
 val cancelConversion: PublicEndpoint[String, Unit, Boolean, Any] =
-  conversionBase.post
+  base.post
     .in("conversions" / path[String] / "cancel")
     .out(jsonBody[Boolean])

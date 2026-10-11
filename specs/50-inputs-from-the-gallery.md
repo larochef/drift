@@ -1,6 +1,6 @@
 # 50 — Inputs from the gallery
 
-**Status:** partial — the picker, the link and Ask the assistant are done in code, not yet run live; a video as a still and *Use as input* remain
+**Status:** partial — the picker, the link and Ask the assistant are done and used (a project's picture as the first frame of a video); a video as a still and *Use as input* remain
 **Depends on:** 12, 14, 21, 47
 
 Every input a model takes — an init image, references, a start or end frame,
@@ -61,12 +61,12 @@ disk, and a picture already on the page goes to the assistant in one click.
   generation id, output index, date and file name. Sidecars are not a
   migrated collection: one written before has no such field and reads as an
   empty list.
-- `pages/gallery/GalleryPicker`: a `BrowserModal` with one grid of
+- `gallery/GalleryPicker`: a `BrowserModal` with one grid of
   `GenerationCard` tiles, one per output the slot takes; opening it reads
   every day of the history. `GalleryFilter` holds the filter rules, for the picker
   and `GalleryPage`. `WorkspaceBody` hosts one picker for its generation
   panel and its chat, opened on the project in a workspace.
-- `pages/generate/MediaPickers`: `InputTools` carries the two things a slot
+- `generate/MediaPickers`: `InputTools` carries the two things a slot
   can do besides browsing — the gallery and the assistant — down
   `GenerationForm` → `InputsSection` → the pickers.
 - The assistant: a picked entry is staged as the gallery's own **Ask the

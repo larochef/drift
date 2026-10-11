@@ -1,7 +1,9 @@
 package drift.backend.lora
 
 import drift.backend.{Background, WorkQueue}
+import drift.backend.civitai.CivitaiClient
 import drift.backend.download.*
+import drift.backend.huggingface.HuggingFaceDownloads
 import drift.backend.storage.StorageService
 import drift.shared.*
 
@@ -27,7 +29,7 @@ final private[lora] class LoraDownloads(
     huggingFace: HuggingFaceDownloads,
     modelScope: drift.backend.modelscope.ModelScopeDownloads,
     downloader: Downloader,
-    civitaiToken: () => Option[String],
+    civitaiClient: CivitaiClient,
     lorasRoot: Path,
     background: Background
 ) {
@@ -159,14 +161,12 @@ final private[lora] class LoraDownloads(
     file.source match {
       case Civitai(_, versionId, fileId, _) =>
         downloader.fetch(
-          url =
-            s"https://civitai.com/api/download/models/$versionId?fileId=$fileId",
+          url = civitaiClient.downloadAddress(versionId, fileId),
           partFile =
             target.resolveSibling(target.getFileName.toString + ".part"),
           finalFile = target,
           expectedSha256 = file.sha256,
-          headers =
-            civitaiToken().map(t => "Authorization" -> s"Bearer $t").toMap,
+          headers = civitaiClient.downloadHeaders,
           isCancelled = isCancelled,
           onProgress = onProgress
         )

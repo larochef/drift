@@ -86,7 +86,7 @@ for each checkpoint slot:        emit slot.flag <cached path of the assigned mod
 parameters, resolved in layers:  architecture ← model ← runtime defaults ← configuration,
                                  then runtime vetoes (each reported as a note)
                                  empty value = bare flag ("--diffusion-fa": "")
-sd-cpp only:                     --lora-model-dir <loras>/<architectureId>, --hires-upscalers-dir
+sd-cpp only:                     --lora-model-dir <loras>/<architectureId>
 listen:                          --listen-ip/--listen-port (sd-cpp), --host/--port (llama.cpp)
 ```
 

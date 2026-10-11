@@ -125,14 +125,10 @@ slot of every built-in architecture of both tools.
 - **Turbo is a checkpoint, not an architecture**, wherever the slots are the
   same: Mage-Flow's three checkpoints (RL-aligned, Base, Turbo) share
   `mage-flow-diffusion`, Mage-Flow Edit's three `mage-flow-edit-diffusion`,
-  and the numbers on each are what tells them apart. Migration 17 moved the
-  stored records of the two retired architectures (`mage-flow-turbo`,
-  `mage-flow-edit-turbo`): models by family, run configurations and LoRAs by
-  architecture. A LoRA's folder is under its architecture's
-  ([`09`](09-lora-management.md)), which a migration cannot reach, so
+  and the numbers on each are what tells them apart. A LoRA's folder is under
+  its architecture's ([`09`](09-lora-management.md)):
   `LoraManager.settleFolders` moves at start any folder its entity left
-  behind — found by the LoRA's id, which keeps the old architecture's name and
-  is what recorded recipes carry. LLaDA-Image and its Turbo stay two: their
+  behind when its architecture changed — found by the LoRA's id. LLaDA-Image and its Turbo stay two: their
   text encoder, QueryFormer and text projection differ with the transformer.
 - Browsing for their LoRAs works on all three sites: Civitai files them under
   `Boogu`, `Ernie` and `HiDream-O1`; HuggingFace under the vendors'

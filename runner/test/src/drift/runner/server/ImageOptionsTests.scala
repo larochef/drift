@@ -26,8 +26,6 @@ object ImageOptionsTests extends TestSuite {
     "--mmap",
     "--lora-model-dir",
     "/l",
-    "--hires-upscalers-dir",
-    "/u",
     "--listen-ip",
     "127.0.0.1",
     "--listen-port",

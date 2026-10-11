@@ -280,7 +280,7 @@ object TinyModelTests extends TestSuite {
         assert(error < 2e-2) // BF16 weights (2⁻⁸), then float sums
       } finally ops.close()
     }
-    test("VaeTiles stitches tiles that disagree without a step (bug 42)") {
+    test("VaeTiles stitches tiles that disagree without a step") {
       // 2048 × 3072 in tiles of 1024 overlapping by 128 at least, as a
       // SeedVR2 ×2 of a 1024 × 1536 picture decodes — at a 16th of the size.
       // Every tile is one flat value of its own: whatever the tiles hold, the

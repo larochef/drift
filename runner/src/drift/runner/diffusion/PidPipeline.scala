@@ -4,6 +4,7 @@ import drift.runner.models.*
 import drift.runner.ops.Ops
 import drift.runner.tensor.*
 import drift.runner.text.{Tokenizer, TokenizerJson}
+import drift.runner.weights.WeightSource
 
 import java.awt.image.BufferedImage
 import java.nio.file.Path
@@ -155,7 +156,7 @@ final class PidPipeline(
       try {
         val random = new SplittableRandom(request.seed)
         def noise() =
-          Array.fill(width * height * 3)(Images.gaussian(random))
+          Array.fill(width * height * 3)(Noise.gaussian(random))
         val shape = Shape.of(height.toLong, width.toLong, 3)
         val x = hold(ops.fromFloats(shape, noise()))
         val velocity = hold(ops.allocate(DType.F32, shape))

@@ -185,8 +185,7 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     file has none; drift downloads it with the other files — the slot shows
     only when the configuration's runner is the drift runner, and is required
     there), and **ffmpeg**
-    installed, which encodes the webm. First and last frames and references
-    are not supported yet.
+    installed, which encodes the webm.
   - **Wan 2.2 14B** makes videos from text, and from a first frame with the
     I2V experts, in about half sd-cpp's time. It takes UMT5's
     `tokenizer.json` as the configuration's **tokenizer** (a slot of the drift

@@ -54,10 +54,9 @@ case class ActiveDownload(
   *
   * Deliberately its own service, mounted once by `AppShell`: the per-page
   * download services listen only while their page is open, and mounting their
-  * effects a second time would run every command twice (the bugs/15 class).
-  * This one lives entirely off the status socket instead, because a global view
-  * has to *discover* work started elsewhere — the on-connect snapshot and the
-  * pushes are exactly that.
+  * effects a second time would run every command twice. This one lives entirely
+  * off the status socket instead, because a global view has to *discover* work
+  * started elsewhere — the on-connect snapshot and the pushes are exactly that.
   */
 class GlobalDownloadsService(statusSocket: StatusSocketService) {
 

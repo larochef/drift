@@ -1,16 +1,17 @@
 package drift.runner
 
-import drift.runner.models.{ComfyQuantStorage, WeightSource}
+import drift.runner.weights.ComfyQuantStorage
+import drift.runner.weights.WeightSource
 import drift.runner.ops.{CpuOps, HipOps, MatVecInputs}
 import drift.runner.tensor.{ConvRot, DType, Shape, Storage}
 
 import java.nio.file.{Path, Paths}
 
 /** ComfyUI's rotated linears read where the file holds them against decoded at
-  * load (`bugs/53`), on a real checkpoint: the GPU's decode against the CPU's
-  * value by value on the smallest and the largest layer of each kind, the
-  * decode's speed, and for each way of holding the weights the load, the
-  * memory, and a pass over every layer — what each forward pass adds.
+  * load, on a real checkpoint: the GPU's decode against the CPU's value by
+  * value on the smallest and the largest layer of each kind, the decode's
+  * speed, and for each way of holding the weights the load, the memory, and a
+  * pass over every layer — what each forward pass adds.
   *
   * `./mill runner.gpuTest.runMain drift.runner.ConvRotBenchmark <checkpoint>
   * [cpu]` — `cpu` also times the decode on the CPU.

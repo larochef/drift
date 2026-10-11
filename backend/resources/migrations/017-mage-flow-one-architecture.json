@@ -1,9 +1,0 @@
-{
-  "version": 17,
-  "description": "specs/23: Mage-Flow Turbo and Mage-Flow Edit Turbo are checkpoints of Mage-Flow and Mage-Flow Edit, no longer architectures of their own — each checkpoint carries its steps and CFG",
-  "steps": [
-    { "collection": "models", "op": "set", "field": "familyId", "map": { "mage-flow-turbo-diffusion": "mage-flow-diffusion", "mage-flow-edit-turbo-diffusion": "mage-flow-edit-diffusion" } },
-    { "collection": "run-configurations", "op": "set", "field": "architectureId", "map": { "mage-flow-turbo": "mage-flow", "mage-flow-edit-turbo": "mage-flow-edit" } },
-    { "collection": "loras", "op": "set", "field": "architectureId", "map": { "mage-flow-turbo": "mage-flow", "mage-flow-edit-turbo": "mage-flow-edit" } }
-  ]
-}

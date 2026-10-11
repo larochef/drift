@@ -29,8 +29,7 @@ class ParamEditor(
       * the hard part of overriding or removing one — it has to match to the
       * character, and a misspelling removes nothing while looking like it did —
       * and the layer is what says whether a value is still the architecture's
-      * or already a model's, which two identical numbers cannot (François,
-      * 2026-09-20).
+      * or already a model's, which two identical numbers cannot.
       */
     inherited: Signal[List[ResolvedParameter]] = Val(Nil)
 ) extends Component {

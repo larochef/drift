@@ -9,8 +9,8 @@ import org.scalajs.dom
   * has been restarted on a build whose messages are newer than the bundle the
   * browser holds. Every topic travels in one message, so nothing live arrives
   * at all in that state — and the page looks idle rather than broken, which is
-  * how a finished runtime install can sit there saying "queued" (François,
-  * 2026-09-20). Reloading is the whole cure, so the notice carries the button.
+  * how a finished runtime install can sit there saying "queued". Reloading is
+  * the whole cure, so the notice carries the button.
   */
 class StaleBundleNotice(statusSocket: StatusSocketService) extends Component {
   lazy val element: HtmlElement = div(

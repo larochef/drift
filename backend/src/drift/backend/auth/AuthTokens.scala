@@ -13,7 +13,7 @@ final class AuthTokens(storage: StorageService) {
   def selection: AuthTokenSelection =
     storage
       .get[AuthTokenSelection]("settings", "auth-token-selection")
-      .getOrElse(AuthTokenSelection())
+      .getOrElse(AuthTokenSelection.none)
 
   def saveSelection(next: AuthTokenSelection): AuthTokenSelection =
     storage.save("settings", "auth-token-selection", next)

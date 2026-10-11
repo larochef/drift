@@ -5,8 +5,8 @@ import java.nio.file.{Files, Paths}
 import scala.jdk.CollectionConverters.*
 
 /** A clip past the two gigabytes one array holds, through `VideoUpscale` with
-  * an upscaler that restores nothing (`ResizePass`), in a small heap
-  * (`bugs/54`): minutes long, so a main and not a test.
+  * an upscaler that restores nothing (`ResizePass`), in a small heap: minutes
+  * long, so a main and not a test.
   *
   * `java -Xmx512m -cp <runner.test's classpath>
   * drift.runner.server.LongClipCheck [FRAMES] [SCALE] [FOLDER]` — 3000 frames

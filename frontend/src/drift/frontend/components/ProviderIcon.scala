@@ -4,11 +4,10 @@ import drift.shared.*
 
 import com.raquo.laminar.api.L.*
 
-/** Where a model or a LoRA came from, as a mark beside its name (François,
-  * 2026-09-17), and on the browser's source row. The sites' own logos are
-  * images drift does not carry; their initials in their colour are recognised
-  * just as well in the space a list row can spare, and say the rest in the
-  * tooltip.
+/** Where a model or a LoRA came from, as a mark beside its name, and on the
+  * browser's source row. The sites' own logos are images drift does not carry;
+  * their initials in their colour are recognised just as well in the space a
+  * list row can spare, and say the rest in the tooltip.
   */
 object ProviderIcon {
 

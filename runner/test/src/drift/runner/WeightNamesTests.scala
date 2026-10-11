@@ -1,9 +1,9 @@
 package drift.runner
 
+import drift.runner.weights.WeightNames
 import utest.*
 
 import drift.runner.formats.FormatException
-import drift.runner.models.WeightNames
 
 import java.nio.file.Files
 import scala.jdk.CollectionConverters.*

@@ -34,18 +34,18 @@ case class AuthToken(
     label: String,
     provider: AuthProvider,
     token: String,
-    createdAt: Long = 0L
+    createdAt: Long
 )
 object AuthToken {
   // No discriminator: `AuthProvider` has only singleton cases, so it encodes
   // as a plain string ("Civitai"). The config must be inline -- the macro
   // needs a constant expression.
   given JsonValueCodec[AuthToken] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
   given JsonValueCodec[List[AuthToken]] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
   given JsonValueCodec[Option[AuthToken]] =
-    JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
+    JsonCodecMaker.make(storedRecord.withDiscriminatorFieldName(None))
 }
 
 /** The active token per provider. An absent side means "fall back to the
@@ -53,44 +53,48 @@ object AuthToken {
   * `MODELSCOPE_API_TOKEN`), which stays the bootstrap path.
   */
 case class AuthTokenSelection(
-    civitaiTokenId: Option[String] = None,
-    huggingFaceTokenId: Option[String] = None,
-    modelScopeTokenId: Option[String] = None
+    civitaiTokenId: Option[String],
+    huggingFaceTokenId: Option[String],
+    modelScopeTokenId: Option[String]
 )
 object AuthTokenSelection {
-  given JsonValueCodec[AuthTokenSelection] = JsonCodecMaker.make
+
+  /** No token chosen for any site. */
+  val none: AuthTokenSelection = AuthTokenSelection(
+    civitaiTokenId = None,
+    huggingFaceTokenId = None,
+    modelScopeTokenId = None
+  )
+
+  given JsonValueCodec[AuthTokenSelection] = JsonCodecMaker.make(storedRecord)
 }
 
-// `base` in Api.scala is private to that file (tracked as bug 16); the same
-// prefix is rebuilt here so these endpoints live under /api like the rest.
-private val authBase = endpoint.in("api")
-
 val listAuthTokens: PublicEndpoint[Unit, Unit, List[AuthToken], Any] =
-  authBase.get.in("auth-tokens").out(jsonBody[List[AuthToken]])
+  base.get.in("auth-tokens").out(jsonBody[List[AuthToken]])
 
 val getAuthToken: PublicEndpoint[String, Unit, Option[AuthToken], Any] =
-  authBase.get
+  base.get
     .in("auth-tokens" / path[String])
     .out(jsonBody[Option[AuthToken]])
 
 val createAuthToken: PublicEndpoint[AuthToken, Unit, AuthToken, Any] =
-  authBase.post
+  base.post
     .in("auth-tokens")
     .in(jsonBody[AuthToken])
     .out(jsonBody[AuthToken])
 
 val updateAuthToken
     : PublicEndpoint[(String, AuthToken), Unit, Option[AuthToken], Any] =
-  authBase.put
+  base.put
     .in("auth-tokens" / path[String])
     .in(jsonBody[AuthToken])
     .out(jsonBody[Option[AuthToken]])
 
 val deleteAuthToken: PublicEndpoint[String, Unit, Boolean, Any] =
-  authBase.delete.in("auth-tokens" / path[String]).out(jsonBody[Boolean])
+  base.delete.in("auth-tokens" / path[String]).out(jsonBody[Boolean])
 
 val getAuthTokenSelection: PublicEndpoint[Unit, Unit, AuthTokenSelection, Any] =
-  authBase.get.in("auth-token-selection").out(jsonBody[AuthTokenSelection])
+  base.get.in("auth-token-selection").out(jsonBody[AuthTokenSelection])
 
 /** The providers whose environment variable carries a token — the fallback a
   * browser counts as a token, since the frontend cannot read the backend's
@@ -98,7 +102,7 @@ val getAuthTokenSelection: PublicEndpoint[Unit, Unit, AuthTokenSelection, Any] =
   */
 val getEnvironmentAuthProviders
     : PublicEndpoint[Unit, Unit, List[AuthProvider], Any] =
-  authBase.get
+  base.get
     .in("auth-token-environment")
     .out(jsonBody[List[AuthProvider]])
 
@@ -107,7 +111,7 @@ val getEnvironmentAuthProviders
   */
 val setAuthTokenSelection
     : PublicEndpoint[AuthTokenSelection, Unit, AuthTokenSelection, Any] =
-  authBase.put
+  base.put
     .in("auth-token-selection")
     .in(jsonBody[AuthTokenSelection])
     .out(jsonBody[AuthTokenSelection])

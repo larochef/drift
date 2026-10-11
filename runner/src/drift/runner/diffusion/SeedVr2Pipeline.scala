@@ -3,6 +3,7 @@ package drift.runner.diffusion
 import drift.runner.models.*
 import drift.runner.ops.Ops
 import drift.runner.tensor.*
+import drift.runner.weights.WeightSource
 
 import java.awt.image.BufferedImage
 import java.nio.file.*
@@ -476,8 +477,8 @@ object SeedVr2Pipeline {
   val DefaultScale = 4
 
   /** The most one pass enlarges. Past ×2 the model hatches skin and foliage and
-    * draws strands across small faces (bug 40); two passes of ×2 take the same
-    * time as one of ×4 and leave none of it.
+    * draws strands across small faces; two passes of ×2 take the same time as
+    * one of ×4 and leave none of it.
     */
   val MaxPassScale = 2
 

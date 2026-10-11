@@ -98,8 +98,9 @@ something (an image attached, hires on, a non-default sampler):
   way sd-cli would (about a megapixel) before sending it, or — on an sd-cpp
   older than master-892, whose server stretches references to the output —
   pads it to the output's shape with grey so it is scaled, not squashed.
-- **Hires**: a second pass through an upscaler model or a latent mode, with
-  its own denoising strength and steps.
+- **Hires**: a second pass through a latent mode or a plain filter, with
+  its own denoising strength and steps. Upscaling with a model (ESRGAN, PiD,
+  SeedVR2) is the **Upscale** task on the result, in the gallery.
 - **VAE tiling**: fixes high-resolution decode crashes.
 - **Guidance & SLG**: image CFG, distilled guidance, skip-layer guidance.
 - **Batch**: images per run (bounded by the model), output format and

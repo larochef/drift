@@ -119,7 +119,7 @@ final class NucleusPipeline(
         keep(text(request.negativePrompt, gridHeight, gridWidth))
       )
       val random = new SplittableRandom(request.seed)
-      val noise = Array.fill(tokens * channels)(Images.gaussian(random))
+      val noise = Array.fill(tokens * channels)(Noise.gaussian(random))
       val x = hold(ops.fromFloats(Shape.of(tokens, channels), noise))
       val sigmas = request.sigmas.getOrElse(
         FlowSchedule

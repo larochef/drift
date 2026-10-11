@@ -1,6 +1,6 @@
 package drift.backend.postprocess
 
-import drift.backend.postprocess.PostProcessImages.*
+import drift.backend.images.PostProcessImages.*
 import drift.backend.runtime.SdCppBuilds
 import drift.shared.*
 
@@ -115,7 +115,7 @@ final private[postprocess] class PidUpscale(tiles: TiledJobs) {
               seed = Some(seed)
             ),
             // PiD drifts in colour, 4 to 7 levels on average and up to 34 on
-            // an illustration (bug 39): the tile's own crop of the reference,
+            // an illustration: the tile's own crop of the reference,
             // at the tile's size, carries the colours to keep
             correctTile = Some((decoded, crop) =>
               colourMatched(
@@ -170,7 +170,7 @@ private[postprocess] object PidUpscale {
   /** Why `runtime` cannot run a PiD job, if it cannot: its sd-server scales
     * every reference to the tile's size (`SdCppBuilds.keepsReferenceSize`), and
     * PiD, conditioned on that blurred reference instead of the small crop,
-    * returns a smear (bugs/25).
+    * returns a smear.
     */
   def refusal(runtime: Runtime): Option[String] =
     Option.unless(SdCppBuilds.keepsReferenceSize(runtime))(

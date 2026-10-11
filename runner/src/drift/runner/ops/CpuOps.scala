@@ -1,6 +1,5 @@
 package drift.runner.ops
 
-import drift.runner.state.KvCache
 import drift.runner.tensor.*
 
 import java.lang.foreign.{Arena, MemorySegment}

@@ -19,7 +19,7 @@ export default defineConfig({
     // handler for this proxy, the status socket never connects behind the dev
     // server, and every live update in the app is silently dead — a runtime
     // install sits at the state its POST answered with until the page is
-    // reloaded (François, 2026-09-20).
+    // reloaded.
     proxy: { '/api': { target: 'http://localhost:4321', ws: true } },
   },
   resolve: {

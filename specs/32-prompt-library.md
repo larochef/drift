@@ -1,6 +1,6 @@
 # 32 — Prompt library
 
-**Status:** done in code, not yet run live
+**Status:** done; the Ideogram caption writer used on a local model
 **Depends on:** 20 (the assistant conversation and its system message), 21 (the
 assistant panel), 27 (redraw), 19 (projects, for remembering a choice)
 

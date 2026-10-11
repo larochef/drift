@@ -1,6 +1,6 @@
 package drift.runner
 
-import drift.runner.diffusion.Lora
+import drift.runner.lora.Lora
 import drift.runner.models.{PrefixReference, QwenImage21, QwenImage21Vae}
 import drift.runner.ops.Ops
 import drift.runner.tensor.{DType, Shape}

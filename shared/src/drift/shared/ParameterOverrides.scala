@@ -7,7 +7,7 @@ package drift.shared
   * removes nothing — yet both read like a decision in the form and in the file.
   * One of them is how a flag meant to be *removed* came to be stored as an
   * override of the value it already had, invisibly, because the number was the
-  * same either way (François, 2026-09-20).
+  * same either way.
   *
   * So a record carries only the difference; the effective list stays computed
   * (`CommandLine.resolveParameters`). This is the one implementation of that

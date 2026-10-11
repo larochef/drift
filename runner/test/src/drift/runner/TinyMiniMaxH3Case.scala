@@ -1,12 +1,9 @@
 package drift.runner
 
+import drift.runner.lora.Lora
+import drift.runner.tensor.TorchRandom
 import drift.runner.decode.{Prompt, PromptImage}
-import drift.runner.diffusion.{
-  Lora,
-  MiniMaxH3Conditions,
-  SoundResampling,
-  TorchRandom
-}
+import drift.runner.diffusion.{MiniMaxH3Conditions, SoundResampling}
 import drift.runner.models.{
   MiniMaxH3,
   MiniMaxH3AudioEncoder,

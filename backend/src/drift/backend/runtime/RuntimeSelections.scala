@@ -13,7 +13,7 @@ final private[runtime] class RuntimeSelections(storage: StorageService) {
   def current: RuntimeSelection =
     storage
       .get[RuntimeSelection]("settings", "runtime-selection")
-      .getOrElse(RuntimeSelection())
+      .getOrElse(RuntimeSelection.none)
 
   def save(next: RuntimeSelection): RuntimeSelection =
     storage.save("settings", "runtime-selection", next)

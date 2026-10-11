@@ -193,8 +193,7 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
     },
     // A generation named by a URL: the day it lives in is asked for, then
     // loaded like any other — so the detail opens on arrival instead of
-    // waiting for the visitor to page back far enough to reach it
-    // (François, 2026-09-20).
+    // waiting for the visitor to page back far enough to reach it.
     cmdBus.events
       .collect { case Command.LoadGeneration(generationId) => generationId }
       .filterNot(generationId =>

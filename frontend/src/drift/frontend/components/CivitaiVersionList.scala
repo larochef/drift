@@ -33,8 +33,8 @@ class CivitaiVersionList(
 
   /** A version published for another base model than the architecture's is
     * hidden: installing one is the commonest way to end up with a LoRA that
-    * does nothing (François, 2026-09-18). The box brings them back — Civitai's
-    * base model is whatever the author wrote, so it is a guide, not a rule.
+    * does nothing. The box brings them back — Civitai's base model is whatever
+    * the author wrote, so it is a guide, not a rule.
     */
   private val everyVersion = Var(false)
 

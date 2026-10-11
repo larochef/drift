@@ -1,6 +1,6 @@
 package drift.backend.routes
 
-import drift.backend.sdserver.GenerationHistory
+import drift.backend.outputs.GenerationHistory
 import drift.backend.storage.StorageService
 import drift.shared.*
 
@@ -39,7 +39,7 @@ def projectEndpoints(
     getConversation.serverLogicSuccess[Identity] { projectId =>
       storage
         .get[Conversation]("conversations", projectId)
-        .getOrElse(Conversation(projectId))
+        .getOrElse(Conversation.empty(projectId))
     },
     saveConversation.serverLogicSuccess[Identity] { (projectId, conversation) =>
       val stored = conversation.copy(projectId = projectId)

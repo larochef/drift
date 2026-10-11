@@ -2,10 +2,11 @@ package drift.frontend.pages.gallery
 
 import drift.frontend.Page
 import drift.frontend.components.{Component, ErrorBanner}
-import drift.frontend.pages.generate.readAsDataUrl
-import drift.frontend.pages.projects.NewProjectModal
+import drift.frontend.gallery.*
+import drift.frontend.generate.readAsDataUrl
 import drift.frontend.services.*
 import drift.frontend.services.HistoryService.{Command, Event}
+import drift.frontend.workspace.NewProjectModal
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -48,15 +49,15 @@ class GalleryPage(
   private val initialLoadRequested = Var(false)
 
   /** Clearing out a day's worth of misfires one confirmation at a time is the
-    * wrong tool (François, 2026-09-09): while selecting, a click ticks a card
-    * instead of opening it, and one button deletes everything ticked. The ids
-    * are enough — the day comes off the generation when the delete goes out.
+    * wrong tool: while selecting, a click ticks a card instead of opening it,
+    * and one button deletes everything ticked. The ids are enough — the day
+    * comes off the generation when the delete goes out.
     */
   private val selecting = Var(false)
   private val selection = Var(Set.empty[String])
 
-  /** Starting a project from the gallery's invitations (François, 2026-09-28):
-    * the projects page's own modal, opening the new workspace.
+  /** Starting a project from the gallery's invitations: the projects page's own
+    * modal, opening the new workspace.
     */
   private val creatingProject = Var(false)
   private lazy val newProject =
@@ -73,14 +74,14 @@ class GalleryPage(
     if (id.isEmpty) "Imported" else labels.getOrElse(id, id)
 
   // Declared before `filter`, which reads them: a val referenced before its
-  // own initialisation is null at bind (the trap of bugs/15's family).
+  // own initialisation is null at bind.
   /** Project labels by id, mirrored for the cards' badges. */
   private val projectLabels = Var(Map.empty[String, String])
   private val projectFilter = Var("")
 
   /** NSFW projects' images stay out of the grid unless asked for, as NSFW
-    * projects stay out of the projects list (François, 2026-09-14); the choice
-    * lasts for the page's life.
+    * projects stay out of the projects list; the choice lasts for the page's
+    * life.
     */
   private val showNsfw = Var(false)
 
@@ -112,8 +113,8 @@ class GalleryPage(
 
   /** Whether a filter may be hiding something: then a day cannot be judged by
     * its count, so every day is loaded and shown only for what it has that
-    * matches — a day left with nothing does not appear at all (François,
-    * 2026-10-02). NSFW projects kept out count as a filter.
+    * matches — a day left with nothing does not appear at all. NSFW projects
+    * kept out count as a filter.
     */
   private val filtering: Signal[Boolean] = Signal
     .combine(
@@ -258,7 +259,7 @@ class GalleryPage(
           .combineWith(labels)
           .map((generations, labels) =>
             // One tile per output: a batch's images each get theirs, side by
-            // side (François, 2026-09-14). A generation without outputs still
+            // side. A generation without outputs still
             // shows as one tile.
             generations.flatMap(generation =>
               (if (generation.outputs.isEmpty) List(0)
@@ -489,19 +490,13 @@ class GalleryPage(
   lazy val element: HtmlElement = div(
     cls := "content",
     GenerationDetailHost.boundToUrl(Page.Gallery.path, section, openDetail),
-    historyService.effects,
-    runConfigurationService.effects,
-    sessionService.effects,
-    postProcessService.effects,
-    upscalerService.effects,
-    projectService.effects,
-    prerequisites.effects,
+    prerequisites.loads,
     projectService.projects.map(_.map(p => p.id -> p.label).toMap)
       --> projectLabels,
     // A detail named by the URL — a refresh, a link, the back button — is not
     // necessarily in the days the gallery loads up front; the day holding it
     // is loaded for it, so it opens straight away rather than when the visitor
-    // happens to page back to it (François, 2026-09-20). Bound after the
+    // happens to page back to it. Bound after the
     // services, whose effects are what the command is pushed into.
     openDetail.signal
       .combineWith(loaded)

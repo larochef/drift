@@ -1,9 +1,9 @@
 package drift.runner.models
 
-import drift.runner.diffusion.Images
 import drift.runner.formats.FormatException
 import drift.runner.ops.{Activation, Ops}
 import drift.runner.tensor.*
+import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
 import java.util.SplittableRandom
@@ -464,7 +464,7 @@ final class MageVae private (ops: Ops, source: WeightSource, window: Int)
         random.fold(mean) { r =>
           val logVariance =
             math.max(-20f, math.min(10f, values(at + channels)))
-          mean + math.exp(0.5 * logVariance).toFloat * Images.gaussian(r)
+          mean + math.exp(0.5 * logVariance).toFloat * Noise.gaussian(r)
         }
       }
       ops.fromFloats(Shape.of(tokens, channels), latents)

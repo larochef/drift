@@ -22,9 +22,8 @@ def promptTemplateEndpoints(
     createPromptTemplate,
     updatePromptTemplate,
     deletePromptTemplate,
-    canDelete = !_.builtIn,
-    mergeUpdate = (stored, incoming) =>
-      if (stored.builtIn) stored else incoming.copy(builtIn = false),
+    builtIn = _.builtIn,
+    mergeUpdate = (_, incoming) => incoming.copy(builtIn = false),
     onCreate = _.copy(builtIn = false)
   )
 
@@ -40,7 +39,7 @@ def architectureEndpoints(
     createArchitecture,
     updateArchitecture,
     deleteArchitecture,
-    canDelete = !_.builtIn
+    builtIn = _.builtIn
   )
 
 /** Only what actually overrides something is stored
@@ -66,7 +65,7 @@ def modelEndpoints(
     createModel,
     updateModel,
     deleteModel,
-    canDelete = !_.builtIn,
+    builtIn = _.builtIn,
     mergeUpdate = (_, incoming) => pruned(incoming),
     onCreate = pruned
   )

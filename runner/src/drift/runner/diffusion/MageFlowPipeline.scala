@@ -2,6 +2,7 @@ package drift.runner.diffusion
 
 import drift.runner.decode.Prompt
 import drift.runner.formats.Gguf
+import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
 import drift.runner.models.Flux2.Grid
 import drift.runner.ops.Ops
@@ -246,7 +247,7 @@ final class MageFlowPipeline(
           "Mage-Flow edits with its text encoder's vision tower: pass --llm_vision <mmproj>"
         )
       val random = new SplittableRandom(request.seed)
-      val noise = Array.fill(grid.tokens * channels)(Images.gaussian(random))
+      val noise = Array.fill(grid.tokens * channels)(Noise.gaussian(random))
       // the posteriors' draws, apart from the noise's
       val posterior = new SplittableRandom(request.seed ^ 0x6d616765L)
       request.references.zipWithIndex.foreach((picture, i) =>

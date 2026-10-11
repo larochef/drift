@@ -3,7 +3,7 @@ package drift.runner.diffusion
 import utest.*
 
 /** SeedVR2's batches over a video (`SeedVr2Pipeline.batched`): read as they are
-  * asked for, so a video of any length goes through (`bugs/54`).
+  * asked for, so a video of any length goes through.
   */
 object SeedVr2BatchesTests extends TestSuite {
 

@@ -39,8 +39,8 @@ object PlannedTile {
 
 /** A part of the picture the assistant found broken, and what it should look
   * like instead. A proposal: it changes what the picture shows, so nothing
-  * repaints it unless the user asks (François, 2026-10-05: eyes that glow may
-  * be what the picture is about).
+  * repaints it unless the user asks: eyes that glow may be what the picture is
+  * about.
   */
 case class PlannedRepair(
     defect: String,

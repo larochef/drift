@@ -60,7 +60,7 @@ case class SessionProgress(
     within: Double = 0.0,
     /** Which pass this bar belongs to, when the model runs more than one -
       * "high noise" for wan 2.2's first expert. Two identical 20-step bars back
-      * to back are otherwise indistinguishable (François, 2026-09-09).
+      * to back are otherwise indistinguishable.
       */
     note: Option[String] = None
 ) {
@@ -186,8 +186,8 @@ object LogProgress {
     * because sd-cpp does not always follow a redraw with a newline: minimax H3
     * writes its ANSI erase and then the next `[INFO   ] ...` line straight
     * after, so a greedy match reads the unit as `5.4s/it[INFO` and the bar
-    * silently never appears (François, 2026-09-09). Stopping at the unit also
-    * leaves the narrative behind, which [[parseWithRest]] hands back.
+    * silently never appears. Stopping at the unit also leaves the narrative
+    * behind, which [[parseWithRest]] hands back.
     */
   private val Bar =
     """\|\s*(\d+)(\.\d+)?\s*/\s*(\d+)\s+-\s+([\d.]+\s*(?:s/it|it/s|tiles/s|[KMGTP]?B/s|%/s))""".r

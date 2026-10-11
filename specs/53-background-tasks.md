@@ -88,7 +88,7 @@ these tiles is there without asking.
 
 - **What else becomes a task.** Candidates today, each a request that stays
   open: the inspection of a cached file before a conversion (25), a picture's
-  import when it is large (bug 41 is its size limit, not its time), the
+  import when it is large (its size is no longer a limit; its time may be), the
   assistant writing a prompt (32). None is known to time out; they move when
   they do, or when moving them is free.
 - **Progress for the reading.** The assistant's answer is one JSON object;

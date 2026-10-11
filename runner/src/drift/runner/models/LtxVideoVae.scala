@@ -3,6 +3,7 @@ package drift.runner.models
 import drift.runner.formats.FormatException
 import drift.runner.ops.{Activation, Ops}
 import drift.runner.tensor.*
+import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
 
@@ -174,10 +175,10 @@ final class LtxVideoVae private (ops: Ops, source: WeightSource)
       out
     }
 
-  /** What a convolution costs a pixel, measured on gfx1151 (`bugs/52`): its
-    * product, and gathering its inputs, which is as much as a product over a
-    * thousand outputs — most of the time where the channels are few and the
-    * frames large.
+  /** What a convolution costs a pixel, measured on gfx1151: its product, and
+    * gathering its inputs, which is as much as a product over a thousand
+    * outputs — most of the time where the channels are few and the frames
+    * large.
     */
   private def pixelCost(slices: Seq[Convolution]): Double =
     slices

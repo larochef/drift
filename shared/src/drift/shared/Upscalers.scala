@@ -9,12 +9,10 @@ import sttp.tapir.*
 import sttp.tapir.generic.auto.*
 import sttp.tapir.json.jsoniter.*
 
-/** One installed highres upscaler (`specs/10-generation-time-upscaling.md`): a
-  * single weight file in the flat `~/.cache/drift/upscale/` directory that
-  * every session receives as `--hires-upscalers-dir`. sd-server scans that
-  * directory's top level at launch — no subdirectories — and names each
-  * upscaler by its file stem, so the stem doubles as `id` and is exactly what
-  * `hires.upscaler` carries in a generation request.
+/** One installed upscaler (`specs/10-generation-time-upscaling.md`): a single
+  * ESRGAN weight file in the flat `~/.cache/drift/upscale/` directory, named by
+  * its file stem, which doubles as `id`. The post-hoc upscale
+  * (`specs/15-post-hoc-resize.md`) runs it; no launch is handed the directory.
   *
   * Upscalers are global on purpose: unlike LoRAs they are not tied to an
   * architecture — a RealESRGAN model upscales pixels, whatever produced them.
@@ -32,16 +30,16 @@ case class Upscaler(
       * after a drift restart.
       */
     downloadUrl: String,
-    sha256: Option[String] = None,
-    sizeBytes: Option[Long] = None,
+    sha256: Option[String],
+    sizeBytes: Option[Long],
     /** Set when installed from Civitai; a plain URL install leaves it empty. */
-    civitaiModelId: Option[String] = None,
-    createdAt: Long = 0
+    civitaiModelId: Option[String],
+    createdAt: Long
 )
 object Upscaler {
-  given JsonValueCodec[Upscaler] = JsonCodecMaker.make
-  given JsonValueCodec[List[Upscaler]] = JsonCodecMaker.make
-  given JsonValueCodec[Option[Upscaler]] = JsonCodecMaker.make
+  given JsonValueCodec[Upscaler] = JsonCodecMaker.make(storedRecord)
+  given JsonValueCodec[List[Upscaler]] = JsonCodecMaker.make(storedRecord)
+  given JsonValueCodec[Option[Upscaler]] = JsonCodecMaker.make(storedRecord)
   given Schema[Upscaler] = Schema.derived
 }
 
@@ -101,12 +99,8 @@ object UpscalerDownloadJob {
     JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))
 }
 
-// `base` in Api.scala is private to that file (tracked as bug 16); the same
-// prefix is rebuilt here so these endpoints live under /api like the rest.
-private val upscalersBase = endpoint.in("api")
-
 val listUpscalers: PublicEndpoint[Unit, Unit, List[Upscaler], Any] =
-  upscalersBase.get.in("upscalers").out(jsonBody[List[Upscaler]])
+  base.get.in("upscalers").out(jsonBody[List[Upscaler]])
 
 val installUpscaler: PublicEndpoint[
   InstallUpscalerRequest,
@@ -114,7 +108,7 @@ val installUpscaler: PublicEndpoint[
   InstallUpscalerResponse,
   Any
 ] =
-  upscalersBase.post
+  base.post
     .in("upscalers" / "install")
     .in(jsonBody[InstallUpscalerRequest])
     .out(jsonBody[InstallUpscalerResponse])
@@ -125,7 +119,7 @@ val installUpscalerFromCivitai: PublicEndpoint[
   InstallUpscalerResponse,
   Any
 ] =
-  upscalersBase.post
+  base.post
     .in("upscalers" / "install-civitai")
     .in(jsonBody[InstallUpscalerFromCivitaiRequest])
     .out(jsonBody[InstallUpscalerResponse])
@@ -134,17 +128,17 @@ val installUpscalerFromCivitai: PublicEndpoint[
   * until restart, so the name may linger in open capability lists.
   */
 val deleteUpscaler: PublicEndpoint[String, Unit, Boolean, Any] =
-  upscalersBase.delete.in("upscalers" / path[String]).out(jsonBody[Boolean])
+  base.delete.in("upscalers" / path[String]).out(jsonBody[Boolean])
 
 val listUpscalerDownloads
     : PublicEndpoint[Unit, Unit, List[UpscalerDownloadJob], Any] =
-  upscalersBase.get
+  base.get
     .in("upscaler-downloads")
     .out(jsonBody[List[UpscalerDownloadJob]])
 
 /** Stops an upscaler's download; the job as it stands, none if unknown. */
 val cancelUpscalerDownload
     : PublicEndpoint[String, Unit, Option[UpscalerDownloadJob], Any] =
-  upscalersBase.post
+  base.post
     .in("upscaler-downloads" / path[String]("upscalerId") / "cancel")
     .out(jsonBody[Option[UpscalerDownloadJob]])

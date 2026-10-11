@@ -2,7 +2,7 @@
 
 **Status:** done in code 2026-10-06 — compiles, `backend.test` green
 (`EditCompositeTests`); the carried edit run end to end through an isolated
-drift (Notes); not yet used by François
+drift (Notes)
 **Depends on:** 27, 32, 51
 
 Redraw repairs; Edit changes. The user says what should be different — "the
@@ -89,7 +89,7 @@ seam where a tile or a selection ends.
   edit, so it is kept and flagged. The same for a change still cut by the
   window after the last look.
 - **The models offered** are the architectures tagged `edit`, kept to those
-  measured to edit (`bugs/47`): Flux.2 Klein and dev, Mage-Flow Edit Turbo.
+  measured to edit: Flux.2 Klein and dev, Mage-Flow Edit Turbo.
 - *Keep tiles* writes the pass as given, the model's raw edit, the mask, the
   composite and the mask it was carried through, in the job's tiles directory
   (27); tile by tile, each tile's input, raw edit, mask and composite.
@@ -119,7 +119,7 @@ seam where a tile or a selection ends.
   `carried` (the mask of a carried-up edit). Tested in `EditCompositeTests`.
 - `TileBlending.paste(…, reach)`: the paste of a selection with its ramp kept
   within `reach` px of it; a redraw's still runs to the window's edge.
-- Frontend: `pages/gallery/EditPanel` — model, *carried up by*, the *change*
+- Frontend: `gallery/EditPanel` — model, *carried up by*, the *change*
   field, Advanced, and the cost line (`EditPanel.carriedCostOf`: the pass's
   size and the scale it is carried by).
 
@@ -197,7 +197,7 @@ with Flux.2 Klein 9B (SNOFS) on the drift runner, one seed unless said.
 - **Loose strands** the edit removed stay in the air around a haircut: too thin
   for the mask.
 - **A pass of 2048** would keep a 4096 px picture at ×2 without the stretch;
-  Klein fails there on the runner (`bugs/50`).
+  Klein fails there on the runner (`bugs/README.md`, bug 3).
 - **PiD as the upscaler**, for a picture upscaled by PiD: its crackle on an
   edit model's grain is the open point, not the wiring.
 - **Several seeds**, and a choice among them before the upscale: the pass

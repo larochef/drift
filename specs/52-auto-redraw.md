@@ -1,6 +1,6 @@
 # 52 — Auto redraw: the assistant reads the picture and sets the redraw
 
-**Status:** done in code 2026-10-05 (compiled, backend and runner tests green); measured in the experiment's harness and run once end to end through an isolated copy of drift — the reading, a redraw with it, the refusal, a masked repair (Measured, below); not yet used by François
+**Status:** done and used; open: the reading for a redraw of a few selected tiles (Open, below)
 **Depends on:** 20 (assistant), 27 (redraw), 32 (prompt library), 45 (redraw steps and reference), 11 of 42 (vision on the runner)
 
 A redraw asks its user for a prompt, a strength and which part of the picture
@@ -35,7 +35,7 @@ and the redraw starts on the user's click.
   a misshapen hand, garbled lettering), each with a box and what it should
   look like instead. **A repair is a proposal, never a default**: it changes
   what the picture shows, and that may be what the picture is about
-  (François: "I might want to have a picture with glowing eyes"). **Set up
+  (glowing eyes can be wanted). **Set up
   this repair** selects the box and sets the form for it — strength 0.9, the
   fix as instructions, the selection repainted alone under a mask, the
   source's colours not put back — and the user starts it as a redraw of the
@@ -133,11 +133,17 @@ the runner, the redraw RedQW21 with its turbo LoRA, one seed unless said.
 
 ## Open
 
+- **A redraw of a few tiles.** The reading is offered on a whole-picture
+  redraw only. A redraw of a selection — a few tiles — should be read the
+  same way, those tiles alone, so each gets its own prompt and strength
+  (asked for after use of the whole-picture reading). To groom: what the
+  assistant is shown (the selection with its tiles drawn, or the whole
+  picture with the selection marked, for context).
 - **Close-ups.** Defects that exist only at full size need a second look at
   the cells that hold a face, a hand or a nipple, sent at their own scale: a
   second call, on a few crops chosen by the first. Not built; it departs from
-  "one call" and is François's to decide.
-- **Large pictures.** The reading is one answer for every tile. François's
+  "one call" and is to be decided.
+- **Large pictures.** The reading is one answer for every tile. The
   first 8192² reading (2026-10-06; 64 tiles of 1248 px sharing 256) came back
   in 98 s with every tile, its contents, and strengths from 0.2 to 0.4 — not
   checked tile by tile against the picture. That is a second and a half a

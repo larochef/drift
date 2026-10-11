@@ -5,12 +5,12 @@ import scala.collection.mutable
 import com.raquo.laminar.api.L.*
 import org.scalajs.dom
 
-/** What sits behind an overlay stops scrolling while the overlay is open
-  * (François, 2026-09-11: "I keep scrolling another container than the one I'd
-  * want"). Every scrollable ancestor of the overlay is locked — the page
-  * itself, and any panel it opens from, such as the browser modal's body under
-  * a Civitai viewer — and each gets its own overflow back on close. Overlays
-  * nest, so locks are counted per element. Every modal and popin mounts it.
+/** What sits behind an overlay stops scrolling while the overlay is open: the
+  * wheel otherwise scrolls another container than the one under the pointer.
+  * Every scrollable ancestor of the overlay is locked — the page itself, and
+  * any panel it opens from, such as the browser modal's body under a Civitai
+  * viewer — and each gets its own overflow back on close. Overlays nest, so
+  * locks are counted per element. Every modal and popin mounts it.
   */
 object ScrollLock {
 

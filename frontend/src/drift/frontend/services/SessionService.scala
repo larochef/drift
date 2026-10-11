@@ -46,6 +46,20 @@ class SessionService(statusSocket: StatusSocketService) extends ServiceErrors {
   /** Keyed by run configuration id. */
   val sessions: Signal[Map[String, Session]] = _sessions.signal
 
+  /** The sessions without what ticks while one works — its bar, its activity,
+    * its batch and stage: what a view that shows only a session's state reads,
+    * so that it is not rebuilt several times a second.
+    */
+  val states: Signal[Map[String, Session]] = sessions
+    .map(
+      _.view
+        .mapValues(
+          _.copy(progress = None, activity = None, batch = None, stage = None)
+        )
+        .toMap
+    )
+    .distinct
+
   private val cmdBus = new EventBus[Command]
 
   def push(command: Command): Unit = cmdBus.writer.onNext(command)

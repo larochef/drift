@@ -117,12 +117,10 @@ object UploadedAttachment {
   given JsonValueCodec[UploadedAttachment] = JsonCodecMaker.make
 }
 
-private val assistantBase = endpoint.in("api")
-
 /** Refused, with the reason, unless the session is a ready assistant. */
 val getAssistantProperties
     : PublicEndpoint[String, String, AssistantProperties, Any] =
-  assistantBase.get
+  base.get
     .in("assistant" / path[String]("sessionId") / "properties")
     .errorOut(stringBody)
     .out(jsonBody[AssistantProperties])
@@ -136,7 +134,7 @@ val uploadAssistantAttachment: PublicEndpoint[
   UploadedAttachment,
   Any
 ] =
-  assistantBase.post
+  base.post
     .in("assistant" / "uploads")
     .in(query[String]("name"))
     .in(query[String]("type"))
@@ -149,7 +147,7 @@ val uploadAssistantAttachment: PublicEndpoint[
   * cards' pipeline, so the page never renders Markdown itself.
   */
 val renderAssistantMarkdown: PublicEndpoint[String, Unit, String, Any] =
-  assistantBase.post
+  base.post
     .in("assistant" / "markdown")
     .in(stringBody)
     .out(stringBody)
@@ -157,7 +155,7 @@ val renderAssistantMarkdown: PublicEndpoint[String, Unit, String, Any] =
 /** Serves an uploaded file back, for the preview beside the composer. */
 val getAssistantUpload
     : PublicEndpoint[String, Unit, (Array[Byte], String), Any] =
-  assistantBase.get
+  base.get
     .in("assistant" / "uploads" / path[String]("id"))
     .errorOut(statusCode(StatusCode.NotFound))
     .out(byteArrayBody)

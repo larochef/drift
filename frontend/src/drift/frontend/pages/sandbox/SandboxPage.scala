@@ -2,8 +2,8 @@ package drift.frontend.pages.sandbox
 
 import drift.frontend.Page
 import drift.frontend.components.*
-import drift.frontend.pages.projects.{WorkspaceBody, WorkspaceSessions}
 import drift.frontend.services.*
+import drift.frontend.workspace.{WorkspaceBody, WorkspaceSessions}
 import drift.shared.*
 
 import scala.scalajs.js
@@ -62,7 +62,7 @@ class SandboxPage(
           configurations
             .find(_.id == session.runConfigurationId)
             .flatMap(c => architectures.find(_.id == c.architectureId))
-            .map(SandboxPage.kindOf)
+            .map(ProjectKind.of)
         live
           .find(_.tool == RuntimeTool.SdCpp)
           .orElse(live.headOption)
@@ -271,13 +271,7 @@ class SandboxPage(
 
   lazy val element: HtmlElement = div(
     cls := "content sandbox",
-    runConfigurationService.effects,
-    sessionService.effects,
-    generationService.effects,
-    loraService.effects,
-    projectService.effects,
-    historyService.effects,
-    prerequisites.effects,
+    prerequisites.loads,
     sessionService.sessions --> sessionsNow,
     projectService.projects --> projectsNow,
     runConfigurationService.runConfigurations --> configurationsNow,
@@ -334,15 +328,4 @@ object SandboxPage {
 
   val LeaveWarning: String =
     "Leave the Sandbox? What you made here and did not save will be lost."
-
-  /** What an architecture's models make: text for a chat model, video for a
-    * video model that makes no images, images otherwise.
-    */
-  def kindOf(architecture: Architecture): ProjectKind =
-    if (architecture.tool == RuntimeTool.LlamaCpp) ProjectKind.Text
-    else if (
-      ProjectKind.Video.accepts(architecture) &&
-      !ProjectKind.Image.accepts(architecture)
-    ) ProjectKind.Video
-    else ProjectKind.Image
 }

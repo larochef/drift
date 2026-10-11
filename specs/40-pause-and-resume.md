@@ -1,6 +1,6 @@
 # 40 — Pausing a tiled job
 
-**Status:** done in code 2026-09-22, not yet run live
+**Status:** done; a pause and a resume run live
 **Depends on:** 15, 26, 27, 39
 
 A tiled job is long: 169 PiD tiles is two hours, a redraw of an 8192² image not
@@ -19,7 +19,7 @@ between two tiles and picked up later — after a drift restart included.
   confirmed, that drops the tile in flight the way a cancel does — the img_gen
   job cancelled on its server, an `sd-cli` killed — and the job pauses there,
   that tile to be run again on resume. Without the notice the click looked
-  lost, since nothing changes until the tile ends (François, 2026-09-22).
+  lost, since nothing changes until the tile ends.
 - A **Stop** after a pause still cancels: the later word wins, and it keeps
   nothing.
 - A paused job has **Resume**: a server starts again and the job carries on at
@@ -70,7 +70,7 @@ between two tiles and picked up later — after a drift restart included.
 
 - Pausing between tiles rather than killing the server is what keeps the work:
   the tile in flight would otherwise be lost, and on a PiD tile that is up to
-  three minutes. François asked for both and settled on the tile boundary.
+  three minutes. Both were considered; the tile boundary is the one kept.
 - The model is not held while paused: freeing the VRAM is half the point of
   pausing (the other half is recompiling drift).
 - The tiles of a paused job stay where a running job's tiles are — beside the

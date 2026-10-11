@@ -3,8 +3,8 @@ package drift.backend.postprocess
 import drift.backend.Background
 import drift.backend.assistant.AssistantProxy
 import drift.backend.lora.LoraManager
+import drift.backend.outputs.GenerationHistory
 import drift.backend.runtime.RuntimeManager
-import drift.backend.sdserver.GenerationHistory
 import drift.backend.session.SessionManager
 import drift.backend.storage.StorageService
 import drift.backend.upscale.UpscalerManager

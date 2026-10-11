@@ -1,0 +1,451 @@
+package drift.frontend.gallery
+
+import drift.frontend.components.*
+import drift.frontend.gallery.PostProcessSection.*
+import drift.frontend.gallery.TileAreaFields.TilePlan
+import drift.frontend.services.LaunchPrerequisites
+import drift.shared.*
+
+import com.raquo.laminar.api.L.*
+
+/** Redraw through an image run configuration (`specs/27-redraw.md`): a
+  * low-strength img2img pass, tile by tile, same size in and out. Strength 0.4,
+  * tiles of 1280; empty steps mean the configuration's.
+  *
+  * A box dragged on the picture narrows the pass to that part: the same tiles
+  * over a window grown around the selection, feathered back into the rest.
+  *
+  * The fields are grouped by what they decide — the prompt, the pass, the
+  * reference, the area — and every one of them is on screen: they used to sit
+  * in a single wrapping strip behind an "Advanced" button, where a number was
+  * rarely beside the thing it belonged to. What the job will cost, selection or
+  * not, is the last line before the button; the tiles are laid out here with
+  * the very code the backend runs.
+  */
+class RedrawPanel(
+    image: Signal[Option[GenerationOutput]],
+    redrawConfigurations: Signal[List[ConfigurationOption]],
+    /** The restoration templates to choose from (`specs/32`). */
+    restorationTemplates: Signal[List[PromptTemplate]],
+    /** The image on screen and the box drawn on it, from the media viewer. */
+    viewed: Var[Option[ViewedImage]],
+    /** Where this panel's tile size, margin and window go, for the box on the
+      * image to count its tiles and stick to their boundaries.
+      */
+    geometry: Var[TileGeometry],
+    /** Whether the picture draws the tiles this panel's fields describe. */
+    showTileGrid: Var[Boolean],
+    /** How far that grid is shifted: dragged on the picture, sent with the job,
+      * and reset from this panel.
+      */
+    gridOffset: Var[TileOffset],
+    /** Whether redraw is the task on screen — the one whose tiles the picture
+      * draws.
+      */
+    active: Signal[Boolean],
+    /** What each configuration still has to download: the job's button becomes
+      * the download while the chosen model cannot start (`specs/46`).
+      */
+    prerequisites: LaunchPrerequisites,
+    /** The assistants that can read the picture, for the auto redraw card. */
+    assistants: VisionAssistants,
+    onRedraw: (GenerationOutput, RedrawRequest) => Unit
+) extends Component {
+
+  private val configurationVar = Var("")
+  private val strengthVar = Var("0.4")
+  private val instructionsVar = Var("")
+  private val templateVar =
+    Var[Option[String]](Some(PromptTemplate.DefaultRedrawId))
+  private val negativeVar = Var("")
+  private val stepsVar = Var("")
+  private val seedVar = Var("")
+  private val keepTilesVar = Var(false)
+  private val contextSideVar = Var("768")
+  private val softenVar = Var("0")
+  private val contextVar = Var("0")
+  private val advancedVar = Var(false)
+  private val matchColourVar = Var(true)
+  private val maskSelectionVar = Var(false)
+
+  /** Whether the form is set up for a repair the assistant proposed: what it
+    * changed goes back when the selection is cleared.
+    */
+  private val repairingVar = Var(false)
+
+  /** Whether the 3×3 block of tiles goes along as a reference: empty sends it,
+    * which is what a job wants unless it weighs the trade itself.
+    */
+  private val referenceVar = Var[Option[Boolean]](None)
+
+  private val hasConfigurations: Signal[Boolean] =
+    redrawConfigurations.map(_.nonEmpty).distinct
+
+  /** What the chosen configuration's architecture does with a reference. */
+  private val architectureReference: Signal[Boolean] =
+    redrawConfigurations
+      .combineWith(configurationVar.signal)
+      .map((options, chosen) =>
+        options.find(_.id == chosen).exists(_.referenceImages)
+      )
+      .distinct
+
+  /** Whether this job will send one, the override included — the reference size
+    * only means anything then.
+    */
+  private val sendsReference: Signal[Boolean] =
+    referenceVar.signal
+      .combineWith(architectureReference)
+      .map((forced, byArchitecture) => forced.getOrElse(byArchitecture))
+      .distinct
+
+  private def number(state: Var[String], fallback: Int): Int =
+    state.now().trim.toIntOption.getOrElse(fallback)
+
+  private val area = TileAreaFields(
+    TileAreaFields.selectionCut(redrawConfigurations, configurationVar.signal),
+    takesSelection = true,
+    viewed,
+    geometry,
+    showTileGrid,
+    gridOffset,
+    active
+  )
+
+  private val auto = AutoRedrawCard(
+    image,
+    () =>
+      RedrawPlanRequest(
+        runConfigurationId = configurationVar.now(),
+        tileSize = area.tileSize,
+        gridOffsetX = area.gridOffsetX,
+        gridOffsetY = area.gridOffsetY
+      ),
+    area.hasSelection,
+    assistants,
+    prerequisites,
+    repair
+  )
+
+  /** Sets the form to repaint one proposed repair (`specs/52`): its box as the
+    * selection, a strength that repaints shapes, what it should look like as
+    * the instructions, the selection alone under a mask, and its colours left
+    * as painted — the source's would bring the defect's back.
+    */
+  private def repair(proposed: PlannedRepair): Unit =
+    viewed.now().foreach { shown =>
+      // a box the backend takes: at least `RedrawPanel.LeastRepairSide` a side
+      def grown(start: Int, length: Int, total: Int): (Int, Int) = {
+        val side = length.max(RedrawPanel.LeastRepairSide).min(total)
+        ((start + length / 2 - side / 2).max(0).min(total - side), side)
+      }
+      val (x, width) =
+        grown(proposed.region.x, proposed.region.width, shown.width)
+      val (y, height) =
+        grown(proposed.region.y, proposed.region.height, shown.height)
+      viewed.set(
+        Some(shown.copy(selection = Some(ImageRegion(x, y, width, height))))
+      )
+      strengthVar.set("0.9")
+      instructionsVar.set(proposed.fix)
+      matchColourVar.set(false)
+      maskSelectionVar.set(true)
+      advancedVar.set(true)
+      repairingVar.set(true)
+    }
+
+  private def request: RedrawRequest =
+    RedrawRequest(
+      runConfigurationId = configurationVar.now(),
+      strength = strengthVar.now().trim.toDoubleOption.getOrElse(0.4),
+      instructions = instructionsVar.now(),
+      templateId = templateVar.now(),
+      negativePrompt = negativeVar.now(),
+      steps = stepsVar.now().trim.toIntOption,
+      seed = seedOf(seedVar),
+      keepTiles = keepTilesVar.now(),
+      contextSide = number(contextSideVar, 768),
+      tileSize = area.tileSize,
+      region = area.region,
+      useReference = referenceVar.now(),
+      softenRadius = softenVar.now().trim.toDoubleOption.getOrElse(0.0),
+      contextMargin = number(contextVar, 0),
+      minimumWindowSide = area.minimumWindowSide,
+      selectionMargin = area.selectionMargin,
+      gridOffsetX = area.gridOffsetX,
+      gridOffsetY = area.gridOffsetY,
+      // a reading is of the whole picture: a selection goes without it
+      tiles = if (area.region.isEmpty) auto.settings else Nil,
+      matchColour = matchColourVar.now(),
+      maskSelection = maskSelectionVar.now()
+    )
+
+  private def configurationSelect: HtmlElement =
+    div(
+      cls := "select is-small",
+      select(
+        onChange.mapToValue --> configurationVar,
+        children <-- redrawConfigurations.map(
+          _.map(c =>
+            option(
+              value := c.id,
+              selected <-- configurationVar.signal.map(_ == c.id),
+              c.label
+            )
+          )
+        )
+      )
+    )
+
+  /** The prompt the tiles are painted with: a template of the library, and the
+    * words for this image alone under it.
+    */
+  private def promptGroups: List[HtmlElement] = List(
+    group(
+      "prompt",
+      plainField(
+        PromptTemplatePicker(restorationTemplates, templateVar).element
+      ),
+      wideField(
+        promptField(
+          instructionsVar,
+          lines = 3,
+          hint = "extra instructions, optional — describe what should be " +
+            "seen, not what to do"
+        )
+      )
+    ),
+    group(
+      "negative",
+      wideField(
+        promptField(
+          negativeVar,
+          lines = 2,
+          hint = "acts only when the configuration's cfg is above 1"
+        )
+      )
+    )
+  )
+
+  /** How hard the model is allowed to work on each tile. */
+  private def passGroup: HtmlElement = group(
+    "pass",
+    field(
+      "strength",
+      numberField(strengthVar, "4.5rem").amend(
+        stepAttr := "0.05",
+        minAttr := "0.05",
+        maxAttr := "1",
+        title := "how much the model may change — around 0.35–0.45 repaints " +
+          "detail while the reference sent beside each tile holds the " +
+          "anatomy"
+      )
+    ),
+    field(
+      "steps",
+      numberField(stepsVar, "4.5rem").amend(
+        minAttr := "1",
+        placeholder := "own",
+        title := "empty: the configuration's own steps"
+      )
+    ),
+    seedField(seedVar),
+    field(
+      "soften",
+      numberField(softenVar, "4.5rem").amend(
+        minAttr := "0",
+        maxAttr := "8",
+        stepAttr := "1",
+        title := "blur each tile by this many px before the model sees it. " +
+          "With an eager model such as Krea 2, 1 px takes away the " +
+          "upscaler's bumpy edges it would turn into stray hairs; at " +
+          "strength 0.6 or more with 16-20 steps, 1-2 px keeps it from " +
+          "sharpening waxy leftovers back. On a quiet model (Flux.2 Klein, " +
+          "ERNIE) it only flattens the texture. 0 keeps the tile as it is"
+      )
+    )
+  )
+
+  /** What else the model sees: the 3×3 block of tiles around each tile and how
+    * big it goes, and the context shown around each tile.
+    */
+  private def referenceGroup: HtmlElement = group(
+    "reference",
+    plainField(
+      div(
+        cls := "select is-small reference-choice",
+        select(
+          title := "the 3×3 block of tiles around each tile, sent beside " +
+            "it: it tells the model what the tile shows — without it, sand " +
+            "came back as rock and an areola was erased — and costs about a " +
+            "fifth more time per tile on Qwen Image 2.1.",
+          onChange.mapToValue --> Observer[String] {
+            case "off" => referenceVar.set(Some(false))
+            case _     => referenceVar.set(None)
+          },
+          option(
+            value := "default",
+            selected <-- referenceVar.signal.map(_.isEmpty),
+            "send"
+          ),
+          option(
+            value := "off",
+            selected <-- referenceVar.signal.map(_.contains(false)),
+            "never send"
+          )
+        )
+      )
+    ),
+    field(
+      "at",
+      numberField(contextSideVar, "5rem").amend(
+        minAttr := "256",
+        maxAttr := "2048",
+        stepAttr := "64",
+        title := "longest side of the reference image, in px — smaller is " +
+          "faster, larger shows the model more"
+      )
+    ).amend(cls("is-hidden") <-- sendsReference.map(!_)),
+    field(
+      "context",
+      numberField(contextVar, "4.5rem").amend(
+        minAttr := "0",
+        maxAttr := "512",
+        stepAttr := "16",
+        title := "px of the picture shown around each tile and kept as it is: " +
+          "the model is handed the tile inside that much of its " +
+          "surroundings, as redrawn so far, and repaints the tile alone — " +
+          "a close-up tile seen alone can be taken for another body part. " +
+          "The model paints the whole window, so a 1280 tile with 128 of " +
+          "context costs about what a 1536 tile does. 0 sends the tile alone"
+      )
+    )
+  )
+
+  /** What is left on disk when the job is done. */
+  private def optionsGroup: HtmlElement = group(
+    "options",
+    checkField(
+      matchColourVar,
+      "keep the source's colours",
+      "each tile takes the source's colour and shading back, so it joins " +
+        "its neighbours. Off for a repair whose point is the colour — eyes " +
+        "that glow: the source's would paint the glow back around them"
+    ),
+    checkField(
+      maskSelectionVar,
+      "repaint the selection alone",
+      "with a selection: the model repaints it under a mask and keeps the " +
+        "rest of its window as it is. For a repair at a high strength, " +
+        "which otherwise moves and relights everything around it. Ignored " +
+        "by a server that takes no mask"
+    ),
+    checkField(
+      keepTilesVar,
+      "keep the tiles",
+      "keep every tile's input and output, the output also before its " +
+        "colour was matched, beside the job log"
+    )
+  )
+
+  /** The last line: what this job would repaint and what it costs. */
+  private val costLine: Signal[Node] =
+    area.costLine(
+      stepsVar.signal
+        .combineWith(contextVar.signal)
+        .map((steps, context) => RedrawPanel.costOf(_, steps, context))
+    )
+
+  private def form: HtmlElement = div(
+    cls("is-hidden") <-- hasConfigurations.map(!_),
+    intro(
+      "The model repaints the image at the size it is, tile by tile — detail " +
+        "and texture, not a bigger picture. Drag a box on it to repaint that " +
+        "part alone; the original stays in the gallery."
+    ),
+    group("model", plainField(configurationSelect)),
+    auto.element,
+    advanced(
+      advancedVar,
+      promptGroups,
+      passGroup,
+      referenceGroup,
+      area.areaGroup,
+      optionsGroup
+    ),
+    foot(
+      div(
+        cls := "post-foot-lines",
+        div(child <-- costLine),
+        area.gridControls
+      ),
+      LaunchOrDownload(
+        prerequisites.of(configurationVar.signal),
+        prerequisites,
+        button(
+          cls := "button is-small is-link",
+          child.text <-- viewed.signal.map(shown =>
+            if (shown.exists(_.selection.isDefined)) "✨ Redraw selection"
+            else "✨ Redraw"
+          ),
+          onClick.compose(_.sample(image)) --> (_.foreach(output =>
+            onRedraw(output, request)
+          ))
+        )
+      ).element
+    )
+  )
+
+  lazy val element: HtmlElement = div(
+    area.publishGeometry,
+    // a repair's settings leave with its selection
+    area.hasSelection.changes.filter(!_) --> (_ =>
+      if (repairingVar.now()) {
+        strengthVar.set("0.4")
+        instructionsVar.set("")
+        matchColourVar.set(true)
+        maskSelectionVar.set(false)
+        repairingVar.set(false)
+      }
+    ),
+    redrawConfigurations --> Observer[List[ConfigurationOption]](list =>
+      if (configurationVar.now().isEmpty)
+        list.headOption.foreach(option => configurationVar.set(option.id))
+    ),
+    p(
+      cls := "post-intro text-secondary",
+      cls("is-hidden") <-- hasConfigurations,
+      "Nothing to redraw with yet: create a run configuration on an image " +
+        "architecture and it appears here."
+    ),
+    form
+  )
+}
+
+object RedrawPanel {
+
+  /** The least side of the box a proposed repair is selected with, in px: room
+    * for the paste's feather around a small defect.
+    */
+  val LeastRepairSide = 256
+
+  /** The line before the button: what is repainted, and what it costs. Every
+    * step asked for runs, whatever the strength (`specs/45`).
+    */
+  def costOf(
+      plan: TilePlan,
+      steps: String,
+      context: String
+  ): String = {
+    // Every asked step runs, whatever the strength (`specs/45`).
+    val sampling = steps.trim.toIntOption match {
+      case None        => "the configuration's steps"
+      case Some(asked) => s"$asked steps each"
+    }
+    val surroundings = context.trim.toIntOption
+      .filter(_ > 0)
+      .map(px => s" · each seen with $px px around it")
+      .getOrElse("")
+    s"${TileAreaFields.extentOf(plan)} · $sampling$surroundings"
+  }
+}

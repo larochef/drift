@@ -1,6 +1,7 @@
 package drift.runner
 
-import drift.runner.models.{Ltx2, LtxTextFeatures, WeightSource}
+import drift.runner.weights.WeightSource
+import drift.runner.models.{Ltx2, LtxTextFeatures}
 import drift.runner.ops.{HipOps, MatVecInputs}
 import drift.runner.tensor.Shape
 

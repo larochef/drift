@@ -22,7 +22,7 @@ private case class StoredRecord(builtIn: Boolean, text: String)
   */
 private case class SeededIds(ids: List[String])
 private object SeededIds {
-  given JsonValueCodec[SeededIds] = JsonCodecMaker.make
+  given JsonValueCodec[SeededIds] = JsonCodecMaker.make(storedRecord)
 }
 
 class StorageService(basePath: Path) {
@@ -125,8 +125,8 @@ class StorageService(basePath: Path) {
     * Read as raw JSON, never through `T`'s codec. The records on disk were
     * written by the previous build, and a field added to the entity since makes
     * every one of them fail to decode — one warning per file, about files the
-    * next lines rewrite from the reference anyway (François, 2026-09-20, adding
-    * `sizeMultiple`). It is the same rule migrations follow for the same reason
+    * next lines rewrite from the reference anyway (as when `sizeMultiple` was
+    * added). It is the same rule migrations follow for the same reason
     * (`specs/38-entity-migrations.md`), and `id` and `builtIn` outlive any
     * codec. A file that is not JSON at all still warns: that one is broken
     * rather than merely old.
@@ -172,10 +172,9 @@ class StorageService(basePath: Path) {
     * written: the stored bytes are compared with the bytes the reference item
     * serialises to, which is why `save` and this share one `serialize`. A start
     * where nothing changed writes nothing, and no marker file is needed to know
-    * that — the files themselves are the record of what was seeded (François,
-    * 2026-09-20). Comparing against the bytes rather than against a note of
-    * what we once wrote also repairs a file that was corrupted or edited by
-    * hand.
+    * that — the files themselves are the record of what was seeded. Comparing
+    * against the bytes rather than against a note of what we once wrote also
+    * repairs a file that was corrupted or edited by hand.
     */
   private def seedFromResource[T](
       entityType: String,
@@ -314,31 +313,6 @@ class StorageService(basePath: Path) {
       "reference/run-configurations.json",
       _.id
     )
-    tagUntaggedArchitectures()
-  }
-
-  /** Fills in `tags` for architectures registered before the field existed
-    * (`specs/01-architecture-registry.md`).
-    *
-    * Built-in architectures do not need this: `seedFromResource` above rewrites
-    * them from the reference file, tags included. This is for the ones the user
-    * created, which seeding never touches — they would otherwise sit untagged
-    * and appear under no filter but "All".
-    *
-    * Only empty tag lists are touched, so an architecture that has been tagged
-    * is never overwritten; the cost of that rule is that emptying an
-    * architecture's tags deliberately gets them derived again next start.
-    */
-  private def tagUntaggedArchitectures(): Unit = {
-    val untagged = list[Architecture]("architectures").filter(_.tags.isEmpty)
-    untagged.foreach { architecture =>
-      val tags = ArchitectureTags.derive(architecture)
-      save("architectures", architecture.id, architecture.copy(tags = tags))
-    }
-    if (untagged.nonEmpty)
-      logger.info(
-        s"Tagged ${untagged.size} architecture(s) that predate the tags field"
-      )
   }
 
   /** What each build wants and refuses (`specs/16-parameter-resolution.md`).

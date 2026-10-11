@@ -1,6 +1,7 @@
 package drift.runner.diffusion
 
 import drift.runner.formats.Gguf
+import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
 import drift.runner.ops.Ops
 import drift.runner.tensor.*
@@ -112,7 +113,7 @@ final class Krea2Pipeline(
     val conditional = text(request.prompt)
     val unconditional = Option.when(guided)(text(request.negativePrompt))
     val random = new SplittableRandom(request.seed)
-    val noise = Array.fill(tokens * channels)(Images.gaussian(random))
+    val noise = Array.fill(tokens * channels)(Noise.gaussian(random))
     val latents = ops.fromFloats(Shape.of(tokens, channels), noise)
     val velocity = ops.allocate(DType.F32, latents.shape)
     val other = unconditional.map(_ => ops.allocate(DType.F32, latents.shape))

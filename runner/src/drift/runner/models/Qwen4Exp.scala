@@ -4,6 +4,7 @@ import drift.runner.formats.*
 import drift.runner.ops.*
 import drift.runner.state.Sequence
 import drift.runner.tensor.*
+import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
 import scala.collection.mutable

@@ -1,8 +1,6 @@
 # 46 — Starter configurations
 
-**Status:** done in code, not yet run live — seeding, migration and the
-Models page checked on an isolated config directory; no starter has been
-downloaded and launched from a fresh install yet
+**Status:** done
 **Depends on:** 04, 05, 23, 43
 
 A first-time user generates without learning the concepts first: drift ships
@@ -18,7 +16,7 @@ missing runtime or download is offered in place of the launch.
   or brought back. An id a user configuration already holds is skipped. Six
   starters, seeded on the upstream engine (sd-cpp or llama.cpp, which run
   everywhere) and moved to the drift runner wherever it is available — the
-  runner is the default wherever it is (François, 2026-10-03):
+  runner is the default wherever it is:
   - `starter-flux2-klein-9b` — Flux.2 Klein 9B, Q4_K_M
   - `starter-krea2` — Krea 2 Turbo, Q4_K_M
   - `starter-qwen-image-2.1` — Qwen Image 2.1, Q4_K, with the vision projector
@@ -93,14 +91,6 @@ missing runtime or download is offered in place of the launch.
 
 ## Shape
 
-- Migration 011 (`Migrations.coded` "starters-on-runner"): a seeded starter
-  (its id in `settings/seeded-run-configurations.json`) still on its
-  upstream engine moves to the drift runner when its architecture runs there
-  and the runner's runtime for its tool is installed and valid. Once, as a
-  migration is, so a starter moved back by hand stays where it was put. It
-  came of a PiD starter left on sd-cpp on an install whose runtimes predate
-  the starters: a 4096² upscale proposed nine 1536² tiles, where the runner
-  decodes it in one.
 - A new configuration's form starts on the drift runner when the chosen
   architecture runs there and the runner is installed, else on the
   architecture's first engine.

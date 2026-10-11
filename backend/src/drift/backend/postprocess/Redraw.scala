@@ -1,6 +1,7 @@
 package drift.backend.postprocess
 
-import drift.backend.postprocess.PostProcessImages.*
+import drift.backend.images.PostProcessImages
+import drift.backend.images.PostProcessImages.*
 import drift.backend.runtime.SdCppBuilds
 import drift.backend.storage.StorageService
 import drift.shared.*
@@ -158,7 +159,7 @@ final private[postprocess] class Redraw(
           )
         // An sd-server before `SdCppBuilds.FirstKeepingReferenceSize` stretches every
         // reference to the tile's width × height, so a portrait beside a
-        // square tile came out half again as wide (François, 2026-09-22): on
+        // square tile came out half again as wide: on
         // such a build the reference is letterboxed to each tile's shape and
         // scaled evenly; a later one is told to keep it as it is.
         val keepsReference = SdCppBuilds.keepsReferenceSize(launch.runtime)
@@ -442,8 +443,7 @@ private[postprocess] object Redraw {
 
   /** What drift puts in front of the restoration prompt. It differs by what the
     * model was actually handed, which is the whole point: a redraw with no
-    * reference repainted the entire scene into a single tile (François,
-    * 2026-09-19).
+    * reference repainted the entire scene into a single tile.
     *
     * With a reference, the tile is placed inside it and the reference is named
     * for what it is — context, identity included — since the model sees both

@@ -33,7 +33,7 @@ class AuthTokenService extends ServiceErrors {
     ApiClient.stream(drift.shared.getEnvironmentAuthProviders)
 
   private val _tokens = Var(List.empty[AuthToken])
-  private val _selection = Var(AuthTokenSelection())
+  private val _selection = Var(AuthTokenSelection.none)
 
   val tokens: Signal[List[AuthToken]] = _tokens.signal
   val selection: Signal[AuthTokenSelection] = _selection.signal

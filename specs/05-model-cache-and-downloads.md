@@ -72,7 +72,7 @@ copy serves drift and `huggingface_hub` alike.
 - HuggingFace downloads: `.locks/models--{org}--{repo}/<sha256>.lock`, stream
   to `blobs/<sha256>.incomplete`, verify, rename to `blobs/<sha256>`, relative
   symlink under `snapshots/<commit>/<path>`, write `refs/main`. Only ever adds.
-  `download/HuggingFaceDownloads.scala`.
+  `huggingface/HuggingFaceDownloads.scala`.
 - Shapes and endpoints: `shared/.../Api.scala` (`ModelCacheStatus`,
   `CachedFileEntry(path, bytes, root, group, label, kind, referencedBy,
   partial, source)`, `GET /api/cache/status`, `GET|DELETE /api/cache/files`,

@@ -1,10 +1,11 @@
 package drift.runner.models
 
-import drift.runner.diffusion.LoraUpdates
 import drift.runner.formats.*
+import drift.runner.lora.LoraUpdates
 import drift.runner.ops.*
 import drift.runner.state.Sequence
 import drift.runner.tensor.*
+import drift.runner.weights.WeightSource
 
 /** What sets a family of dense decoders apart from the others:
   *   - `normOffset`: RMS norms take `w + normOffset` (Gemma stores `w − 1`);

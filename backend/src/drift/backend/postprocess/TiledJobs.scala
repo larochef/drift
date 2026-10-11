@@ -2,8 +2,8 @@ package drift.backend.postprocess
 
 import drift.backend.lora.LoraManager
 import drift.backend.runtime.{LaunchRuntime, RuntimeManager}
-import drift.backend.sdserver.NativeUpscale
 import drift.backend.session.SessionManager
+import drift.protocol.UpscaleJobRequest
 import drift.shared.*
 
 import java.awt.image.BufferedImage
@@ -112,7 +112,7 @@ final private[postprocess] class TiledJobs(
   ): Either[String, ConfiguredLoras] = {
     val installed = loraManager.list.map(lora => lora.id -> lora).toMap
     configuration.loras.foldLeft(
-      Right(ConfiguredLoras(List.empty, LoraSampling())): Either[
+      Right(ConfiguredLoras(List.empty, LoraSampling.none)): Either[
         String,
         ConfiguredLoras
       ]
@@ -272,7 +272,7 @@ private[postprocess] enum TileRequests {
   )
 
   /** The drift runner's `upscale` job a tile (SeedVR2, `specs/51`). */
-  case Upscales(make: TileWindow.TileInput => NativeUpscale)
+  case Upscales(make: TileWindow.TileInput => UpscaleJobRequest)
 }
 
 /** A run configuration's default LoRAs as a job without a form takes them

@@ -1,5 +1,6 @@
 package drift.runner
 
+import drift.runner.tensor.TorchRandom
 import drift.runner.decode.Prompt
 import drift.runner.diffusion.{
   Images,
@@ -7,7 +8,6 @@ import drift.runner.diffusion.{
   MiniMaxH3Normalized,
   MiniMaxH3Pipeline,
   MiniMaxH3References,
-  TorchRandom,
   VideoControl
 }
 import drift.runner.models.{

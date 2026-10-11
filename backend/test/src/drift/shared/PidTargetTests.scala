@@ -57,7 +57,17 @@ object PidTargetTests extends TestSuite {
         tool = RuntimeTool.SdCpp,
         backend = RuntimeBackend.Rocm,
         releaseTag = tag,
+        rocmVersion = None,
+        gfxTarget = None,
+        theRockVersion = None,
         installedAt = "/nowhere",
+        theRockPath = None,
+        adopted = false,
+        tracksLatest = false,
+        valid = false,
+        validationError = None,
+        reportedVersion = None,
+        createdAt = 0L,
         modelKinds = None
       )
       def tiles(tag: String, target: (Int, Int)) =

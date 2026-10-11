@@ -2,9 +2,9 @@ package drift.runner.models
 
 import drift.runner.formats.*
 import drift.runner.ops.*
-import drift.runner.state.KvCache
 import drift.runner.tensor.*
 import drift.runner.vision.PreparedImage
+import drift.runner.weights.WeightSource
 
 import java.lang.foreign.MemorySegment
 import java.nio.file.Path

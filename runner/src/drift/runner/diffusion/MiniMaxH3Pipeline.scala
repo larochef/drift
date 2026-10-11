@@ -1,6 +1,7 @@
 package drift.runner.diffusion
 
 import drift.runner.decode.{Prompt, PromptImage}
+import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
 import drift.runner.ops.Ops
 import drift.runner.tensor.*

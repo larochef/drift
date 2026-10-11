@@ -1,7 +1,9 @@
 package drift.runner
 
+import drift.runner.lora.Lora
+import drift.runner.lora.LoraReport
 import drift.runner.decode.{Prompt, PromptImage}
-import drift.runner.diffusion.{HiDreamO1Pipeline, Lora, LoraReport}
+import drift.runner.diffusion.HiDreamO1Pipeline
 import drift.runner.models.{
   GivenRows,
   HiDreamO1,

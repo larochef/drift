@@ -1,7 +1,7 @@
 package drift.backend.session
 
 import drift.backend.Background
-import drift.backend.process.ProcessOutput
+import drift.backend.process.{ChildProcesses, ProcessOutput}
 import drift.backend.runtime.RuntimeManager
 import drift.backend.storage.StorageService
 import drift.shared.*
@@ -30,7 +30,6 @@ final private[session] class JobServers(
     runtimeManager: RuntimeManager,
     arguments: LaunchArguments,
     lorasRoot: Path,
-    upscaleRoot: Path,
     /** A free port, excluding every promised one — sessions' and job servers'.
       */
     freePort: SessionSettings => Option[Int],
@@ -92,21 +91,17 @@ final private[session] class JobServers(
           )
       } yield {
         Files.createDirectories(lorasRoot.resolve(configuration.architectureId))
-        Files.createDirectories(upscaleRoot)
         Files.writeString(
           logFile,
           s"# job server on :$port: ${CommandLine.render(argv, launchRuntime.executable.toString)}\n",
           StandardOpenOption.CREATE,
           StandardOpenOption.APPEND
         )
-        val builder =
-          ProcessBuilder((launchRuntime.executable.toString :: argv)*)
-            .directory(launchRuntime.executable.getParent.toFile)
-            .redirectErrorStream(true)
-        launchRuntime.environment.foreach((name, value) =>
-          builder.environment().put(name, value)
+        val process = ChildProcesses.start(
+          launchRuntime.executable.toString :: argv,
+          launchRuntime.environment,
+          Some(launchRuntime.executable.getParent)
         )
-        val process = builder.start()
         // Drained here rather than redirected by the OS: the file is written
         // just the same, and the lines pass by on their way to it. A pipe
         // nobody reads would block the server mid-load.
@@ -120,13 +115,17 @@ final private[session] class JobServers(
         logger.info(
           s"Job server for '$runConfigurationId': pid ${process.pid()} on port $port"
         )
-        (port, process)
+        (
+          port,
+          process,
+          launchRuntime.runtime.engine == RuntimeEngine.DriftRunner
+        )
       }
     }
-    started.flatMap { (port, process) =>
+    started.flatMap { (port, process, runner) =>
       val stop = () => {
         servers.remove(port)
-        ServerProcesses.terminate(process)
+        ChildProcesses.terminate(process)
       }
       val deadline = System.currentTimeMillis() +
         current.readinessTimeoutMinutes.toLong * 60 * 1000
@@ -135,11 +134,15 @@ final private[session] class JobServers(
         !ServerProcesses.answersProbe(port, RuntimeTool.SdCpp) &&
         System.currentTimeMillis() < deadline
       ) sleep(1.second)
-      if (
+      val ready =
         process.isAlive && ServerProcesses.answersProbe(port, RuntimeTool.SdCpp)
-      )
-        Right(JobServer(port, process, stop))
-      else {
+      val mismatch =
+        if (ready) ServerProcesses.protocolMismatch(port, runner) else None
+      if (ready && mismatch.isEmpty) Right(JobServer(port, process, stop))
+      else if (ready) {
+        stop()
+        Left(mismatch.get)
+      } else {
         val reason =
           if (process.isAlive)
             s"sd-server was not ready after ${current.readinessTimeoutMinutes} minutes"

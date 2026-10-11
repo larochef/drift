@@ -21,8 +21,7 @@ of what the big files became, and the rules that keep them that size.
   key) and pass the changing parts in as signals. Session progress ticks
   several times a second; nothing big may hang off it.
 - Roughly 600 lines, or a render bug, is what earns a file a split — but the
-  test is single responsibility, which is what François judges by
-  (2026-09-23): a file worth reading says one thing. A class with a dozen
+  test is single responsibility: a file worth reading says one thing. A class with a dozen
   `private def someUi` is several components sharing a file.
 
 ## Backend facades
@@ -45,7 +44,7 @@ Each keeps its public API over package-private pieces:
   weights); the manager itself lists, edits, moves and deletes.
 - `runtime/RuntimeManager` over `RuntimeInstalls`, `RuntimeArchives`,
   `TheRockPairing`, `RuntimeValidation`, `RuntimeSelections`, `RuntimeCleanup`.
-- `sdserver/GenerationManager` over `GenerationRegistry`, `GenerationFiles`,
+- `generation/GenerationManager` over `GenerationRegistry`, `GenerationFiles`,
   `GenerationMonitor`, `GenerationSubmissions`, `ScratchGenerations`.
 - `session/SessionManager` beside `SessionSettings`, `SessionOutput`,
   `ServerProcesses`, `LaunchArguments`, `JobServers`.
@@ -56,7 +55,7 @@ Each keeps its public API over package-private pieces:
   overlay, the tile grid, the batch strip — and `PicturePointer` decides what a
   press, a move and a release mean, since all of that lives in mouse events
   and none of it is drawing.
-- Gallery detail: `pages/gallery/GenerationDetailHost` builds one
+- Gallery detail: `gallery/GenerationDetailHost` builds one
   `GenerationDetail` per opened (generation, output) and feeds sessions,
   configurations, derivatives and jobs in as signals; the detail is
   `GenerationMediaViewer`, `GenerationParameters`, `GenerationLineage`,
@@ -68,9 +67,9 @@ Each keeps its public API over package-private pieces:
   offset, the tiles a job is painting — is `DetailPicture`, one chain of
   signals in one file: in the detail's own body, among its view fragments, a
   new link landed above the one it read and was `null` when the class was
-  built (François, 2026-09-23). A component's derived signals belong with the
+  built. A component's derived signals belong with the
   ones they derive from, in a file small enough that the order is visible.
-- Assistant chat: `pages/assistant/AssistantPanel` is the shell — the
+- Assistant chat: `assistant/AssistantPanel` is the shell — the
   session's header, the system prompt, the switch offer, the context meter and
   the archive — over `AssistantTurns` (the conversation: every turn, its
   reasoning, its timings, its proposals) and `AssistantComposer` (the draft,
@@ -81,7 +80,7 @@ Each keeps its public API over package-private pieces:
   (`pages/cache`: `ModelCachePage`, `OnDiskCacheView`, `ConfiguredModelsView`,
   `MissingModelsView`, `UpscalerSection`, `ConvertModelModal`,
   `ConversionJobList`) were loose in `pages/` until 2026-09-23.
-- Generation form: `pages/generate/GenerationPanel` is the shell over
+- Generation form: `generate/GenerationPanel` is the shell over
   `GenerationFormState`, `RecipeSeeding`, `GenerationSubmission`,
   `GenerationForm`, `CoreFields`, the `{Sampling, Inputs, Hires, VaeTiling,
   Guidance, Batch}Section`s, `CollapsibleSection`, `FormFields`,

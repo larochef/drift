@@ -1,6 +1,6 @@
 package drift.runner.state
 
-import drift.runner.ops.Ops
+import drift.runner.ops.{KvCache, Ops}
 import drift.runner.tensor.*
 
 /** One sequence's memory in a model (`specs/42`, Chat requirements): the paged

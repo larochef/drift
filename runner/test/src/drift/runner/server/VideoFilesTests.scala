@@ -6,8 +6,8 @@ import java.awt.image.BufferedImage
 
 import utest.*
 
-/** A video file out of frames and a soundtrack of another length (`bugs/54`):
-  * every frame is kept. Needs the `ffmpeg` the runner encodes with.
+/** A video file out of frames and a soundtrack of another length: every frame
+  * is kept. Needs the `ffmpeg` the runner encodes with.
   */
 object VideoFilesTests extends TestSuite {
 

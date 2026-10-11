@@ -2,6 +2,7 @@ package drift.runner.diffusion
 
 import drift.runner.models.*
 import drift.runner.ops.Ops
+import drift.runner.weights.WeightSource
 
 import java.awt.image.BufferedImage
 import java.nio.file.Path

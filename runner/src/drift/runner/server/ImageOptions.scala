@@ -1,5 +1,7 @@
 package drift.runner.server
 
+import drift.protocol.ImageServerFlags
+
 import java.nio.file.{Path, Paths}
 
 /** `sd-server`'s flags as drift passes them for an image configuration
@@ -88,36 +90,6 @@ object ImageOptions {
     */
   val DefaultGuidance = 3.5
 
-  /** Accepted and ignored: they change how sd-cpp runs, not the image. The
-    * value is how many values the flag takes.
-    */
-  private val Harmless: Map[String, Int] = Map(
-    "--diffusion-fa" -> 0,
-    "--mmap" -> 0,
-    "--offload-to-cpu" -> 0,
-    "--vae-conv-direct" -> 0,
-    "--diffusion-conv-direct" -> 0,
-    "--cache-mode" -> 1, // spectrum and the like: the runner computes every step
-    "--hires-upscalers-dir" -> 1,
-    "--scheduler" -> 1,
-    "-t" -> 1,
-    "--threads" -> 1,
-    "--rng" -> 1,
-    "--sampler-rng" -> 1,
-    "--vae-format" -> 1, // the runner reads the VAE's layout from its weights
-    "--high-noise-sampling-method" -> 1, // Euler, as for the low-noise steps
-    "--high-noise-scheduler" -> 1,
-    "-v" -> 0,
-    "--verbose" -> 0,
-    "--color" -> 0
-  )
-
-  /** Refused until the runner does what they ask. */
-  private val NotYet: Map[String, String] = Map(
-    "--vae-tiling" -> "tiled VAE decoding comes later",
-    "--taesd" -> "TAESD previews come later"
-  )
-
   def parse(arguments: Seq[String]): Either[String, ImageOptions] = {
     val values = scala.collection.mutable.Map.empty[String, String]
     val notes = Seq.newBuilder[String]
@@ -135,22 +107,15 @@ object ImageOptions {
           None
       }
       flag match {
-        case "--diffusion-model" | "--model" | "-m" | "--vae" | "--llm" |
-            "--listen-ip" | "--listen-port" | "-W" | "--width" | "-H" |
-            "--height" | "--steps" | "--cfg-scale" | "--guidance" |
-            "--flow-shift" | "-s" | "--seed" | "-p" | "--prompt" | "-n" |
-            "--negative-prompt" | "--lora-model-dir" | "--tokenizer" |
-            "--llm_vision" | "--audio-vae" | "--video-frames" |
-            "--high-noise-diffusion-model" | "--t5xxl" | "--high-noise-steps" |
-            "--high-noise-cfg-scale" | "--moe-boundary" | "--fps" |
-            "--control-net" | "--sigmas" | "--sampling-method" |
-            "--embeddings-connectors" | "--llada-queryformer" |
-            "--llada-text-projection" | "--llada-sigvq" =>
+        case read if ImageServerFlags.Valued(read) =>
           value().foreach(v => values(canonical(flag)) = v)
-        case other if NotYet.contains(other) =>
-          problem = Some(s"$other is not supported yet: ${NotYet(other)}")
-        case other if Harmless.contains(other) =>
-          val taken = (0 until Harmless(other)).flatMap(_ => value())
+        case other if ImageServerFlags.NotYet.contains(other) =>
+          problem = Some(
+            s"$other is not supported yet: ${ImageServerFlags.NotYet(other)}"
+          )
+        case other if ImageServerFlags.Harmless.contains(other) =>
+          val taken =
+            (0 until ImageServerFlags.Harmless(other)).flatMap(_ => value())
           notes += s"$other ${taken.mkString(" ")} accepted: it changes how sd-cpp runs, not the image"
             .replace("  ", " ")
         case other => problem = Some(s"unknown flag $other")

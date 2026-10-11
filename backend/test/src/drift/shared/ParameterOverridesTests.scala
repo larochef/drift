@@ -21,9 +21,25 @@ object ParameterOverridesTests extends TestSuite {
     label = id,
     tool = RuntimeTool.SdCpp,
     checkpoints = List(
-      CheckpointRef("Diffusion", familyId, "--diffusion-model", runners = Nil)
+      CheckpointRef(
+        "Diffusion",
+        familyId,
+        "--diffusion-model",
+        required = true,
+        runners = Nil
+      )
     ),
     defaultParameters = defaults,
+    civitaiBaseModels = List.empty,
+    tags = List.empty,
+    builtIn = false,
+    pixelDiffusionDecoder = false,
+    initImage = true,
+    referenceImages = ReferenceImageUse.Unused,
+    promptingNotes = None,
+    assistantTemplateId = None,
+    huggingFaceBaseModels = List.empty,
+    modelScopeBaseModels = List.empty,
     sizeMultiple = 16,
     modelKind = None,
     runners = List(RuntimeEngine.SdCpp)
@@ -46,7 +62,8 @@ object ParameterOverridesTests extends TestSuite {
     source = Local("/models/big-love.safetensors"),
     format = "safetensors",
     parameters = parameters,
-    removedParameters = removed
+    removedParameters = removed,
+    builtIn = false
   )
 
   private def configuration(
@@ -59,6 +76,8 @@ object ParameterOverridesTests extends TestSuite {
     assignments = Map("Diffusion" -> "big-love"),
     overriddenParameters = overrides,
     removedParameters = removed,
+    loras = List.empty,
+    assistantTemplateId = None,
     createdAt = 0L,
     lastUsedAt = 0L,
     runner = RuntimeEngine.SdCpp
@@ -71,7 +90,7 @@ object ParameterOverridesTests extends TestSuite {
       test("drops a parameter repeating the architecture's default") {
         // The one that started this: an override of `--attn-scale` with the
         // value the architecture already gives, which no form could tell from
-        // a removal (François, 2026-09-20).
+        // a removal.
         val pruned = ParameterOverrides
           .prunedModel(model(Map("--attn-scale" -> "0.0078125")), List(ernie))
         assert(pruned.parameters.isEmpty)

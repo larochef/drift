@@ -1,9 +1,11 @@
 package drift.runner.diffusion
 
+import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
 import drift.runner.ops.Ops
 import drift.runner.tensor.*
 import drift.runner.text.{Tokenizer, TokenizerJson}
+import drift.runner.weights.WeightSource
 
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
@@ -61,8 +63,7 @@ final class LtxPipeline(
 
   def alignedFrames(frames: Int): Int = math.max(frames - 1, 8) / 8 * 8 + 1
 
-  /** A part's share of the load, in the log: which one a slow start waits on
-    * (`bugs/53`).
+  /** A part's share of the load, in the log: which one a slow start waits on.
     */
   private def timed[A](part: String)(load: => A): A = {
     val started = System.nanoTime()
@@ -206,7 +207,7 @@ final class LtxPipeline(
         ops.fromFloats(
           Shape.of(layout.videoTokens, c.videoChannels),
           Array.fill(layout.videoTokens * c.videoChannels)(
-            Images.gaussian(random)
+            Noise.gaussian(random)
           )
         )
       )
@@ -225,7 +226,7 @@ final class LtxPipeline(
         ops.fromFloats(
           Shape.of(layout.audioFrames, c.audioChannels),
           Array.fill(layout.audioFrames * c.audioChannels)(
-            Images.gaussian(random)
+            Noise.gaussian(random)
           )
         )
       )
@@ -369,7 +370,7 @@ final class LtxPipeline(
               val noise = ops.fromFloats(
                 x.shape,
                 Array.fill(x.shape.elementCount.toInt)(
-                  Images.gaussian(random) * renoise
+                  Noise.gaussian(random) * renoise
                 )
               )
               ops.add(x, noise, x)

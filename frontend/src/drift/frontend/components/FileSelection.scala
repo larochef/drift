@@ -10,9 +10,9 @@ import com.raquo.laminar.api.L.*
 case class SelectedFile(key: String, sizeBytes: Option[Long] = None)
 
 /** What is ticked in a browser's file list (`specs/33-lora-sources.md`).
-  * Nothing, to begin with: a LoRA is chosen file by file (François,
-  * 2026-09-18), and the ticks may cross a Civitai model's versions — the whole
-  * selection installs at once, which is what makes a wan 2.2 pair one LoRA.
+  * Nothing, to begin with: a LoRA is chosen file by file, and the ticks may
+  * cross a Civitai model's versions — the whole selection installs at once,
+  * which is what makes a wan 2.2 pair one LoRA.
   */
 class FileSelection {
 

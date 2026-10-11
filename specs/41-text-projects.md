@@ -1,6 +1,6 @@
 # 41 — Text projects
 
-**Status:** done in code, not yet run live
+**Status:** done
 **Depends on:** 18 (chat sessions), 19 (projects), 20 (the kept conversation, compaction, restart), 21 (the chat panel), 31 (project kinds)
 
 A text project is a kept conversation with a chat model, and nothing else:

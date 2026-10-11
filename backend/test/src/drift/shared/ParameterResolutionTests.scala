@@ -23,10 +23,21 @@ object ParameterResolutionTests extends TestSuite {
         "Diffusion",
         "diffusion",
         "--diffusion-model",
+        required = true,
         runners = Nil
       )
     ),
     defaultParameters = Map("--steps" -> "30", "--diffusion-fa" -> ""),
+    civitaiBaseModels = List.empty,
+    tags = List.empty,
+    builtIn = false,
+    pixelDiffusionDecoder = false,
+    initImage = true,
+    referenceImages = ReferenceImageUse.Unused,
+    promptingNotes = None,
+    assistantTemplateId = None,
+    huggingFaceBaseModels = List.empty,
+    modelScopeBaseModels = List.empty,
     sizeMultiple = 16,
     modelKind = None,
     runners = List(RuntimeEngine.SdCpp)
@@ -42,7 +53,8 @@ object ParameterResolutionTests extends TestSuite {
     source = Local("/models/checkpoint.gguf"),
     format = "gguf",
     parameters = parameters,
-    removedParameters = removed
+    removedParameters = removed,
+    builtIn = false
   )
 
   private def configuration(
@@ -55,6 +67,8 @@ object ParameterResolutionTests extends TestSuite {
     assignments = Map("Diffusion" -> "checkpoint"),
     overriddenParameters = overrides,
     removedParameters = removed,
+    loras = List.empty,
+    assistantTemplateId = None,
     createdAt = 0L,
     lastUsedAt = 0L,
     runner = RuntimeEngine.SdCpp
@@ -160,9 +174,9 @@ object ParameterResolutionTests extends TestSuite {
 
     // What the parameter forms show: the flags already set below the layer
     // being edited, each with the layer that asked for it. A wrong view here
-    // is what sent François to override `--attn-scale` with the value it
-    // already had (2026-09-20) — the chip could not say whether the number
-    // was still the architecture's or already his model's.
+    // is how `--attn-scale` came to be overridden with the value it already
+    // had — the chip could not say whether the number was still the
+    // architecture's or already the model's.
     test("the view of what is set below") {
 
       test("names the architecture for a default nothing overrides") {
@@ -235,7 +249,17 @@ object ParameterResolutionTests extends TestSuite {
         tool = RuntimeTool.SdCpp,
         backend = RuntimeBackend.Rocm,
         releaseTag = tag,
+        rocmVersion = None,
+        gfxTarget = None,
+        theRockVersion = None,
         installedAt = "/nowhere",
+        theRockPath = None,
+        adopted = false,
+        tracksLatest = false,
+        valid = false,
+        validationError = None,
+        reportedVersion = None,
+        createdAt = 0L,
         modelKinds = None
       )
       val shipped = readFromStream[List[RuntimeRule]](

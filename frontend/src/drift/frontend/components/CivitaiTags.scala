@@ -37,7 +37,7 @@ object CivitaiTags {
   /** What Civitai charges for this version, when it charges. Per **version**: a
     * model commonly publishes a paid one beside free ones, so the chip sits
     * with the version in the Files tab rather than on the tile, where it could
-    * only say "something here is paid" (François, 2026-09-18).
+    * only say "something here is paid".
     *
     * drift cannot buy it: a download of a paid version answers 401/403 unless
     * the account behind the Civitai token in Settings already owns it. Early

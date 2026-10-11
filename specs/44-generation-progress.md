@@ -1,17 +1,16 @@
 # 44 — Generation progress: batches and the runner's own progress
 
-**Status:** planned
+**Status:** done, except the runner's own progress report: its bars are still read from its log, as sd-cpp's are (`specs/55`)
 **Depends on:** 15 (post-processing jobs and their progress), 22 (free play), 42 (the drift runner), 43 (a runner per configuration)
 
 A generation's progress shows what the job is doing and how far it has
 got, as the tiled post-processing does. A batch has a bar for the whole batch
-and a bar for the image being made. On the drift runner, progress comes from
-a report the runner writes for drift, not from sd-cpp's terminal bar
-reproduced in its log.
+and a bar for the image being made. Both engines' progress is read from their
+log: the drift runner prints sd-cpp's bar format for drift to parse.
 
 ## What it does
 
-- **Two bars for a batch** (François). A generation of several images shows:
+- **Two bars for a batch.** A generation of several images shows:
   - the batch: "image n of m", filled by the images done;
   - the current image: its phase and its steps.
 
@@ -24,20 +23,17 @@ reproduced in its log.
   pass, for two-pass models), decoding.
 - **Time left.** Each bar says the time left once one step (or one image) has
   run: from the step rate for the image, from the images done for the batch.
-- **On the drift runner** the bars come from the runner's structured
-  progress. It reports:
-  - phase, step and total;
-  - the image within the batch;
-  - the tile within the job, for tiled jobs;
-  - elapsed time.
-
-  It stops printing sd-cpp's `|====| i/n - Xs/it` imitation for drift to
-  parse (`ImageServer`'s sampling line).
-- **On sd-cpp** nothing is lost: the log bar stays the source, parsed as today
+- **On the drift runner** the bars are read from its log too: it prints
+  sd-cpp's `|====| i/n - Xs/it` line (`ImageServer`'s sampling line, the
+  decode and tile bars) and drift parses it with the same patterns. Not
+  built: a report of its own — phase, step and total, the image within the
+  batch, the tile within the job, elapsed time — which would need no pattern
+  kept in step on both sides (Shape, below; `specs/55`).
+- **On sd-cpp** the log bar is the source
   (`LogProgress`). The batch bar counts sd-cpp's sampling bars, a new one
   starting at step 1 for each image.
 
-## Shape (to be settled)
+## Shape of the runner's own report (not built, to be settled)
 
 - The runner's report: a line format of its own in the log (for example one
   JSON object per line with a fixed prefix), or a progress field on

@@ -1,6 +1,6 @@
 # 49 — Sampling settings on LoRAs
 
-**Status:** done in code, not yet run live
+**Status:** done
 **Depends on:** 09, 14, 28, 38, 42
 
 A turbo LoRA only works with the sampling it was distilled for: few steps,
@@ -71,7 +71,6 @@ LoRAs', then what the user types.
   `highNoiseSteps`, `highNoiseCfg`). It merges itself: over another
   `LoraSampling` (the later LoRA's over the earlier's, `LoraSampling.of`),
   over a session's `SampleParameters`, and over the high-noise expert's.
-  Migration 009 adds the empty record to stored LoRAs.
 - `LoraSamplingFields` on the LoRA's card, behind **⚙ Sampling**, and in the
   generation form's `LoraPicker` (its `samplingEditor`, which the run
   configuration's pickers leave out): a field a setting, saved as it is left; the high-noise ones on an architecture with a
@@ -88,6 +87,6 @@ LoRAs', then what the user types.
 - The flow shift override reaches the drift runner for Qwen Image 2.1 only
   (42); the other families read the shift they already read. sd-cpp takes
   sigmas and the shift for every model, sigmas always as final levels.
-- The Qwen Image 2.1 turbo LoRAs are known by their file's checksum
-  (migration 15): Viggle's 6-step and Pruna's 5-step take their nodes,
+- The Qwen Image 2.1 turbo LoRAs of the catalog carry their own levels:
+  Viggle's 6-step and Pruna's 5-step take their nodes,
   alibaba-pai's Fun-Acc its four final levels with a flow shift of 1.

@@ -3,7 +3,7 @@ package drift.backend.conversion
 import drift.backend.Background
 import drift.backend.cache.*
 import drift.backend.runtime.RuntimeManager
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.*
@@ -214,7 +214,7 @@ final class ConversionManager(
 
   /** The registered models whose weights are this very file. */
   private def modelsOf(source: Path): List[Model] =
-    storage.list[Model]("models").filter { model =>
+    storage.list(Collections.models).filter { model =>
       cache.resolve(model.source) match {
         case CacheEntry.Present(path, _) =>
           try Files.isSameFile(path, source)
@@ -246,7 +246,7 @@ final class ConversionManager(
           Files.deleteIfExists(output)
           Left("sd-cli wrote a GGUF with no tensors in it.")
         case Right(_) =>
-          val taken = storage.list[Model]("models").map(_.id).toSet
+          val taken = storage.list(Collections.models).map(_.id).toSet
           val fileBase = output.getFileName.toString.stripSuffix(".gguf")
           val base = sourceModel
             .map(_.id)
@@ -270,7 +270,7 @@ final class ConversionManager(
               sourceModel.map(_.removedParameters).getOrElse(Nil),
             builtIn = false
           )
-          storage.save[Model]("models", id, model)
+          storage.save(Collections.models, id, model)
           Right(job.copy(modelId = Some(id)))
       }
     } catch {

@@ -1,18 +1,16 @@
 package drift.backend.upscale
 
-import drift.backend.{Background, WorkQueue}
+import drift.backend.Background
 import drift.backend.civitai.CivitaiClient
-import drift.backend.download.{DownloadOutcome, Downloader}
-import drift.backend.storage.StorageService
+import drift.backend.download.*
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.*
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
-import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
 
 import com.typesafe.scalalogging.Logger
+import ox.discard
 
 /** Owns the upscaler store (`specs/10-generation-time-upscaling.md`): a flat
   * `~/.cache/drift/upscale/` directory of ESRGAN weight files, read by the
@@ -39,31 +37,31 @@ final class UpscalerManager(
 ) {
   private val logger = Logger[UpscalerManager]
 
-  final private class Entry(
-      @volatile var job: UpscalerDownloadJob,
-      val cancelled: AtomicBoolean = AtomicBoolean(false)
-  )
-  private val jobs = ConcurrentHashMap[String, Entry]()
+  /** One transfer per upscaler, by its id (`DownloadQueue`). */
+  private val downloads =
+    DownloadQueue[String](background, "drift-upscaler-download")
 
-  private val downloads = WorkQueue(background, "drift-upscaler-download", 2)
+  private def jobOf(upscalerId: String, transfer: Transfer) =
+    UpscalerDownloadJob(
+      upscalerId,
+      transfer.state,
+      downloadedBytes = transfer.downloadedBytes,
+      totalBytes = transfer.totalBytes,
+      error = transfer.error
+    )
 
   def list: List[Upscaler] =
-    storage.list[Upscaler]("upscalers").sortBy(_.label)
+    storage.list(Collections.upscalers).sortBy(_.label)
 
   /** Stops a download from the downloads panel: a queued one at once, a running
     * one at its next read, its `.part` kept for a resume. The upscaler stays
     * registered, so a restart resumes it (`resumeInterrupted`).
     */
   def cancelDownload(upscalerId: String): Option[UpscalerDownloadJob] =
-    Option(jobs.get(upscalerId)).map { entry =>
-      entry.cancelled.set(true)
-      if (entry.job.state == DownloadState.Queued)
-        entry.job = entry.job.copy(state = DownloadState.Cancelled)
-      entry.job
-    }
+    downloads.cancel(upscalerId).map(jobOf(upscalerId, _))
 
   def listJobs: List[UpscalerDownloadJob] =
-    jobs.values.asScala.map(_.job).toList.sortBy(_.upscalerId)
+    downloads.all.toList.map(jobOf).sortBy(_.upscalerId)
 
   // ----------------------------------------------------------------- install
 
@@ -115,16 +113,11 @@ final class UpscalerManager(
   def installFromCivitai(
       request: InstallUpscalerFromCivitaiRequest
   ): InstallUpscalerResponse =
-    request.civitaiModelId.toIntOption.flatMap(
-      civitaiClient.getModelDetail
-    ) match {
-      case None =>
-        InstallUpscalerResponse(error =
-          Some(
-            s"Civitai has no model '${request.civitaiModelId}' (or the lookup failed)"
-          )
-        )
-      case Some(detail) =>
+    request.civitaiModelId.toIntOption
+      .toRight(s"'${request.civitaiModelId}' is not a Civitai model's number")
+      .flatMap(civitaiClient.getModelDetail) match {
+      case Left(reason)  => InstallUpscalerResponse(error = Some(reason))
+      case Right(detail) =>
         detail.modelVersions.find(_.id.toString == request.versionId) match {
           case None =>
             InstallUpscalerResponse(error =
@@ -186,14 +179,14 @@ final class UpscalerManager(
     * re-queued — deleting first is the explicit way to refetch.
     */
   private def install(upscaler: Upscaler): Either[String, Upscaler] = {
-    val existing = storage.get[Upscaler]("upscalers", upscaler.id)
+    val existing = storage.get(Collections.upscalers, upscaler.id)
     if (
       existing.isDefined &&
       Files.isRegularFile(upscaleRoot.resolve(existing.get.fileName))
     )
       Left(s"upscaler '${upscaler.id}' is already installed")
     else {
-      storage.save("upscalers", upscaler.id, upscaler)
+      storage.save(Collections.upscalers, upscaler.id, upscaler)
       queueDownload(upscaler)
       Right(upscaler)
     }
@@ -212,80 +205,37 @@ final class UpscalerManager(
 
   private def queueDownload(upscaler: Upscaler): Unit = {
     val target = upscaleRoot.resolve(upscaler.fileName)
-    if (Files.isRegularFile(target)) {
-      jobs.put(
-        upscaler.id,
-        Entry(
-          UpscalerDownloadJob(
-            upscaler.id,
-            DownloadState.Completed,
-            downloadedBytes = Files.size(target),
-            totalBytes = Some(Files.size(target))
-          )
+    if (Files.isRegularFile(target))
+      downloads
+        .settled(
+          upscaler.id,
+          DownloadState.Completed,
+          bytes = Some(Files.size(target))
         )
-      )
-      return
-    }
-    Option(jobs.get(upscaler.id)).map(_.job).filter(_.state.isActive) match {
-      case Some(_) => ()
-      case None    =>
-        val entry =
-          Entry(UpscalerDownloadJob(upscaler.id, DownloadState.Queued))
-        jobs.put(upscaler.id, entry)
-        downloads.submit {
-          if (entry.cancelled.get()) ()
-          else
-            try {
-              entry.job = entry.job.copy(state = DownloadState.Downloading)
-              Files.createDirectories(upscaleRoot)
-              val outcome = downloader.fetch(
-                url = upscaler.downloadUrl,
-                partFile = target.resolveSibling(
-                  target.getFileName.toString + ".part"
-                ),
-                finalFile = target,
-                expectedSha256 = upscaler.sha256,
-                headers = civitaiClient.headersFor(upscaler.downloadUrl),
-                isCancelled = () => entry.cancelled.get(),
-                onProgress = (done, total) =>
-                  entry.job = entry.job.copy(
-                    downloadedBytes = done,
-                    totalBytes = total.orElse(entry.job.totalBytes)
-                  )
-              )
-              entry.job = outcome match {
-                case DownloadOutcome.Completed(_, bytes) =>
-                  entry.job.copy(
-                    state = DownloadState.Completed,
-                    downloadedBytes = bytes,
-                    totalBytes = entry.job.totalBytes.orElse(Some(bytes))
-                  )
-                case DownloadOutcome.Cancelled =>
-                  entry.job.copy(state = DownloadState.Cancelled)
-                case DownloadOutcome.Failed(reason) =>
-                  entry.job
-                    .copy(state = DownloadState.Failed, error = Some(reason))
-              }
-            } catch {
-              case NonFatal(err) =>
-                logger.warn(
-                  s"Upscaler download ${upscaler.id} blew up",
-                  err
-                )
-                entry.job = entry.job.copy(
-                  state = DownloadState.Failed,
-                  error = Some(Option(err.getMessage).getOrElse(err.toString))
-                )
-            }
+        .discard
+    else
+      downloads
+        .queue(upscaler.id) { (isCancelled, onProgress) =>
+          Files.createDirectories(upscaleRoot)
+          downloader.fetch(
+            url = upscaler.downloadUrl,
+            partFile =
+              target.resolveSibling(target.getFileName.toString + ".part"),
+            finalFile = target,
+            expectedSha256 = upscaler.sha256,
+            headers = civitaiClient.headersFor(upscaler.downloadUrl),
+            isCancelled = isCancelled,
+            onProgress = onProgress
+          )
         }
-    }
+        .discard
   }
 
   // ------------------------------------------------------------------ delete
 
   /** Deletes the entity, the weight file and any `.part` leftover. */
   def delete(id: String): Boolean = {
-    storage.get[Upscaler]("upscalers", id).foreach { upscaler =>
+    storage.get(Collections.upscalers, id).foreach { upscaler =>
       val target = upscaleRoot.resolve(upscaler.fileName)
       try {
         Files.deleteIfExists(
@@ -297,8 +247,8 @@ final class UpscalerManager(
           logger.warn(s"Deleting '$target' failed: ${err.getMessage}")
       }
     }
-    jobs.remove(id)
-    storage.delete("upscalers", id)
+    downloads.forget(id)
+    storage.delete(Collections.upscalers, id)
   }
 }
 

@@ -380,11 +380,8 @@ final class QwenImage21 private (ops: Ops, source: WeightSource)
     val half = siteWeights(
       "time_text_embed.timestep_embedder.linear_1"
     ).shape.last.toInt / 2
-    val sinusoid = Array.tabulate(2 * half) { i =>
-      val frequency = math.exp(-math.log(10000) * (i % half) / half).toFloat
-      val angle = timestep * 1000f * frequency
-      if (i < half) math.cos(angle).toFloat else math.sin(angle).toFloat
-    }
+    val sinusoid =
+      TimestepSinusoid(timestep * 1000f, half, singleFrequencies = true)
     val small = mutable.ArrayBuffer.empty[Tensor]
     def vector(elements: Long) = {
       val tensor = ops.allocate(DType.F32, Shape.of(1, elements))

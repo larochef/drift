@@ -84,7 +84,21 @@ class MachinePanel(status: Signal[Option[MachineStatus]]) extends Component {
             s"${MachineStatus.gigabytes(bytes)} GB"
           )
         ).map(held => s"On the GPU: $held")
-      )
+      ),
+      // Only when something is missing: a tool drift calls and did not find.
+      child <-- status
+        .map(_.toList.flatMap(_.missingTools))
+        .distinct
+        .map {
+          case Nil     => emptyNode
+          case missing =>
+            p(
+              cls := "has-text-warning mb-0",
+              title := "ffmpeg makes the still of a video and the videos of " +
+                "the drift runner: install it and restart drift",
+              s"Not installed: ${missing.mkString(", ")}"
+            )
+        }
     )
 }
 

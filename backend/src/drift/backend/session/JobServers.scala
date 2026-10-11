@@ -3,7 +3,7 @@ package drift.backend.session
 import drift.backend.Background
 import drift.backend.process.{ChildProcesses, ProcessOutput}
 import drift.backend.runtime.RuntimeManager
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.*
@@ -70,7 +70,7 @@ final private[session] class JobServers(
     val started = lock.synchronized {
       for {
         configuration <- storage
-          .get[RunConfiguration]("run-configurations", runConfigurationId)
+          .get(Collections.runConfigurations, runConfigurationId)
           .toRight(s"run configuration '$runConfigurationId' does not exist")
         launchRuntime <- runtimeManager
           .resolveForLaunch(RuntimeTool.SdCpp, configuration.runner, runtimeId)
@@ -80,8 +80,8 @@ final private[session] class JobServers(
         (argv, _) <- arguments
           .argumentsFor(
             configuration,
-            storage.list[Architecture]("architectures"),
-            storage.list[Model]("models"),
+            storage.list(Collections.architectures),
+            storage.list(Collections.models),
             launchRuntime,
             Some(port)
           )

@@ -1,11 +1,14 @@
 package drift.backend.session
 
 import drift.backend.Background
+import drift.backend.process.ChildProcesses
 import drift.shared.{MachineSample, MachineStatus}
 
 import java.nio.file.*
+import scala.concurrent.duration.DurationInt
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
+import scala.util.control.NonFatal
 
 /** The machine's load and memory for the status socket: read every
   * [[MachineStatus.SampleSeconds]] by a watch of its own, whether a page is
@@ -20,13 +23,19 @@ class MachineMonitor(
     thresholdPercent: () => Int,
     readGpu: () => Option[MachineMonitor.Gpu] = () => MachineMonitor.readGpu(),
     readMemory: () => Option[MemoryHeadroom] = () => MemoryHeadroom.read(),
-    now: () => Long = () => System.nanoTime()
+    now: () => Long = () => System.nanoTime(),
+    missingTools: () => List[String] = () => MachineMonitor.missingTools()
 ) {
   import MachineMonitor.*
 
   private var idleSince = Option.empty[Long]
   private var history = Vector.empty[MachineSample]
   private var last = Option.empty[MachineStatus]
+
+  /** Looked for once: a tool installed while drift runs shows at the next
+    * start.
+    */
+  private lazy val missing = missingTools()
 
   /** The latest reading; `None` before the first, and where the machine's
     * memory cannot be read.
@@ -67,13 +76,24 @@ class MachineMonitor(
         memoryLeftBytes = left,
         memoryLow =
           memory.freeBytes * 100 < memory.totalBytes * thresholdPercent(),
-        history = history.toList
+        history = history.toList,
+        missingTools = missing
       )
     }
   }
 }
 
 object MachineMonitor {
+
+  /** The tools drift calls that do not answer on this machine. */
+  def missingTools(): List[String] =
+    List("ffmpeg").filterNot { tool =>
+      try
+        ChildProcesses
+          .answer(List(tool, "-version"), within = 5.seconds, most = 256)
+          .exists(_.exit == 0)
+      catch { case NonFatal(_) => false }
+    }
 
   /** What the driver says of the GPU, each figure where it has it. */
   case class Gpu(percent: Option[Int], memoryBytes: Option[Long])

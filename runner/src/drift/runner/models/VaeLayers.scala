@@ -411,3 +411,66 @@ final class VaeRun(ops: Ops) {
     live.clear()
   }
 }
+
+/** The layers a video VAE runs one frame at a time, a frame being
+  * `[height, width, channels]`: what the causal VAEs share whatever their
+  * convolutions over time are.
+  */
+final class FrameLayers(ops: Ops) {
+
+  def frame(height: Long, width: Long, channels: Long): Tensor =
+    ops.allocate(DType.F32, Shape.of(height, width, channels))
+
+  /** The frame as rows of pixels. */
+  def pixels(x: Tensor): Tensor = {
+    val Seq(h, w, c) = x.shape.dimensions
+    x.view(h * w, c)
+  }
+
+  def sizes(x: Tensor): (Long, Long, Long) = {
+    val Seq(h, w, c) = x.shape.dimensions
+    (h, w, c)
+  }
+
+  def normSilu(x: Tensor, norm: ChannelNorm): Tensor = {
+    val (h, w, c) = sizes(x)
+    val out = frame(h, w, c)
+    norm(ops, pixels(x), pixels(out))
+    ops.activation(Activation.Silu, out, out)
+    out
+  }
+
+  /** A 1×1 convolution: a linear over the pixels. */
+  def linear(x: Tensor, conv: Convolution): Tensor = {
+    val (h, w, _) = sizes(x)
+    val out = frame(h, w, conv.outChannels)
+    ops.linear(pixels(x), conv.weight, pixels(out))
+    ops.addRow(pixels(out), conv.bias, pixels(out))
+    out
+  }
+
+  /** A residual block on one frame, its two convolutions over time run by
+    * `causal`, which keeps their history; `x` is released.
+    */
+  def residual[C](
+      x: Tensor,
+      norm1: ChannelNorm,
+      conv1: C,
+      norm2: ChannelNorm,
+      conv2: C,
+      shortcut: Option[Convolution]
+  )(causal: (Tensor, C) => Tensor): Tensor = {
+    val first = causal(normSilu(x, norm1), conv1)
+    val second = causal(normSilu(first, norm2), conv2)
+    ops.release(first)
+    shortcut match {
+      case Some(conv) =>
+        val across = linear(x, conv)
+        ops.add(second, across, second)
+        ops.release(across)
+      case None => ops.add(second, x, second)
+    }
+    ops.release(x)
+    second
+  }
+}

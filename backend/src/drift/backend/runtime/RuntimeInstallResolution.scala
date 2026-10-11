@@ -1,6 +1,6 @@
 package drift.backend.runtime
 
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import com.typesafe.scalalogging.Logger
@@ -24,7 +24,7 @@ final private[runtime] class RuntimeInstallResolution(
   ): List[RuntimeInstallJob] = {
     val option = request.option
     val alreadyValid = storage
-      .list[Runtime]("runtimes")
+      .list(Collections.runtimes)
       .exists(r =>
         r.valid && r.tool == option.tool && r.engine == option.engine
       )
@@ -46,7 +46,7 @@ final private[runtime] class RuntimeInstallResolution(
       // Registered before the job can finish; when it has already, its outcome
       // is on disk to read.
       if (!installs.whenValid(option.runtimeId)(switchNow))
-        if (storage.get[Runtime]("runtimes", option.runtimeId).exists(_.valid))
+        if (storage.get(Collections.runtimes, option.runtimeId).exists(_.valid))
           switchNow()
       jobs
     }
@@ -58,16 +58,16 @@ final private[runtime] class RuntimeInstallResolution(
       configurationIds: List[String]
   ): Unit =
     configurationIds
-      .flatMap(storage.get[RunConfiguration]("run-configurations", _))
+      .flatMap(storage.get(Collections.runConfigurations, _))
       .filter(_.runner != option.engine)
       .filter(configuration =>
         storage
-          .get[Architecture]("architectures", configuration.architectureId)
+          .get(Collections.architectures, configuration.architectureId)
           .exists(_.runners.contains(option.engine))
       )
       .foreach { configuration =>
         storage.save(
-          "run-configurations",
+          Collections.runConfigurations,
           configuration.id,
           configuration.copy(runner = option.engine)
         )

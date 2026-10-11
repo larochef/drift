@@ -38,7 +38,7 @@ class CivitaiClient(token: () => Option[String] = () => None)
       cursor: Option[String],
       sort: Option[String],
       nsfw: Boolean
-  ): CivitaiSearchResult = {
+  ): Either[String, CivitaiSearchResult] = {
     try {
       val sortValue = sort.getOrElse("Most Downloaded")
       val typeParam = toCivitaiType(modelType.getOrElse("CHECKPOINT"))
@@ -93,11 +93,15 @@ class CivitaiClient(token: () => Option[String] = () => None)
                 logger.error(
                   s"Civitai search decode error: $err | json=${json.take(500)}"
                 )
-                (List.empty, None)
+                throw CivitaiClient.Refused(
+                  "Civitai's answer could not be read"
+                )
             }
-          case Left(err) =>
-            logger.error(s"Civitai search response error: $err")
-            (List.empty, None)
+          case Left(body) =>
+            logger.error(s"Civitai search response error: $body")
+            throw CivitaiClient.Refused(
+              s"Civitai answered ${response.code}: ${civitaiReason(body)}"
+            )
         }
       }
 
@@ -117,14 +121,17 @@ class CivitaiClient(token: () => Option[String] = () => None)
         kept = kept ++ more.filter(matchesBaseModels)
         nextCursor = next
       }
-      CivitaiSearchResult(
-        items = kept.map(withoutDescriptions),
-        nextCursor = nextCursor
+      Right(
+        CivitaiSearchResult(
+          items = kept.map(withoutDescriptions),
+          nextCursor = nextCursor
+        )
       )
     } catch {
-      case e: Exception =>
-        logger.error(s"Civitai search exception", e)
-        CivitaiSearchResult(List.empty)
+      case CivitaiClient.Refused(reason) => Left(reason)
+      case NonFatal(error)               =>
+        logger.error(s"Civitai search exception", error)
+        Left(s"Civitai could not be reached: ${rootReason(error)}")
     }
   }
 
@@ -227,38 +234,47 @@ class CivitaiClient(token: () => Option[String] = () => None)
   ): sttp.client3.Request[Either[String, String], Any] =
     token().fold(request)(t => request.auth.bearer(t))
 
-  def getModelDetail(modelId: Int): Option[CivitaiModelDetail] = {
+  /** A model with its versions and files, or why it could not be had: no such
+    * model, an answer that does not read, a site that does not answer.
+    */
+  def getModelDetail(modelId: Int): Either[String, CivitaiModelDetail] =
     try {
       val uri = uri"https://civitai.com/api/v1/models/$modelId"
         .addParam("metadata", "false")
-
       val response = authorized(
         basicRequest.header("Accept", "application/json").get(uri)
       ).send(backend)
-
       response.body match {
         case Right(json) =>
           logger.debug(s"Civitai modelDetail raw json: ${json.take(500)}")
           Try(readFromString[List[CivitaiModelDetail]](json)).toOption
             .flatMap(_.headOption)
-            .orElse {
-              // Log rather than swallow: a decode failure here used to look
-              // exactly like "model has no files".
-              Try(readFromString[CivitaiModelDetail](json)) match {
-                case scala.util.Success(detail) => Some(detail)
-                case scala.util.Failure(err)    =>
+            .map(Right(_))
+            .getOrElse(
+              Try(readFromString[CivitaiModelDetail](json)).toEither.left
+                .map { err =>
                   logger.warn(
                     s"Civitai modelDetail decode failed: ${err.getMessage}"
                   )
-                  None
-              }
-            }
-        case Left(_) => None
+                  s"Civitai's answer for model $modelId could not be read"
+                }
+            )
+        case Left(_) if response.code.code == 404 =>
+          Left(s"Civitai has no model $modelId")
+        case Left(body) =>
+          Left(s"Civitai answered ${response.code}: ${civitaiReason(body)}")
       }
     } catch {
-      case _: Exception => None
+      case NonFatal(error) =>
+        Left(s"Civitai could not be reached: ${rootReason(error)}")
     }
-  }
+}
+
+object CivitaiClient {
+
+  /** A search page Civitai did not give, with the reason to pass on. */
+  final private case class Refused(reason: String)
+      extends RuntimeException(reason)
 }
 
 /** Civitai's error body: `{"error": "…"}`, `message` on some routes. */

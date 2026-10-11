@@ -51,12 +51,17 @@ runs on the GPU are checked there (`gpuTest`), at night.
      (8); the chat server's flags and requests.
 2. **The runner's own progress report** on the job document (44), replacing
    the bar patterns kept in step on both sides.
-3. **One ffmpeg wrapper per side**, a check at startup shown with the
-   machine's status, and the README and getting-started saying when it is
-   needed.
-4. **Reference data checked whole**: every id named by a starter, a
-   migration's map or a retired built-in resolves. (The tag fix-up at
-   startup is gone, 2026-10-11.)
+3. **ffmpeg said where it matters** — done 2026-10-11: drift looks for it
+   once at start and the Machine box says when it is not installed; the
+   README and the getting-started page say what it is for — every video's
+   still, and the runner's videos. Left: LTX's own call to it for its image
+   conditions, beside the runner's video files.
+4. **Reference data checked whole** — done 2026-10-11, by test: a built-in
+   model is a checkpoint of some architecture's slot; a starter fills slots
+   its architecture has, with models of the slot's family; an architecture
+   the runner is offered for is of a kind the runner runs
+   (`RunnerModelKinds`, the list the runner answers with); every flag such a
+   launch carries is one it takes. The tag fix-up at startup is gone.
 5. **Entity fields without defaults** — done 2026-10-11 (38): the stored
    types carry none, a stored record says every field and does not load
    without one, the reference files are spelled out, and the migrations
@@ -85,8 +90,13 @@ runs on the GPU are checked there (`gpuTest`), at night.
    Run through drift on a copy of the configuration: a session on the
    runner, a generation of two pictures, a SeedVR2 upscale through a job
    server.
-9. **One download queue**, for models, LoRAs and upscalers, with one job
-   type and one status topic; runtime installs reuse its queue and cancel.
+9. **One download queue** — done 2026-10-11 (`download/DownloadQueue`): a
+   transfer's turn, its progress, its cancel and its end are written once and
+   tested; the models', the LoRAs' and the upscalers' managers each say only
+   what a transfer fetches and where to. The models' manager is in `models`,
+   so `download` is the generic part and the backend has no import cycle.
+   Left: the three job types and status topics the page reads are still
+   three; runtime installs keep their own queue.
 10. **A package per site** — done 2026-10-11: `civitai` (its client, which
     also says where a file is fetched and what token goes with it — to
     Civitai's hosts only) and `huggingface` (its calls, its examples, its
@@ -100,16 +110,22 @@ runs on the GPU are checked there (`gpuTest`), at night.
     life: the manager, the registry, the monitor, the submissions, scratch,
     moves between projects) and `nativejobs` (the job protocol's client, the
     requests, the reference sizing); the picture helpers are in `images`. The
-    history is told of a deletion by a function, not by the manager. One
-    cycle is left in the backend: `download` and `huggingface`, the generic
-    downloader and the models' download manager sharing a package (9).
+    history is told of a deletion by a function, not by the manager.
 12. **The tile loop runs every tiled pass**, the edit's carry included, and
     picks its server in one place; a running job is one record instead of
     six maps.
-13. **Collections and settings documents declared once**; a run
+13. **Collections and settings documents declared once** — done 2026-10-11
+    (`storage/Collections`): each collection is a value carrying its folder
+    and how its records read, and the generic entity endpoints take one; each
+    settings document carries its name and what it starts as. Left: a run
     configuration with its architecture and models resolved by one function.
-14. **Named failures** in the shared endpoints: the site failed, refused with
-    a reason, not found.
+14. **Named failures** — done 2026-10-11 for the sites: a search or a
+    model's detail on Civitai or HuggingFace that fails answers 502 with the
+    reason — the site's status, its own words, or that it could not be
+    reached — which the browser shows; a model's install or download says the
+    same reason instead of "or the lookup failed". Seen through drift. Left:
+    the other endpoints' failures, still of three shapes (a bare text, a
+    bare 404, a `false`).
 15. Kinds and operations as enumerations; `Api.scala` and `PostProcess.scala`
     split by entity; tests for the launch refusals, the job state machine,
     the job client and the download queue as each is rewritten.
@@ -171,17 +187,44 @@ runs on the GPU are checked there (`gpuTest`), at night.
     their own under the models, the cache descriptor is with the ops, the
     random draws with the tensors. `models` imports nothing of `diffusion`,
     `ops` nothing of `state`.
-25. **One sampling loop** for the flow models: schedule, first step of an
-    img2img, guidance, preview, mask, progress; a pipeline keeps its prompt
-    encoding, its noise and its decode.
-26. **Transformer pieces written once**: work buffers, a linear with its
-    bias and LoRA site, the timestep embedding, the joint block; attention of
-    a non-causal model through one wrapper.
-27. **VAEs on one kit**: the causal video layers shared by Wan, SeedVR2,
-    MiniMax H3 and LTX; tiling offered to every decode.
-28. **Families declared in one list**: how a file is recognised, what it
-    needs, how it opens. A file no family recognises is refused. The server
-    holds one kind of pipeline.
+25. **One sampling loop** — done 2026-10-11 for five image families
+    (`diffusion/FlowSampler`): Krea 2, FLUX.2, Mage-Flow, Qwen Image 2.1 and
+    LLaDA-Image give their model's velocity and keep their prompt, their
+    noise and their decode; the steps, the guidance, an img2img's start, the
+    mask, the preview and the progress are written once. LLaDA Turbo's
+    stochastic step is the loop's with another way to move. Checked through
+    drift against pictures made before: the same file to the byte for Krea
+    2, FLUX.2 klein, Mage-Flow Turbo and Qwen Image 2.1 — plain, guided,
+    shifted, img2img and masked — and for HiDream O1 and GRN, which were not
+    touched. LLaDA cannot be checked so (`bugs/README.md`, bug 5). Left:
+    Nucleus (its guided step is its own), HiDream O1 (UniPC), the video
+    families. Krea 2 takes a mask now, which the loop gave it for the asking
+    (run through drift, not looked at).
+26. **Transformer pieces written once** — begun 2026-10-11: the timestep's
+    sinusoid is one function (`models/TimestepSinusoid`) with what the
+    families differ by as parameters — the scale, which of the sines and the
+    cosines come first, the largest period, the precision of the
+    frequencies — used by Krea 2, FLUX.2, Qwen Image 2.1, GRN, Wan, MiniMax
+    H3, PiD and SeedVR2. The same pictures to the byte through drift for the
+    first four; the others by their fixtures. Left: the five that round to
+    BF16 on the way (HiDream O1, LTX, Mage-Flow, Nucleus, LLaDA); the work
+    buffers; a linear with its bias and LoRA site; the joint block; attention
+    of a non-causal model through one wrapper.
+27. **VAEs on one kit** — begun 2026-10-11: what a causal video VAE does to
+    one frame — its pixels as rows, the norm and SiLU, a 1×1 convolution, the
+    residual block around its two convolutions over time — is `FrameLayers`
+    (`models/VaeLayers`), used by Wan's and SeedVR2's, which held the same
+    code twice. SeedVR2 checked against its reference: the same figures.
+    Left: MiniMax H3's encoder and LTX's, which run several frames at once;
+    the convolution over time and its history; tiling offered to every
+    decode.
+28. **Families declared in one list** — done 2026-10-11 for the image
+    families (`ImagePipeline.Families`): each says how its file is recognised
+    and how it opens from the launch's files (`ModelFiles`), in the order they
+    are tried; a file none recognises is refused with their names, where it
+    was opened as Krea 2. Tested on every family's tiny model. Left: the video
+    families and the upscaler in the same list, the server holding one kind
+    of pipeline, the model kinds and the help line derived from it.
 29. **One progress object** handed to a generation: phases, bars, load
     timings — every phase that lasts says so.
 30. `ImageServer` split (queue, capabilities, request parsing, results); one

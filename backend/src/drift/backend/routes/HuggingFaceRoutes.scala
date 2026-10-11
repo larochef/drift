@@ -9,7 +9,7 @@ import sttp.tapir.server.ServerEndpoint
 def huggingFaceEndpoints(
     api: HuggingFaceApi
 ): List[ServerEndpoint[Any, Identity]] = List(
-  searchHuggingFaceModels.serverLogicSuccess[Identity] {
+  searchHuggingFaceModels.serverLogic[Identity] {
     (query, limit, offset, sort, direction, baseModel) =>
       api.searchModels(
         query,
@@ -20,7 +20,7 @@ def huggingFaceEndpoints(
         baseModel
       )
   },
-  getHuggingFaceModelDetail.serverLogicSuccess[Identity] { (author, name) =>
+  getHuggingFaceModelDetail.serverLogic[Identity] { (author, name) =>
     api.getModelDetail(author, name)
   },
   getHuggingFaceModelCard.serverLogic[Identity] { (author, name) =>

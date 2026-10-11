@@ -5,7 +5,7 @@ import drift.backend.cache.ModelCache
 import drift.backend.civitai.CivitaiClient
 import drift.backend.download.*
 import drift.backend.huggingface.HuggingFaceDownloads
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.net.http.*
@@ -93,7 +93,7 @@ final class LoraManager(
   def resumeInterrupted(): Unit = downloads.resumeInterrupted()
 
   /** Every installed LoRA entity. */
-  def list: List[Lora] = storage.list[Lora]("loras")
+  def list: List[Lora] = storage.list(Collections.loras)
 
   /** Installs what a request ticked, from whichever site or folder it names
     * (`LoraInstalls`).
@@ -105,7 +105,7 @@ final class LoraManager(
     * folder between sfw/ and nsfw/. Identity fields stay as stored.
     */
   def update(id: String, incoming: Lora): Option[Lora] =
-    storage.get[Lora]("loras", id).map { existing =>
+    storage.get(Collections.loras, id).map { existing =>
       // Where the files come from is not the user's to edit; their stage is.
       val files = existing.files.map(file =>
         incoming.files
@@ -119,7 +119,7 @@ final class LoraManager(
         createdAt = existing.createdAt
       )
       if (existing.nsfw != updated.nsfw) moveFolder(existing, updated)
-      storage.save("loras", id, updated)
+      storage.save(Collections.loras, id, updated)
     }
 
   /** Moves the cache folder when the entity's placement changes — an nsfw flip,
@@ -195,8 +195,8 @@ final class LoraManager(
     * moved into it.
     */
   def pair(request: PairLoraRequest): InstallLoraResponse = {
-    val kept = storage.get[Lora]("loras", request.loraId)
-    val other = storage.get[Lora]("loras", request.otherId)
+    val kept = storage.get(Collections.loras, request.loraId)
+    val other = storage.get(Collections.loras, request.otherId)
     (kept, other) match {
       case (None, _) =>
         LoraManager.failure(s"LoRA '${request.loraId}' no longer exists")
@@ -227,7 +227,7 @@ final class LoraManager(
           description = one.description.orElse(two.description),
           sampling = one.sampling.over(two.sampling)
         )
-        storage.save("loras", paired.id, paired)
+        storage.save(Collections.loras, paired.id, paired)
         delete(two.id)
         // Whatever had not been fetched yet is fetched into its new place.
         paired.files.foreach(file => downloads.queueDownload(paired, file))
@@ -269,15 +269,15 @@ final class LoraManager(
   }
 
   def delete(id: String): Boolean =
-    storage.get[Lora]("loras", id) match {
-      case None       => storage.delete("loras", id)
+    storage.get(Collections.loras, id) match {
+      case None       => storage.delete(Collections.loras, id)
       case Some(lora) =>
         List(lora.nsfw, !lora.nsfw)
           .map(flag =>
             lorasRoot.resolve(lora.copy(nsfw = flag).folderRelativePath)
           )
           .foreach(deleteRecursively)
-        storage.delete("loras", id)
+        storage.delete(Collections.loras, id)
     }
 
   private def deleteRecursively(directory: Path): Unit =

@@ -4,7 +4,7 @@ import drift.backend.Background
 import drift.backend.cache.ModelCache
 import drift.backend.process.ChildProcesses
 import drift.backend.runtime.{LaunchRuntime, RuntimeManager}
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.*
@@ -99,9 +99,7 @@ final class SessionManager(
       .sortBy(_.startedAt)
 
   def settings: SessionSettings =
-    storage
-      .get[SessionSettings]("settings", "sessions")
-      .getOrElse(SessionSettings.initial)
+    storage.read(SessionSettings.Stored)
 
   // ------------------------------------------------------------------- launch
 
@@ -151,7 +149,7 @@ final class SessionManager(
   /** The engine a configuration runs on (`specs/43`). */
   def runnerOf(runConfigurationId: String): Either[String, RuntimeEngine] =
     storage
-      .get[RunConfiguration]("run-configurations", runConfigurationId)
+      .get(Collections.runConfigurations, runConfigurationId)
       .map(_.runner)
       .toRight(s"run configuration '$runConfigurationId' does not exist")
 
@@ -170,10 +168,7 @@ final class SessionManager(
       projectId: Option[String]
   ): Session = {
     val current = settings
-    storage.get[RunConfiguration](
-      "run-configurations",
-      runConfigurationId
-    ) match {
+    storage.get(Collections.runConfigurations, runConfigurationId) match {
       case None =>
         refusal(
           runConfigurationId,
@@ -181,8 +176,8 @@ final class SessionManager(
           s"run configuration '$runConfigurationId' does not exist"
         )
       case Some(configuration) =>
-        val architectures = storage.list[Architecture]("architectures")
-        val models = storage.list[Model]("models")
+        val architectures = storage.list(Collections.architectures)
+        val models = storage.list(Collections.models)
         // The tool decides the cap, the runtime and the readiness probe. A
         // missing architecture is named by the blockers below; it reads as
         // sd-cpp until then.
@@ -289,16 +284,16 @@ final class SessionManager(
   ): Option[(Architecture, Runtime)] =
     for {
       session <- list.find(_.id == sessionId)
-      configuration <- storage.get[RunConfiguration](
-        "run-configurations",
+      configuration <- storage.get(
+        Collections.runConfigurations,
         session.runConfigurationId
       )
-      architecture <- storage.get[Architecture](
-        "architectures",
+      architecture <- storage.get(
+        Collections.architectures,
         configuration.architectureId
       )
       runtimeId <- session.runtimeId
-      runtime <- storage.get[Runtime]("runtimes", runtimeId)
+      runtime <- storage.get(Collections.runtimes, runtimeId)
     } yield (architecture, runtime)
 
   /** The port of a ready assistant session, for the chat proxy
@@ -400,7 +395,7 @@ final class SessionManager(
       // The inference page orders configurations by recency of use, and
       // sessions do not survive a drift restart, so the launch is persisted.
       storage.save(
-        "run-configurations",
+        Collections.runConfigurations,
         configuration.id,
         configuration.copy(lastUsedAt = startedAt)
       )

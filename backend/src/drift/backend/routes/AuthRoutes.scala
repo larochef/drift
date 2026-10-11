@@ -1,7 +1,7 @@
 package drift.backend.routes
 
 import drift.backend.auth.AuthTokens
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import sttp.shared.Identity
@@ -13,7 +13,7 @@ def authEndpoints(
 ): List[ServerEndpoint[Any, Identity]] =
   endpointsFor[AuthToken](
     storage,
-    "auth-tokens",
+    Collections.authTokens,
     _.id,
     listAuthTokens,
     getAuthToken,

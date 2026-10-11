@@ -1,5 +1,6 @@
 package drift.runner.server
 
+import drift.protocol.RunnerModelKinds
 import drift.runner.diffusion.*
 import drift.runner.native.HipRuntime
 import drift.runner.ops.{HipOps, MatVecInputs}
@@ -17,25 +18,7 @@ object ImageMain {
   /** The diffusion families it draws (`diffusion/ImagePipeline`), as drift's
     * architectures name their model kind (`specs/43`).
     */
-  val ModelKinds: Seq[String] =
-    Seq(
-      "krea2",
-      "flux2-klein",
-      "flux2-dev",
-      "qwen-image-2.1",
-      "pid-flux2",
-      "pid-flux1",
-      "pid-qwen-image",
-      "hidream-o1",
-      "mage-flow",
-      "nucleus-image",
-      "llada-image",
-      "grn",
-      "minimax-h3",
-      "wan-2.2-14b",
-      "ltx-2.5",
-      "seedvr2"
-    )
+  val ModelKinds: Seq[String] = RunnerModelKinds.Images
 
   def main(arguments: Array[String]): Unit = {
     if (arguments.contains("--version")) RunnerIdentity.version(Version)

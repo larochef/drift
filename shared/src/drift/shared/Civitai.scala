@@ -355,12 +355,13 @@ val searchCivitaiModels: PublicEndpoint[
       List[String],
       Option[Boolean]
   ),
-  Unit,
+  String,
   CivitaiSearchResult,
   Any
 ] =
   base
     .in("civitai-search")
+    .errorOut(upstreamFailure)
     .in(query[Option[String]]("q"))
     .in(query[Option[Int]]("limit"))
     .in(query[Option[String]]("cursor"))
@@ -371,9 +372,10 @@ val searchCivitaiModels: PublicEndpoint[
     .out(jsonBody[CivitaiSearchResult])
 
 val getCivitaiModelDetail
-    : PublicEndpoint[Int, Unit, Option[CivitaiModelDetail], Any] =
+    : PublicEndpoint[Int, String, Option[CivitaiModelDetail], Any] =
   base
     .in("civitai-model" / path[Int])
+    .errorOut(upstreamFailure)
     .out(jsonBody[Option[CivitaiModelDetail]])
 
 /** One image or video posted on Civitai with a model (`specs/24`) — only what a

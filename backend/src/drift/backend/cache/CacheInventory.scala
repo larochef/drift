@@ -1,6 +1,6 @@
 package drift.backend.cache
 
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.{Files, Path}
@@ -272,7 +272,7 @@ final class CacheInventory(cache: ModelCache, storage: StorageService) {
   private def referenceIndex(): Map[Path, List[String]] = {
     // A split model's shards are its content as much as its index is.
     val fromModels = storage
-      .list[Model]("models")
+      .list(Collections.models)
       .flatMap { model =>
         cache.resolve(model.source) match {
           case CacheEntry.Present(path, _) =>
@@ -284,7 +284,7 @@ final class CacheInventory(cache: ModelCache, storage: StorageService) {
     // LoRA entities claim their files the same way, so an installed LoRA's
     // weights read "used by <id>" instead of orphan.
     val fromLoras = storage
-      .list[Lora]("loras")
+      .list(Collections.loras)
       .flatMap(lora =>
         lora.files.map(file =>
           realPath(lorasRoot.resolve(lora.storagePathOf(file))) -> lora.id

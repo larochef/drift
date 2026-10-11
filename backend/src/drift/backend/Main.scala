@@ -9,6 +9,7 @@ import drift.backend.download.*
 import drift.backend.generation.*
 import drift.backend.huggingface.{HuggingFaceApi, HuggingFaceDownloads}
 import drift.backend.lora.LoraManager
+import drift.backend.models.DownloadManager
 import drift.backend.outputs.*
 import drift.backend.postprocess.PostProcessManager
 import drift.backend.process.ChildProcesses

@@ -25,7 +25,11 @@ case class MachineStatus(
       * every [[MachineStatus.SampleSeconds]] and this status's own figures
       * last: what the sidebar's graphs draw.
       */
-    history: List[MachineSample]
+    history: List[MachineSample],
+    /** The tools drift calls and did not find on this machine, by name:
+      * `ffmpeg`, which makes a video's still and the drift runner's videos.
+      */
+    missingTools: List[String]
 )
 
 /** The machine at one moment of its history. */

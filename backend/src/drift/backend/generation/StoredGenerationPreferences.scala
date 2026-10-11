@@ -1,6 +1,6 @@
 package drift.backend.generation
 
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Document, StorageService}
 import drift.shared.GenerationPreferences
 
 /** How generations are watched, as the page last chose
@@ -10,10 +10,13 @@ import drift.shared.GenerationPreferences
 final class StoredGenerationPreferences(storage: StorageService) {
 
   def current: GenerationPreferences =
-    storage
-      .get[GenerationPreferences]("settings", "generation-preferences")
-      .getOrElse(GenerationPreferences.Initial)
+    storage.read(StoredGenerationPreferences.Stored)
 
   def save(next: GenerationPreferences): GenerationPreferences =
-    storage.save("settings", "generation-preferences", next)
+    storage.write(StoredGenerationPreferences.Stored, next)
+}
+
+object StoredGenerationPreferences {
+  private val Stored =
+    Document("generation-preferences", GenerationPreferences.Initial)
 }

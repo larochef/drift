@@ -273,40 +273,39 @@ final class LladaImagePipeline(
           try autoencoder.encode(image)
           finally ops.release(image)
         try {
-          inpainting.foreach(_.remember(encoded))
-          ops.scale(x, sigmas(start), x)
-          ops.scale(encoded, 1 - sigmas(start), encoded)
-          ops.add(x, encoded, x)
+          FlowSampler.started(ops, x, encoded, sigmas(start), inpainting)
         } finally ops.release(encoded)
         start
       }
-      val velocity = hold(ops.allocate(DType.F32, x.shape))
-      val other =
-        unconditional.map(_ => hold(ops.allocate(DType.F32, x.shape)))
-      val steps = request.steps - first
-      progress(0, steps)
-      (first until request.steps).foreach { i =>
-        transformer.velocity(
-          x,
-          grid,
-          conditional,
-          source.map(_._1),
-          sigmas(i),
-          velocity
-        )
-        for {
-          uncond <- unconditional
-          v <- other
-        } {
-          transformer.velocity(x, grid, uncond, source.map(_._1), sigmas(i), v)
-          // v = uncond + scale × (cond − uncond)
-          ops.scale(v, 1 - request.cfgScale, v)
-          ops.scale(velocity, request.cfgScale, velocity)
-          ops.add(velocity, v, velocity)
-        }
-        if (stochastic) {
-          // the clean image the step points at, under fresh noise at the
-          // next level
+      FlowSampler.run(
+        ops,
+        x,
+        sigmas,
+        first,
+        request.steps,
+        velocityAt = (i, into) =>
+          transformer.velocity(
+            x,
+            grid,
+            conditional,
+            source.map(_._1),
+            sigmas(i),
+            into
+          ),
+        guidance = unconditional.map(uncond =>
+          FlowSampler.Guidance(
+            request.cfgScale,
+            (i, into) =>
+              transformer
+                .velocity(x, grid, uncond, source.map(_._1), sigmas(i), into)
+          )
+        ),
+        inpainting = inpainting,
+        onVelocity = (_, _, _, _) => (),
+        progress = progress,
+        // the clean image the step points at, under fresh noise at the next
+        // level
+        move = Option.when(stochastic) { (i, x, velocity) =>
           ops.scale(velocity, -sigmas(i), velocity)
           ops.add(x, velocity, x)
           ops.scale(x, 1 - sigmas(i + 1), x)
@@ -318,13 +317,8 @@ final class LladaImagePipeline(
           )
           try ops.add(x, fresh, x)
           finally ops.release(fresh)
-        } else {
-          ops.scale(velocity, sigmas(i + 1) - sigmas(i), velocity)
-          ops.add(x, velocity, x)
         }
-        inpainting.foreach(_.restore(x, sigmas(i + 1)))
-        progress(i + 1 - first, steps)
-      }
+      )
       inpainting.foreach(_.release())
       Images.decoding("the image")
       val rgb = autoencoder.decode(x, grid.height)

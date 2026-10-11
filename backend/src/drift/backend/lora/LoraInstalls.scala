@@ -3,7 +3,7 @@ package drift.backend.lora
 import drift.backend.cache.ModelCache
 import drift.backend.civitai.CivitaiClient
 import drift.backend.huggingface.HuggingFaceDownloads
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.*
@@ -33,7 +33,7 @@ final private[lora] class LoraInstalls(
   private val placement = LoraPlacement(storage, downloads, lorasRoot)
 
   def install(request: InstallLoraRequest): InstallLoraResponse =
-    if (!storage.exists("architectures", request.architectureId))
+    if (!storage.exists(Collections.architectures, request.architectureId))
       LoraManager.failure(
         s"architecture '${request.architectureId}' does not exist"
       )
@@ -41,7 +41,7 @@ final private[lora] class LoraInstalls(
       request.source match {
         case LoraInstallSource.CivitaiFiles(_, _)
             if storage
-              .get[Architecture]("architectures", request.architectureId)
+              .get(Collections.architectures, request.architectureId)
               .exists(_.tool == RuntimeTool.LlamaCpp) =>
           LoraManager.failure(
             "Civitai hosts no chat model LoRAs: install a GGUF adapter from " +
@@ -83,7 +83,7 @@ final private[lora] class LoraInstalls(
     if (!LoraManager.isWeightFile(name)) Some(s"'$name' is not a weight file")
     else if (
       storage
-        .get[Architecture]("architectures", architectureId)
+        .get(Collections.architectures, architectureId)
         .exists(_.tool == RuntimeTool.LlamaCpp) &&
       !LoraAdapters.isAdapterFile(name)
     )
@@ -104,12 +104,11 @@ final private[lora] class LoraInstalls(
       refs: List[CivitaiFileRef],
       grouping: LoraGrouping
   ): InstallLoraResponse =
-    modelId.toIntOption.flatMap(civitaiClient.getModelDetail) match {
-      case None =>
-        LoraManager.failure(
-          s"Civitai has no model '$modelId' (or the lookup failed)"
-        )
-      case Some(detail) =>
+    modelId.toIntOption
+      .toRight(s"'$modelId' is not a Civitai model's number")
+      .flatMap(civitaiClient.getModelDetail) match {
+      case Left(reason)  => LoraManager.failure(reason)
+      case Right(detail) =>
         val chosen = refs.flatMap { ref =>
           detail.modelVersions
             .find(_.id.toString == ref.versionId)
@@ -361,9 +360,9 @@ final private[lora] class LoraInstalls(
         )
       case Some(entry) =>
         val lora = storage
-          .get[Lora]("loras", entry.id)
+          .get(Collections.loras, entry.id)
           .getOrElse(entry.copy(createdAt = System.currentTimeMillis()))
-        storage.save("loras", lora.id, lora)
+        storage.save(Collections.loras, lora.id, lora)
         lora.files.foreach(downloads.queueDownload(lora, _))
         InstallLoraResponse(lora = Some(lora))
     }

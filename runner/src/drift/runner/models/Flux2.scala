@@ -478,12 +478,8 @@ final class Flux2 private (ops: Ops, source: WeightSource)
       // through its MLP, the two summed, then SiLU once for every modulation
       val half = c.timeChannels / 2
       def embed(value: Float, first: Tensor, second: Tensor, site: String) = {
-        val sinusoid = Array.tabulate(2 * half) { i =>
-          val frequency =
-            math.exp(-math.log(10000) * (i % half) / half).toFloat
-          val angle = value * 1000f * frequency
-          if (i < half) math.cos(angle).toFloat else math.sin(angle).toFloat
-        }
+        val sinusoid =
+          TimestepSinusoid(value * 1000f, half, singleFrequencies = true)
         val embedded = ops.fromFloats(Shape.of(1, 2L * half), sinusoid)
         small += embedded
         val (inner, result) = (vector(width), vector(width))

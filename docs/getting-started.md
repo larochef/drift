@@ -4,7 +4,9 @@ From a fresh machine to a first image.
 
 ## Run drift
 
-You need a JDK, [Mill](https://mill-build.org) and Node.js. From the repository:
+You need a JDK, [Mill](https://mill-build.org) and Node.js — and
+[FFmpeg](https://ffmpeg.org) for videos: their stills, and the videos the drift
+runner makes. From the repository:
 
 ```sh
 ./mill backend.run

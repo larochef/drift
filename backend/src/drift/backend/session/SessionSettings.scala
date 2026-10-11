@@ -1,5 +1,6 @@
 package drift.backend.session
 
+import drift.backend.storage.Document
 import drift.shared.storedRecord
 
 import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
@@ -43,6 +44,11 @@ object SessionSettings {
     readinessTimeoutMinutes = 15,
     memoryHeadroomWarningPercent = 10
   )
+
+  /** `settings/sessions.json`: there is no page for it, a hand-edit applies at
+    * the next launch.
+    */
+  val Stored: Document[SessionSettings] = Document("sessions", initial)
 
   given JsonValueCodec[SessionSettings] = JsonCodecMaker.make(storedRecord)
 }

@@ -2,7 +2,7 @@
 
 One file, open bugs only, kept short, in the order of their numbers. A bug that is fixed and confirmed is removed
 from here; so is one that is not drift's to fix. Code and specs do not name bugs by number: a comment says what
-the code guards against. Next number: **5**.
+the code guards against. Next number: **6**.
 
 ## Open
 
@@ -65,3 +65,17 @@ To do:
 
 Declined (2026-10-08): releasing Gemma between the prompt and the decode — every component stays loaded for the
 next generation.
+
+### 5 — LLaDA-Image and Nucleus do not repeat a picture for the same seed (medium for LLaDA)
+
+Found 2026-10-11, checking the shared sampling loop: the same request three times in one session of the runner,
+512², 4 steps, seed 7. Krea 2, FLUX.2 klein, Mage-Flow Turbo, Qwen Image 2.1, HiDream O1 and GRN give the same
+file to the byte. LLaDA-Image Turbo gives three visibly different pictures (PSNR 22–26 dB between them), on the
+code before the shared loop as on the code after, with the spare buffers on or off. Nucleus differs at rounding
+level only (45–51 dB).
+
+No unseeded random generator is in either family's code. To look at: an operation whose result depends on the
+order work finishes in (a sum over experts, a kernel that accumulates across threads), which LLaDA's semantic
+tokens — an argmax over logits — would turn from a rounding difference into another picture; and what the two
+families share that the six repeatable ones do not.
+

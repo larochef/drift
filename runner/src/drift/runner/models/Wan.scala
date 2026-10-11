@@ -445,11 +445,7 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
       affine(input, patchIn, x)
       // the timestep: a sinusoid (cosines first) through the time MLP
       val half = c.frequencies / 2
-      val sinusoid = Array.tabulate(2 * half) { i =>
-        val frequency = math.exp(-math.log(10000) * (i % half) / half)
-        val angle = timestep * frequency
-        (if (i < half) math.cos(angle) else math.sin(angle)).toFloat
-      }
+      val sinusoid = TimestepSinusoid(timestep, half)
       val embedded = ops.fromFloats(Shape.of(1, 2L * half), sinusoid)
       small += embedded
       val (inner, time, activated) = (vector(f), vector(f), vector(f))

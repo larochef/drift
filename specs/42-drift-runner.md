@@ -1576,7 +1576,6 @@ on the old tool.
           deltas merged: 0.099% (`Cpu`) and 0.13% (`Hip`).
         - **Live.** An anatomy slider (rank 4, BFL names) matches all
           its targets and costs no measurable time.
-      - **Not yet:** masks.
     - **Done 2026-09-26: FLUX.2 [dev]** (32B), on Klein's code: txt2img,
       img2img, reference images and LoRAs. `Flux2Pipeline` tells the two
       apart by the transformer's `guidance_in` and reads the prompt by

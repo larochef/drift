@@ -577,10 +577,7 @@ final class Pid private (ops: Ops, source: WeightSource, ropeReference: Int)
       // the timestep: σ × 1000, a sinusoid of max period 10 (cosines first)
       val half = c.timeChannels / 2
       val t = sigma * 1000f
-      val sinusoid = Array.tabulate(2 * half) { i =>
-        val angle = t * math.exp(-math.log(10) * (i % half) / half)
-        (if (i < half) math.cos(angle) else math.sin(angle)).toFloat
-      }
+      val sinusoid = TimestepSinusoid(t, half, maxPeriod = 10)
       val embedded = ops.fromFloats(Shape.of(1, 2L * half), sinusoid)
       live += embedded
       val (inner, time, condition) =

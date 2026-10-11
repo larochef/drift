@@ -2,7 +2,7 @@ package drift.backend.generation
 
 import drift.backend.outputs.{GenerationFiles, GenerationHistory}
 import drift.backend.projects.{ProjectCovers, ProjectManager}
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.Path
@@ -35,7 +35,7 @@ final class GenerationMoves(
 
   def move(request: GenerationMove): Either[String, List[Generation]] =
     request.projectId.filter(
-      storage.get[Project]("projects", _).isEmpty
+      storage.get(Collections.projects, _).isEmpty
     ) match {
       case Some(missing) => Left(s"project '$missing' does not exist")
       case None          =>
@@ -124,14 +124,18 @@ final class GenerationMoves(
       .foreach {
         case (Some(projectId), generations) =>
           storage
-            .get[Project]("projects", projectId)
+            .get(Collections.projects, projectId)
             .filter(
               _.cover.exists(cover =>
                 generations.exists(_.outputs.exists(cover.isOf))
               )
             )
             .foreach(project =>
-              storage.save("projects", projectId, project.copy(cover = None))
+              storage.save(
+                Collections.projects,
+                projectId,
+                project.copy(cover = None)
+              )
             )
         case _ => ()
       }

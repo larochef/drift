@@ -747,12 +747,13 @@ lazy val searchHuggingFaceModels: PublicEndpoint[
         String
       ]
   ),
-  Unit,
+  String,
   List[HuggingFaceModelInfo],
   Any
 ] =
   base.get
     .in("hf-search")
+    .errorOut(upstreamFailure)
     .in(query[String]("q"))
     .in(query[Option[Int]]("limit"))
     .in(query[Option[Int]]("offset"))
@@ -762,11 +763,12 @@ lazy val searchHuggingFaceModels: PublicEndpoint[
     .out(jsonBody[List[HuggingFaceModelInfo]])
 
 lazy val getHuggingFaceModelDetail
-    : PublicEndpoint[(String, String), Unit, Option[
+    : PublicEndpoint[(String, String), String, Option[
       HuggingFaceModelDetail
     ], Any] =
   base.get
     .in("hf-model" / path[String] / path[String])
+    .errorOut(upstreamFailure)
     .out(jsonBody[Option[HuggingFaceModelDetail]])
 
 /** The error output of an endpoint relaying another site (`specs/24`): 502, and

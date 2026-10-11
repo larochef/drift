@@ -49,6 +49,31 @@ class StorageService(basePath: Path) {
         None
     }
 
+  /** A settings document as it stands: what was last written, else what it
+    * starts as.
+    */
+  def read[T](document: Document[T]): T =
+    get[T]("settings", document.name)(using document.codec)
+      .getOrElse(document.initial)
+
+  def write[T](document: Document[T], value: T): T =
+    save[T]("settings", document.name, value)(using document.codec)
+
+  def list[T](collection: Collection[T]): List[T] =
+    list[T](collection.name)(using collection.codec)
+
+  def get[T](collection: Collection[T], id: String): Option[T] =
+    get[T](collection.name, id)(using collection.codec)
+
+  def exists(collection: Collection[?], id: String): Boolean =
+    exists(collection.name, id)
+
+  def save[T](collection: Collection[T], id: String, value: T): T =
+    save[T](collection.name, id, value)(using collection.codec)
+
+  def delete(collection: Collection[?], id: String): Boolean =
+    delete(collection.name, id)
+
   def list[T](entityType: String)(using JsonValueCodec[T]): List[T] = {
     val dir = basePath.resolve(entityType)
     if (!Files.isDirectory(dir)) Nil

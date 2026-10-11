@@ -40,7 +40,7 @@ class HuggingFaceApi(token: () => Option[String]) {
       sort: Option[String],
       direction: Option[Int],
       baseModel: Option[String]
-  ): List[HuggingFaceModelInfo] = {
+  ): Either[String, List[HuggingFaceModelInfo]] = {
     try {
       val sortVal = sort.getOrElse("downloads")
       val dirVal = direction.getOrElse(-1)
@@ -62,27 +62,32 @@ class HuggingFaceApi(token: () => Option[String]) {
       response.body match {
         case Right(json) =>
           val examples = HuggingFaceExamples.ofListing(json)
-          readFromString[List[HuggingFaceModelInfo]](json).map { model =>
-            val found = examples.getOrElse(model.id, Nil)
-            model.copy(previews = found.take(4), exampleCount = found.size)
-          }
+          Right(
+            readFromString[List[HuggingFaceModelInfo]](json).map { model =>
+              val found = examples.getOrElse(model.id, Nil)
+              model.copy(previews = found.take(4), exampleCount = found.size)
+            }
+          )
         case Left(answer) =>
           hfLogger.warn(
             s"HuggingFace search answered ${response.code}: ${answer.take(300)}"
           )
-          List.empty
+          Left(s"HuggingFace answered ${response.code}.")
       }
     } catch {
       case NonFatal(error) =>
         hfLogger.warn("HuggingFace search failed", error)
-        List.empty
+        Left(s"HuggingFace could not be reached: ${rootReason(error)}")
     }
   }
 
+  /** A repository's files and examples; none for one HuggingFace does not have,
+    * and the reason when it could not be asked.
+    */
   def getModelDetail(
       author: String,
       name: String
-  ): Option[HuggingFaceModelDetail] = {
+  ): Either[String, Option[HuggingFaceModelDetail]] =
     try {
       val response = hfRequest
         // `?blobs=true` is what makes `siblings[].lfs.sha256` appear; without it the
@@ -91,16 +96,19 @@ class HuggingFaceApi(token: () => Option[String]) {
         .send(hfClient)
       response.body match {
         case Right(json) =>
-          Some(
-            readFromString[HuggingFaceModelDetail](json)
-              .copy(examples = HuggingFaceExamples.ofModel(json))
+          Right(
+            Some(
+              readFromString[HuggingFaceModelDetail](json)
+                .copy(examples = HuggingFaceExamples.ofModel(json))
+            )
           )
-        case Left(_) => None
+        case Left(_) if response.code.code == 404 => Right(None)
+        case Left(_) => Left(s"HuggingFace answered ${response.code}.")
       }
     } catch {
-      case _: Exception => None
+      case NonFatal(error) =>
+        Left(s"HuggingFace could not be reached: ${rootReason(error)}")
     }
-  }
 
   /** The repository's README as a rendered, cleaned card (`specs/24`). A gated
     * repository gates its README too — anonymously even FLUX.1-schnell's

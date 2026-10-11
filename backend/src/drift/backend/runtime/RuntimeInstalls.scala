@@ -1,7 +1,7 @@
 package drift.backend.runtime
 
 import drift.backend.{Background, WorkQueue}
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.*
@@ -195,7 +195,7 @@ final private[runtime] class RuntimeInstalls(
           entries.put(id, RuntimeInstallEntry(job))
           job
         case Right(request) =>
-          storage.get[Runtime]("runtimes", id) match {
+          storage.get(Collections.runtimes, id) match {
             case Some(existing)
                 if existing.valid &&
                   existing.releaseTag == request.releaseTag &&
@@ -225,7 +225,7 @@ final private[runtime] class RuntimeInstalls(
     * request's pick applies, or the declared version resolves as on install.
     */
   def upgrade(id: String, theRockVersion: Option[String]): RuntimeInstallJob =
-    storage.get[Runtime]("runtimes", id) match {
+    storage.get(Collections.runtimes, id) match {
       case None =>
         RuntimeInstallJob(
           id,
@@ -268,7 +268,7 @@ final private[runtime] class RuntimeInstalls(
         error = Some(reason),
         completedAt = Some(System.currentTimeMillis())
       )
-    storage.get[Runtime]("runtimes", id) match {
+    storage.get(Collections.runtimes, id) match {
       case None => refuse(s"runtime '$id' is not registered")
       case Some(runtime) if runtime.backend != RuntimeBackend.Rocm =>
         refuse(s"runtime '${runtime.label}' is not a ROCm build")
@@ -377,7 +377,7 @@ final private[runtime] class RuntimeInstalls(
       if (entry.cancelled.get()) return
       // Captured before the entity is overwritten: an upgrade moves the id to
       // a new tag's directory, and the old one is cleaned up afterwards.
-      val previous = storage.get[Runtime]("runtimes", id)
+      val previous = storage.get(Collections.runtimes, id)
       entry.job = entry.job.copy(
         state = RuntimeInstallState.Downloading,
         startedAt = Some(System.currentTimeMillis())

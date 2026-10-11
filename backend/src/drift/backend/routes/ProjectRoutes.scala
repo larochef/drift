@@ -1,7 +1,7 @@
 package drift.backend.routes
 
 import drift.backend.outputs.GenerationHistory
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import sttp.shared.Identity
@@ -14,7 +14,7 @@ def projectEndpoints(
 ): List[ServerEndpoint[Any, Identity]] =
   endpointsFor[Project](
     storage,
-    "projects",
+    Collections.projects,
     _.id,
     listProjects,
     getProject,
@@ -24,7 +24,7 @@ def projectEndpoints(
     // The conversation goes with its project: it was scratch about the
     // project, not work to keep (`specs/20`).
     onDeleted = (project: Project) => {
-      storage.delete("conversations", project.id)
+      storage.delete(Collections.conversations, project.id)
       ()
     },
     // The versions and `lastUsedAt` are the backend's own record, appended by
@@ -38,14 +38,14 @@ def projectEndpoints(
   ) ++ List(
     getConversation.serverLogicSuccess[Identity] { projectId =>
       storage
-        .get[Conversation]("conversations", projectId)
+        .get(Collections.conversations, projectId)
         .getOrElse(Conversation.empty(projectId))
     },
     saveConversation.serverLogicSuccess[Identity] { (projectId, conversation) =>
       val stored = conversation.copy(projectId = projectId)
       // A project deleted meanwhile keeps no conversation behind.
-      if (storage.exists("projects", projectId))
-        storage.save[Conversation]("conversations", projectId, stored)
+      if (storage.exists(Collections.projects, projectId))
+        storage.save(Collections.conversations, projectId, stored)
       else stored
     },
     // A full walk of the sidecars: the day index is the only index there is,

@@ -29,7 +29,7 @@ private def cleanedForBrowser(
 def civitaiEndpoints(
     civitaiClient: CivitaiClient
 ): List[ServerEndpoint[Any, Identity]] = List(
-  searchCivitaiModels.serverLogicSuccess[Identity] {
+  searchCivitaiModels.serverLogic[Identity] {
     (query, limit, cursor, sort, modelType, baseModels, nsfw) =>
       civitaiClient.search(
         query,
@@ -41,8 +41,10 @@ def civitaiEndpoints(
         nsfw.getOrElse(false)
       )
   },
-  getCivitaiModelDetail.serverLogicSuccess[Identity] { modelId =>
-    civitaiClient.getModelDetail(modelId).map(cleanedForBrowser)
+  getCivitaiModelDetail.serverLogic[Identity] { modelId =>
+    civitaiClient
+      .getModelDetail(modelId)
+      .map(detail => Some(cleanedForBrowser(detail)))
   },
   listCivitaiImages.serverLogic[Identity] {
     (modelId, modelVersionId, sort, cursor, nsfw) =>

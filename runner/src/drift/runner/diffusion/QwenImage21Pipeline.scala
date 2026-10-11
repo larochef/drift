@@ -284,57 +284,53 @@ final class QwenImage21Pipeline(
           finally ops.release(pixels)
         try {
           val rows = encoded.view(tokens, channels)
-          inpainting.foreach(_.remember(rows))
-          ops.scale(x, sigmas(start), x)
-          ops.scale(rows, 1 - sigmas(start), rows)
-          ops.add(x, rows, x)
+          FlowSampler.started(ops, x, rows, sigmas(start), inpainting)
         } finally ops.release(encoded)
         start
       }
-      val velocity = hold(ops.allocate(DType.F32, x.shape))
-      val other =
-        unconditional.map(_ => hold(ops.allocate(DType.F32, x.shape)))
-      val steps = request.steps - first
-      progress(0, steps)
-      (first until request.steps).foreach { i =>
-        transformer.atStep(i, request.steps)
-        transformer.velocity(
-          x,
-          conditional,
-          sigmas(i),
-          gridHeight,
-          gridWidth,
-          velocity
-        )
-        for {
-          uncond <- unconditional
-          v <- other
-        } {
-          transformer.velocity(x, uncond, sigmas(i), gridHeight, gridWidth, v)
-          // v = uncond + scale × (cond − uncond)
-          ops.scale(v, 1 - request.cfgScale, v)
-          ops.scale(velocity, request.cfgScale, velocity)
-          ops.add(velocity, v, velocity)
-        }
-        projection.foreach(drawn =>
-          preview(
-            i + 1 - first,
-            steps,
-            () =>
-              drawn.estimate(
-                ops.toFloats(x),
-                ops.toFloats(velocity),
-                sigmas(i),
-                gridHeight,
-                gridWidth
-              )
+      FlowSampler.run(
+        ops,
+        x,
+        sigmas,
+        first,
+        request.steps,
+        velocityAt = (i, into) => {
+          transformer.atStep(i, request.steps)
+          transformer.velocity(
+            x,
+            conditional,
+            sigmas(i),
+            gridHeight,
+            gridWidth,
+            into
           )
-        )
-        ops.scale(velocity, sigmas(i + 1) - sigmas(i), velocity)
-        ops.add(x, velocity, x)
-        inpainting.foreach(_.restore(x, sigmas(i + 1)))
-        progress(i + 1 - first, steps)
-      }
+        },
+        guidance = unconditional.map(uncond =>
+          FlowSampler.Guidance(
+            request.cfgScale,
+            (i, into) =>
+              transformer
+                .velocity(x, uncond, sigmas(i), gridHeight, gridWidth, into)
+          )
+        ),
+        inpainting = inpainting,
+        onVelocity = (step, steps, velocity, sigma) =>
+          projection.foreach(drawn =>
+            preview(
+              step,
+              steps,
+              () =>
+                drawn.estimate(
+                  ops.toFloats(x),
+                  ops.toFloats(velocity),
+                  sigma,
+                  gridHeight,
+                  gridWidth
+                )
+            )
+          ),
+        progress = progress
+      )
       inpainting.foreach(_.release())
       Images.decoding("the image")
       val rgba =

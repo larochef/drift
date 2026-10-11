@@ -1,5 +1,6 @@
 package drift.runner.server
 
+import drift.protocol.RunnerModelKinds
 import drift.runner.decode.ChatEngine
 import drift.runner.native.HipRuntime
 import drift.runner.ops.{HipOps, MatVecInputs}
@@ -17,8 +18,7 @@ object Main {
   /** The GGUF architectures it chats with (`models/Models`), as drift's
     * architectures name their model kind (`specs/43`).
     */
-  val ModelKinds: Seq[String] =
-    Seq("qwen3", "qwen3vl", "qwen35", "qwen35moe", "qwen4exp")
+  val ModelKinds: Seq[String] = RunnerModelKinds.Chat
 
   def main(arguments: Array[String]): Unit = {
     if (arguments.contains("--version")) RunnerIdentity.version(Version)

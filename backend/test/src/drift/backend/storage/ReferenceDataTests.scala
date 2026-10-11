@@ -1,6 +1,6 @@
 package drift.backend.storage
 
-import drift.protocol.ImageServerFlags
+import drift.protocol.{ImageServerFlags, RunnerModelKinds}
 import drift.shared.*
 
 import java.nio.file.Files
@@ -17,9 +17,9 @@ object ReferenceDataTests extends TestSuite {
       val storage = StorageService(Files.createTempDirectory("reference"))
       storage.init
       val architectures =
-        storage.list[Architecture]("architectures").map(_.id).toSet
-      val models = storage.list[Model]("models")
-      val starters = storage.list[RunConfiguration]("run-configurations")
+        storage.list(Collections.architectures).map(_.id).toSet
+      val models = storage.list(Collections.models)
+      val starters = storage.list(Collections.runConfigurations)
       assert(
         Set(
           "krea2",
@@ -56,7 +56,7 @@ object ReferenceDataTests extends TestSuite {
     test("what drift launches its runner with are flags the runner takes") {
       val storage = StorageService(Files.createTempDirectory("reference"))
       storage.init
-      val models = storage.list[Model]("models")
+      val models = storage.list(Collections.models)
       // what the runner's rule drops before a launch
       val vetoed = storage.runtimeRules
         .filter(rule =>
@@ -66,7 +66,7 @@ object ReferenceDataTests extends TestSuite {
         .flatMap(_.unsupported.map(_.flag))
         .toSet
       val refused = for {
-        architecture <- storage.list[Architecture]("architectures")
+        architecture <- storage.list(Collections.architectures)
         if architecture.tool == RuntimeTool.SdCpp &&
           architecture.runners.contains(RuntimeEngine.DriftRunner)
         slots = architecture.checkpoints.filter(slot =>
@@ -84,6 +84,57 @@ object ReferenceDataTests extends TestSuite {
         if !vetoed(flag) && !ImageServerFlags.accepts(flag)
       } yield s"${architecture.id}: $flag"
       assert(refused.distinct.isEmpty)
+    }
+    test("an architecture the runner is offered for is of a kind it runs") {
+      val storage = StorageService(Files.createTempDirectory("reference"))
+      storage.init
+      val unknown = for {
+        architecture <- storage.list(Collections.architectures)
+        if architecture.runners.contains(RuntimeEngine.DriftRunner)
+        kinds = architecture.tool match {
+          case RuntimeTool.SdCpp    => RunnerModelKinds.Images
+          case RuntimeTool.LlamaCpp => RunnerModelKinds.Chat
+        }
+        if !architecture.modelKind.exists(kinds.contains)
+      } yield s"${architecture.id}: ${architecture.modelKind.getOrElse("no kind")}"
+      assert(unknown.isEmpty)
+    }
+    test("what the reference data names exists") {
+      val storage = StorageService(Files.createTempDirectory("reference"))
+      storage.init
+      val architectures = storage.list(Collections.architectures)
+      val families =
+        architectures.flatMap(_.checkpoints.map(_.familyId)).toSet
+      // a built-in model is a checkpoint of some architecture's slot
+      val orphans = storage
+        .list(Collections.models)
+        .filter(model => model.builtIn && !families(model.familyId))
+        .map(model => s"${model.id}: ${model.familyId}")
+      assert(orphans.isEmpty)
+      // a starter fills slots its architecture has, with models of the
+      // slot's family
+      val models =
+        storage.list(Collections.models).map(model => model.id -> model).toMap
+      val misfiled = for {
+        starter <- storage.list(Collections.runConfigurations)
+        architecture <- architectures
+          .find(_.id == starter.architectureId)
+          .toList
+        (slot, modelId) <- starter.assignments
+        problem <- architecture.checkpoints.find(_.name == slot) match {
+          case None             => Some(s"no slot '$slot'")
+          case Some(checkpoint) =>
+            models.get(modelId) match {
+              case None => Some(s"no model '$modelId'")
+              case Some(model) if model.familyId != checkpoint.familyId =>
+                Some(
+                  s"'$modelId' is of ${model.familyId}, not ${checkpoint.familyId}"
+                )
+              case _ => None
+            }
+        }
+      } yield s"${starter.id}: $problem"
+      assert(misfiled.isEmpty)
     }
   }
 }

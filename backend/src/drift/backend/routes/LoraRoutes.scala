@@ -1,7 +1,7 @@
 package drift.backend.routes
 
 import drift.backend.lora.LoraManager
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import sttp.shared.Identity
@@ -14,7 +14,7 @@ def loraEndpoints(
     storage: StorageService,
     manager: LoraManager
 ): List[ServerEndpoint[Any, Identity]] = List(
-  listLoras.serverLogicSuccess[Identity](_ => storage.list[Lora]("loras")),
+  listLoras.serverLogicSuccess[Identity](_ => storage.list(Collections.loras)),
   listLoraCatalog.serverLogicSuccess[Identity](_ => manager.catalog),
   installLora.serverLogicSuccess[Identity](manager.install),
   adoptLora.serverLogicSuccess[Identity](manager.adopt),

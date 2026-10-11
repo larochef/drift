@@ -1,6 +1,6 @@
 package drift.backend.runtime
 
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.{Path, Paths}
@@ -29,7 +29,7 @@ final private[runtime] class RuntimeCleanup(
     if (!runtime.adopted) {
       // onDeleted fires after the entity is removed, so `list` already excludes
       // it; any hit is a genuine other owner.
-      val remaining = storage.list[Runtime]("runtimes")
+      val remaining = storage.list(Collections.runtimes)
       if (!remaining.exists(_.installedAt == runtime.installedAt))
         deleteOwnedTree(Paths.get(runtime.installedAt))
       runtime.theRockPath.foreach { rock =>
@@ -55,7 +55,7 @@ final private[runtime] class RuntimeCleanup(
           path: String,
           pick: Runtime => Option[String]
       ): Boolean =
-        storage.list[Runtime]("runtimes").exists(r => pick(r).contains(path))
+        storage.list(Collections.runtimes).exists(r => pick(r).contains(path))
 
       if (
         previous.installedAt != replacement.installedAt &&

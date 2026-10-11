@@ -1,6 +1,6 @@
 package drift.backend.projects
 
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 /** The versioning rule of `specs/19-projects-and-prompt-versions.md`: every
@@ -23,7 +23,7 @@ final class ProjectManager(storage: StorageService) {
     context.projectId match {
       case None            => Right(None)
       case Some(projectId) =>
-        storage.get[Project]("projects", projectId) match {
+        storage.get(Collections.projects, projectId) match {
           case None          => Left(s"project '$projectId' does not exist")
           case Some(project) =>
             val selected =
@@ -55,7 +55,7 @@ final class ProjectManager(storage: StorageService) {
                   videoParameters = generation.videoParameters
                 )
                 storage.save(
-                  "projects",
+                  Collections.projects,
                   projectId,
                   project.copy(
                     versions = project.versions :+ version,
@@ -80,7 +80,7 @@ final class ProjectManager(storage: StorageService) {
       SubmitContext(
         projectId = Some(projectId),
         versionId = storage
-          .get[Project]("projects", projectId)
+          .get(Collections.projects, projectId)
           .flatMap(
             _.versions.find(version =>
               version.runConfigurationId == generation.runConfigurationId &&
@@ -95,7 +95,7 @@ final class ProjectManager(storage: StorageService) {
 
   private def touch(project: Project): Unit =
     storage.save(
-      "projects",
+      Collections.projects,
       project.id,
       project.copy(lastUsedAt = System.currentTimeMillis())
     )

@@ -1,6 +1,6 @@
 package drift.backend.lora
 
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.*
@@ -30,7 +30,7 @@ final private[lora] class LoraAdoption(
     * file and its transfer resumes.
     */
   def adopt(request: AdoptLoraRequest): InstallLoraResponse = {
-    if (!storage.exists("architectures", request.architectureId))
+    if (!storage.exists(Collections.architectures, request.architectureId))
       return InstallLoraResponse(error =
         Some(s"architecture '${request.architectureId}' does not exist")
       )
@@ -70,7 +70,7 @@ final private[lora] class LoraAdoption(
       )
 
     val id = LoraManager.idOf(request.architectureId, label, civitaiModelId)
-    if (storage.exists("loras", id))
+    if (storage.exists(Collections.loras, id))
       return InstallLoraResponse(error =
         Some(
           s"LoRA '$id' already exists for this architecture — delete it " +
@@ -126,7 +126,7 @@ final private[lora] class LoraAdoption(
             Some(s"could not move '$folder' to '$target': ${err.getMessage}")
           )
       }
-    storage.save("loras", lora.id, lora)
+    storage.save(Collections.loras, lora.id, lora)
     // Files on disk get their completed job; a `.part` leftover resumes —
     // with no sidecar there is nothing to fetch from, and that fails loudly.
     lora.files.foreach(file => downloads.queueDownload(lora, file))

@@ -53,8 +53,10 @@ class CivitaiService
     extends SearchService[CivitaiModelListInfo, CivitaiService.Command] {
   import CivitaiService.{Command, Event, ImageLoadFailure, PageSize}
 
-  private val searchFn = ApiClient.stream(drift.shared.searchCivitaiModels)
-  private val detailFn = ApiClient.stream(drift.shared.getCivitaiModelDetail)
+  private val searchFn =
+    ApiClient.streamWithFailureReason(drift.shared.searchCivitaiModels)
+  private val detailFn =
+    ApiClient.streamWithFailureReason(drift.shared.getCivitaiModelDetail)
   private val cachedFn = ApiClient.stream(drift.shared.listCivitaiCachedFileIds)
   private val imagesFn =
     ApiClient.streamWithFailureReason(drift.shared.listCivitaiImages)

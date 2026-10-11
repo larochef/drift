@@ -1,7 +1,7 @@
 package drift.backend.routes
 
 import drift.backend.runtime.{RuntimeCatalog, RuntimeManager}
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import sttp.shared.Identity
@@ -14,7 +14,7 @@ def runtimeEndpoints(
 ): List[ServerEndpoint[Any, Identity]] =
   endpointsFor[Runtime](
     storage,
-    "runtimes",
+    Collections.runtimes,
     _.id,
     listRuntimes,
     getRuntime,

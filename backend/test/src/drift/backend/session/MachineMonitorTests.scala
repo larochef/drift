@@ -76,5 +76,15 @@ object MachineMonitorTests extends TestSuite {
       assert(gpu.memoryBytes.contains(60 * Gigabyte))
       assert(MachineMonitor.readGpu(root.resolve("card0")).isEmpty)
     }
+    test("a tool drift calls and did not find is said with the machine") {
+      val monitor = MachineMonitor(
+        () => 10,
+        readGpu = () => None,
+        readMemory = () => MemoryHeadroom.read(),
+        missingTools = () => List("ffmpeg")
+      )
+      monitor.sample()
+      assert(monitor.status.forall(_.missingTools == List("ffmpeg")))
+    }
   }
 }

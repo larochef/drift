@@ -1,7 +1,7 @@
 package drift.backend.runtime
 
 import drift.backend.process.ChildProcesses
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.Paths
@@ -23,7 +23,7 @@ final private[runtime] class RuntimeValidation(
 
   def validateAndSave(runtime: Runtime): Runtime = {
     val validated = validate(runtime)
-    storage.save("runtimes", validated.id, validated)
+    storage.save(Collections.runtimes, validated.id, validated)
     // The first runtime of a tool that proves itself becomes that tool's
     // default; switching afterwards is explicit.
     if (validated.valid)
@@ -36,7 +36,7 @@ final private[runtime] class RuntimeValidation(
   }
 
   def revalidate(id: String): Option[Runtime] =
-    storage.get[Runtime]("runtimes", id).map(validateAndSave)
+    storage.get(Collections.runtimes, id).map(validateAndSave)
 
   /** Tries each validation flag of the tool in turn (`--version` is the
     * informative one for llama.cpp, `--help` the fallback that every build

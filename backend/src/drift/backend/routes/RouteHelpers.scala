@@ -1,16 +1,15 @@
 package drift.backend.routes
 
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collection, StorageService}
 
-import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
 import sttp.model.StatusCode
 import sttp.shared.Identity
 import sttp.tapir.*
 import sttp.tapir.server.ServerEndpoint
 
-def endpointsFor[T: JsonValueCodec](
+def endpointsFor[T](
     storage: StorageService,
-    entityType: String,
+    collection: Collection[T],
     extractId: T => String,
     listEp: PublicEndpoint[Unit, Unit, List[T], Any],
     getEp: PublicEndpoint[String, Unit, Option[T], Any],
@@ -33,28 +32,28 @@ def endpointsFor[T: JsonValueCodec](
       */
     onCreate: T => T = (incoming: T) => incoming
 ): List[ServerEndpoint[Any, Identity]] = List(
-  listEp.serverLogicSuccess[Identity](_ => storage.list[T](entityType)),
-  getEp.serverLogicSuccess[Identity](id => storage.get[T](entityType, id)),
+  listEp.serverLogicSuccess[Identity](_ => storage.list(collection)),
+  getEp.serverLogicSuccess[Identity](id => storage.get(collection, id)),
   createEp.serverLogicSuccess[Identity] { v =>
     val created = onCreate(v)
-    storage.save[T](entityType, extractId(created), created)
+    storage.save(collection, extractId(created), created)
   },
   updateEp
     .errorOut(statusCode(StatusCode.BadRequest).and(stringBody))
     .serverLogic[Identity] { (id, v) =>
-      updated(storage, entityType, extractId, builtIn, mergeUpdate)(id, v)
+      updated(storage, collection, extractId, builtIn, mergeUpdate)(id, v)
     },
   deleteEp.serverLogicSuccess[Identity] { id =>
-    storage.get[T](entityType, id) match {
+    storage.get(collection, id) match {
       case Some(e) if !builtIn(e) =>
-        val deleted = storage.delete(entityType, id)
+        val deleted = storage.delete(collection, id)
         if (deleted) onDeleted(e)
         deleted
       case Some(_) => false
       // Missing, or on disk but unreadable: there is no `builtIn` flag left to
       // honour, so let the file go instead of failing forever. `delete` still
       // reports false when there was nothing there.
-      case None => storage.delete(entityType, id)
+      case None => storage.delete(collection, id)
     }
   }
 )
@@ -68,26 +67,26 @@ def endpointsFor[T: JsonValueCodec](
   * entity whose JSON went stale or got corrupted would otherwise reject every
   * save for good, and the client only sees a 200 with a `null` body.
   */
-private[routes] def updated[T: JsonValueCodec](
+private[routes] def updated[T](
     storage: StorageService,
-    entityType: String,
+    collection: Collection[T],
     extractId: T => String,
     builtIn: T => Boolean,
     mergeUpdate: (T, T) => T
 )(id: String, incoming: T): Either[String, Option[T]] =
   if (extractId(incoming) != id)
     Left(
-      s"An update sent to '$id' in $entityType carries the id " +
+      s"An update sent to '$id' in ${collection.name} carries the id " +
         s"'${extractId(incoming)}': an entity cannot change its id."
     )
-  else if (storage.exists(entityType, id))
-    storage.get[T](entityType, id) match {
+  else if (storage.exists(collection, id))
+    storage.get(collection, id) match {
       case Some(stored) if builtIn(stored) => Right(Some(stored))
       case stored                          =>
         Right(
           Some(
-            storage.save[T](
-              entityType,
+            storage.save(
+              collection,
               id,
               stored.map(mergeUpdate(_, incoming)).getOrElse(incoming)
             )

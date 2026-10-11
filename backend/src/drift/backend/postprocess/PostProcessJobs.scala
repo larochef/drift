@@ -6,7 +6,7 @@ import drift.backend.outputs.GenerationHistory
 import drift.backend.process.ChildProcesses
 import drift.backend.runtime.LaunchRuntime
 import drift.backend.session.SessionLog
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.charset.StandardCharsets
@@ -247,7 +247,7 @@ final private[postprocess] class PostProcessJobs(
     * after a restart (`specs/40-pause-and-resume.md`).
     */
   def loadPaused(): Unit =
-    storage.list[PausedJob]("post-process-jobs").foreach { paused =>
+    storage.list(Collections.pausedJobs).foreach { paused =>
       record(
         PostProcessJob(
           id = paused.id,
@@ -274,7 +274,7 @@ final private[postprocess] class PostProcessJobs(
 
   /** What a paused job is, while it is paused: its work and its id. */
   def pausedWork(id: String): Option[PausedJob] =
-    storage.get[PausedJob]("post-process-jobs", id)
+    storage.get(Collections.pausedJobs, id)
 
   /** Records a running job of `kind` on `src` and runs it on its own thread — a
     * new one, or `resuming` the paused job of that id, which keeps its id, its
@@ -370,7 +370,7 @@ final private[postprocess] class PostProcessJobs(
           }
           update(id)(_.copy(pauseRequested = true))
           storage.save(
-            "post-process-jobs",
+            Collections.pausedJobs,
             id,
             PausedJob(
               id = id,
@@ -406,7 +406,7 @@ final private[postprocess] class PostProcessJobs(
 
   /** Forgets a paused job's record — it resumed, ended, or was cancelled. */
   def forgetPaused(id: String): Unit =
-    storage.delete("post-process-jobs", id)
+    storage.delete(Collections.pausedJobs, id)
 
   def isCancelled(job: PostProcessJob): Boolean =
     Option(cancellations.get(job.id)).exists(_.stopped.get())

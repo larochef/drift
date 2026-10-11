@@ -1,7 +1,7 @@
 package drift.backend.postprocess
 
 import drift.backend.images.PostProcessImages
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.awt.image.BufferedImage
@@ -81,7 +81,7 @@ private[postprocess] object TiledArea {
       defaultId: String
   ): Either[String, String] = {
     val id = templateId.getOrElse(defaultId)
-    storage.get[PromptTemplate]("prompt-templates", id) match {
+    storage.get(Collections.promptTemplates, id) match {
       case Some(template) if template.kind == kind => Right(template.text)
       case Some(template)                          =>
         Left(s"prompt template '${template.label}' is not a $kind template")

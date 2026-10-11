@@ -1183,13 +1183,8 @@ final class MiniMaxH3 private (
       case None =>
         // cosines first, over frequencies exp(−ln(10⁴) i / half), t unscaled
         val half = timeIn.get.weight.shape.last.toInt / 2
-        val sinusoid = timesteps.flatMap { t =>
-          (0 until 2 * half).map { i =>
-            val frequency = math.exp(-math.log(10000) * (i % half) / half)
-            val angle = t * frequency
-            (if (i < half) math.cos(angle) else math.sin(angle)).toFloat
-          }
-        }.toArray
+        val sinusoid =
+          timesteps.flatMap(t => TimestepSinusoid(t, half)).toArray
         val rows = timesteps.size.toLong
         def keep(tensor: Tensor) = { small += tensor; tensor }
         val embedded = keep(ops.fromFloats(Shape.of(rows, 2L * half), sinusoid))

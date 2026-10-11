@@ -17,10 +17,12 @@ file in [`specs/`](specs/README.md).
 - [Mill](https://mill-build.org) — the version is pinned in `.mill-version`; the
   `./mill` wrapper fetches it
 - Node.js and npm, for the frontend build
-- [FFmpeg](https://ffmpeg.org), on the `PATH`, for video models on the drift
-  runner (MiniMax H3, Wan 2.2, LTX 2.5): it encodes their frames into the webm
-  drift saves. Images, and videos made by sd-cpp, don't need it; without it, a
-  video job on the runner fails with a message saying so
+- [FFmpeg](https://ffmpeg.org), on the `PATH`, for videos: it makes the still
+  drift shows for a video, whichever engine made it, and encodes the frames of
+  the drift runner's video models (MiniMax H3, Wan 2.2, LTX 2.5) into the webm
+  drift saves. Images don't need it. Without it a video has no thumbnail, a
+  video job on the runner fails with a message saying so, and the Machine box
+  says it is not installed
 
 ## Quick start
 

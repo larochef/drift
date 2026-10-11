@@ -1,6 +1,6 @@
 package drift.backend.auth
 
-import drift.backend.storage.StorageService
+import drift.backend.storage.*
 import drift.shared.*
 
 /** Resolves the token the download paths should send, live per request — a
@@ -11,12 +11,10 @@ import drift.shared.*
 final class AuthTokens(storage: StorageService) {
 
   def selection: AuthTokenSelection =
-    storage
-      .get[AuthTokenSelection]("settings", "auth-token-selection")
-      .getOrElse(AuthTokenSelection.none)
+    storage.read(AuthTokens.Selection)
 
   def saveSelection(next: AuthTokenSelection): AuthTokenSelection =
-    storage.save("settings", "auth-token-selection", next)
+    storage.write(AuthTokens.Selection, next)
 
   /** Active stored token first; the environment variable stays the bootstrap
     * fallback for machines configured the old way.
@@ -51,7 +49,7 @@ final class AuthTokens(storage: StorageService) {
 
   private def tokenValue(id: String): Option[String] =
     storage
-      .get[AuthToken]("auth-tokens", id)
+      .get(Collections.authTokens, id)
       .map(_.token.trim)
       .filter(_.nonEmpty)
 
@@ -67,4 +65,9 @@ final class AuthTokens(storage: StorageService) {
     )
     if (next != current) saveSelection(next)
   }
+}
+
+object AuthTokens {
+  private val Selection =
+    Document("auth-token-selection", AuthTokenSelection.none)
 }

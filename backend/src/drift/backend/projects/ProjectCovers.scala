@@ -2,7 +2,7 @@ package drift.backend.projects
 
 import drift.backend.images.{Thumbnail, VideoFrames}
 import drift.backend.outputs.GenerationHistory
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.{Files, Path}
@@ -77,7 +77,7 @@ final class ProjectCovers(
     * the user has not run.
     */
   def cover(projectId: String): Option[(Array[Byte], String)] = synchronized {
-    val project = storage.get[Project]("projects", projectId)
+    val project = storage.get(Collections.projects, projectId)
     project
       .flatMap(chosen)
       .orElse(newest(projectId, project.map(_.kind)))
@@ -138,7 +138,7 @@ final class ProjectCovers(
   private def rebuild(currentSignature: String): Unit = {
     val wanted =
       storage
-        .list[Project]("projects")
+        .list(Collections.projects)
         .map(project => project.id -> project.kind)
         .toMap
     val found = scala.collection.mutable.Map.empty[String, GenerationOutput]

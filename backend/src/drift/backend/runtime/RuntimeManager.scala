@@ -2,7 +2,7 @@ package drift.backend.runtime
 
 import drift.backend.Background
 import drift.backend.download.Downloader
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.*
@@ -121,13 +121,13 @@ final class RuntimeManager(
   /** The drift runner's other runtime, when `id` is one of its two. */
   private def runnerSibling(id: String): Option[String] =
     storage
-      .get[Runtime]("runtimes", id)
+      .get(Collections.runtimes, id)
       .filter(_.engine == RuntimeEngine.DriftRunner)
       .flatMap(runtime =>
         RuntimeTool.values
           .find(_ != runtime.tool)
           .map(RunnerFiles.id)
-          .filter(storage.get[Runtime]("runtimes", _).isDefined)
+          .filter(storage.get(Collections.runtimes, _).isDefined)
       )
 
   def resolveTheRock(gfx: String, rocmVersion: String): TheRockResolution =
@@ -203,9 +203,9 @@ final class RuntimeManager(
       RuntimeTool.values
         .filter(_ != runtime.tool)
         .map(RunnerFiles.id)
-        .flatMap(storage.get[Runtime]("runtimes", _))
+        .flatMap(storage.get(Collections.runtimes, _))
         .foreach { sibling =>
-          storage.delete("runtimes", sibling.id)
+          storage.delete(Collections.runtimes, sibling.id)
           cleanup.cleanupDeleted(sibling)
         }
     cleanup.cleanupDeleted(runtime)

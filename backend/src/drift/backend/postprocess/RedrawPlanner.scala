@@ -2,7 +2,7 @@ package drift.backend.postprocess
 
 import drift.backend.assistant.AssistantProxy
 import drift.backend.images.PostProcessImages.*
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.awt.{List as _, *}
@@ -75,9 +75,9 @@ final private[postprocess] class RedrawPlanner(
     */
   private def sizeMultipleOf(runConfigurationId: String): Int =
     storage
-      .get[RunConfiguration]("run-configurations", runConfigurationId)
+      .get(Collections.runConfigurations, runConfigurationId)
       .flatMap(configuration =>
-        storage.get[Architecture]("architectures", configuration.architectureId)
+        storage.get(Collections.architectures, configuration.architectureId)
       )
       .fold(16)(_.sizeMultiple)
 }

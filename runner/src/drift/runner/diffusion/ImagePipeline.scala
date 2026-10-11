@@ -104,15 +104,186 @@ trait ImagePipeline extends AutoCloseable {
 
 object ImagePipeline {
 
-  /** The pipeline of `diffusionModel`'s family: HiDream O1 (one file, which
-    * takes a `tokenizer.json`), FLUX.2, Qwen Image 2.1 (which edits with the
-    * text encoder's vision tower), PiD (which takes a `tokenizer.json`),
-    * Nucleus-Image, LLaDA-Image (which takes LLaDA2's `tokenizer.json` and its
-    * `connectors`, or finds both in the released folders), Mage-Flow (which
-    * edits with the vision tower too), else Krea 2. All but HiDream O1 take a
-    * VAE and a text encoder; HiDream O1 reads references with Qwen3-VL-8B's
-    * vision tower (`textEncoderVision`).
+  /** The files a launch gives an image model, by what each is. */
+  final case class ModelFiles(
+      diffusionModel: Path,
+      vae: Option[Path],
+      textEncoder: Option[Path],
+      tokenizer: Option[Path],
+      textEncoderVision: Option[Path],
+      connectors: Option[Path],
+      lladaParts: Map[String, Path]
+  ) {
+
+    /** A file the family cannot do without, or the launch's error naming the
+      * flag it comes by.
+      */
+    def needed(file: Option[Path], flag: String, what: String): Path =
+      file.getOrElse(
+        throw new IllegalArgumentException(
+          s"${diffusionModel.getFileName} needs $what: pass $flag <file>"
+        )
+      )
+
+    def neededVae: Path = needed(vae, "--vae", "a VAE")
+    def neededTextEncoder: Path = needed(textEncoder, "--llm", "a text encoder")
+  }
+
+  /** A family of image models: how its diffusion model is recognised by its
+    * weights, and how its pipeline is opened from the launch's files.
     */
+  final case class Family(
+      name: String,
+      holds: WeightSource => Boolean,
+      open: (Ops, ModelFiles) => ImagePipeline
+  )
+
+  /** Every family the runner draws with, in the order they are tried: the first
+    * whose weights the file holds is the file's. All but HiDream O1 take a VAE
+    * and a text encoder.
+    */
+  val Families: Seq[Family] = Seq(
+    // one file; reads references with Qwen3-VL-8B's vision tower
+    Family(
+      "HiDream O1",
+      HiDreamO1.holds,
+      (ops, files) =>
+        new HiDreamO1Pipeline(
+          ops,
+          files.diffusionModel,
+          files
+            .needed(
+              files.tokenizer,
+              "--tokenizer",
+              "HiDream O1's tokenizer.json"
+            ),
+          files.textEncoderVision
+        )
+    ),
+    Family(
+      "FLUX.2",
+      Flux2Config.holds,
+      (ops, files) =>
+        new Flux2Pipeline(
+          ops,
+          files.diffusionModel,
+          files.neededVae,
+          files.neededTextEncoder
+        )
+    ),
+    // edits with the text encoder's vision tower
+    Family(
+      "Qwen Image 2.1",
+      QwenImage21Config.holds,
+      (ops, files) =>
+        new QwenImage21Pipeline(
+          ops,
+          files.diffusionModel,
+          files.neededVae,
+          files.neededTextEncoder,
+          files.textEncoderVision
+        )
+    ),
+    Family(
+      "PiD",
+      _.has("lq_proj.pit_head.weight"),
+      (ops, files) =>
+        new PidPipeline(
+          ops,
+          files.diffusionModel,
+          files.neededVae,
+          files.neededTextEncoder,
+          files
+            .needed(files.tokenizer, "--tokenizer", "Gemma 2's tokenizer.json")
+        )
+    ),
+    Family(
+      "Nucleus-Image",
+      NucleusConfig.holds,
+      (ops, files) =>
+        new NucleusPipeline(
+          ops,
+          files.diffusionModel,
+          files.neededVae,
+          files.neededTextEncoder
+        )
+    ),
+    Family(
+      "GRN",
+      GrnConfig.holds,
+      (ops, files) =>
+        new GrnPipeline(
+          ops,
+          files.diffusionModel,
+          files.neededVae,
+          files.needed(files.textEncoder, "--llm", "umT5"),
+          files.needed(files.tokenizer, "--tokenizer", "umT5's tokenizer.json")
+        )
+    ),
+    // takes LLaDA2's `tokenizer.json` and its connectors, or finds both in
+    // the released folders
+    Family(
+      "LLaDA-Image",
+      LladaImageConfig.holds,
+      (ops, files) =>
+        new LladaImagePipeline(
+          ops,
+          files.diffusionModel,
+          files.neededVae,
+          files.neededTextEncoder,
+          files.tokenizer,
+          files.connectors,
+          files.lladaParts
+        )
+    ),
+    // The first Qwen Image has the same blocks, on 64 packed channels: it is
+    // not Mage-Flow, and not a model the runner draws with. Edits with the
+    // vision tower too.
+    Family(
+      "Mage-Flow",
+      source =>
+        MageFlowConfig.holds(source) && source("img_in.weight").shape.last ==
+          MageFlowConfig.LatentChannels,
+      (ops, files) =>
+        new MageFlowPipeline(
+          ops,
+          files.diffusionModel,
+          files.neededVae,
+          files.neededTextEncoder,
+          files.textEncoderVision
+        )
+    ),
+    Family(
+      "Krea 2",
+      Krea2Config.holds,
+      (ops, files) =>
+        new Krea2Pipeline(
+          ops,
+          files.diffusionModel,
+          files.neededVae,
+          files.neededTextEncoder
+        )
+    )
+  )
+
+  /** The pipeline of the family the diffusion model is of. A file no family
+    * recognises is refused, with the families the runner does draw with.
+    */
+  def open(ops: Ops, files: ModelFiles): ImagePipeline = {
+    val source = WeightSource.open(ops, files.diffusionModel)
+    val family =
+      try Families.find(_.holds(source))
+      finally source.close()
+    family
+      .getOrElse(
+        throw new IllegalArgumentException(
+          s"${files.diffusionModel.getFileName} is none of the image models " +
+            s"the runner draws with (${Families.map(_.name).mkString(", ")})"
+        )
+      )
+      .open(ops, files)
+  }
+
   def open(
       ops: Ops,
       diffusionModel: Path,
@@ -122,87 +293,17 @@ object ImagePipeline {
       textEncoderVision: Option[Path],
       connectors: Option[Path] = None,
       lladaParts: Map[String, Path] = Map.empty
-  ): ImagePipeline = {
-    val (hiDreamO1, flux2, qwenImage21, pid, mageFlow, nucleus, llada, grn) = {
-      val source = WeightSource.open(ops, diffusionModel)
-      try
-        (
-          HiDreamO1.holds(source),
-          Flux2Config.holds(source),
-          QwenImage21Config.holds(source),
-          source.has("lq_proj.pit_head.weight"),
-          // the first Qwen Image has the same blocks, on 64 packed channels
-          MageFlowConfig.holds(source) && source("img_in.weight").shape.last ==
-            MageFlowConfig.LatentChannels,
-          NucleusConfig.holds(source),
-          LladaImageConfig.holds(source),
-          GrnConfig.holds(source)
-        )
-      finally source.close()
-    }
-    def needed(file: Option[Path], flag: String, what: String) =
-      file.getOrElse(
-        throw new IllegalArgumentException(
-          s"${diffusionModel.getFileName} needs $what: pass $flag <file>"
-        )
-      )
-    lazy val vae = needed(vaeFile, "--vae", "a VAE")
-    lazy val textEncoder = needed(textEncoderFile, "--llm", "a text encoder")
-    if (hiDreamO1)
-      new HiDreamO1Pipeline(
-        ops,
+  ): ImagePipeline =
+    open(
+      ops,
+      ModelFiles(
         diffusionModel,
-        needed(tokenizer, "--tokenizer", "HiDream O1's tokenizer.json"),
-        textEncoderVision
-      )
-    else if (flux2) new Flux2Pipeline(ops, diffusionModel, vae, textEncoder)
-    else if (qwenImage21)
-      new QwenImage21Pipeline(
-        ops,
-        diffusionModel,
-        vae,
-        textEncoder,
-        textEncoderVision
-      )
-    else if (pid)
-      new PidPipeline(
-        ops,
-        diffusionModel,
-        vae,
-        textEncoder,
-        tokenizer.getOrElse(
-          throw new IllegalArgumentException(
-            "PiD needs Gemma 2's tokenizer.json: pass --tokenizer <file>"
-          )
-        )
-      )
-    else if (nucleus) new NucleusPipeline(ops, diffusionModel, vae, textEncoder)
-    else if (grn)
-      new GrnPipeline(
-        ops,
-        diffusionModel,
-        vae,
-        needed(textEncoderFile, "--llm", "umT5"),
-        needed(tokenizer, "--tokenizer", "umT5's tokenizer.json")
-      )
-    else if (llada)
-      new LladaImagePipeline(
-        ops,
-        diffusionModel,
-        vae,
-        textEncoder,
+        vaeFile,
+        textEncoderFile,
         tokenizer,
+        textEncoderVision,
         connectors,
         lladaParts
       )
-    else if (mageFlow)
-      new MageFlowPipeline(
-        ops,
-        diffusionModel,
-        vae,
-        textEncoder,
-        textEncoderVision
-      )
-    else new Krea2Pipeline(ops, diffusionModel, vae, textEncoder)
-  }
+    )
 }

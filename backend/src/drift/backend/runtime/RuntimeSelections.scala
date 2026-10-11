@@ -1,6 +1,6 @@
 package drift.backend.runtime
 
-import drift.backend.storage.StorageService
+import drift.backend.storage.*
 import drift.shared.*
 
 import java.nio.file.Paths
@@ -11,12 +11,10 @@ import java.nio.file.Paths
 final private[runtime] class RuntimeSelections(storage: StorageService) {
 
   def current: RuntimeSelection =
-    storage
-      .get[RuntimeSelection]("settings", "runtime-selection")
-      .getOrElse(RuntimeSelection.none)
+    storage.read(RuntimeSelections.Stored)
 
   def save(next: RuntimeSelection): RuntimeSelection =
-    storage.save("settings", "runtime-selection", next)
+    storage.write(RuntimeSelections.Stored, next)
 
   /** Reads, changes and writes the selection as one step. Two runtimes
     * validating at once — the drift runner's pair, installed together — each
@@ -42,7 +40,7 @@ final private[runtime] class RuntimeSelections(storage: StorageService) {
           s"no ${engine.displayName} runtime for ${tool.displayName} is installed"
         )
       case Some(id) =>
-        storage.get[Runtime]("runtimes", id) match {
+        storage.get(Collections.runtimes, id) match {
           case None => Left(s"runtime '$id' is not registered")
           case Some(runtime) if runtime.tool != tool =>
             Left(
@@ -82,7 +80,7 @@ final private[runtime] class RuntimeSelections(storage: StorageService) {
       engine: RuntimeEngine
   ): Option[String] = {
     val runtimes = storage
-      .list[Runtime]("runtimes")
+      .list(Collections.runtimes)
       .filter(r => r.tool == tool && r.engine == engine)
     current
       .defaultFor(tool)
@@ -91,4 +89,8 @@ final private[runtime] class RuntimeSelections(storage: StorageService) {
         runtimes.filter(_.valid).sortBy(-_.createdAt).headOption.map(_.id)
       )
   }
+}
+
+object RuntimeSelections {
+  private val Stored = Document("runtime-selection", RuntimeSelection.none)
 }

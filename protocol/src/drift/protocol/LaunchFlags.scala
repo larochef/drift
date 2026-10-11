@@ -83,3 +83,41 @@ object ImageServerFlags {
   def accepts(flag: String): Boolean =
     Valued(flag) || Harmless.contains(flag)
 }
+
+/** The model kinds drift's runner runs, as drift's architectures name theirs
+  * (`modelKind`): what the runner answers `--model-kinds` with, and what the
+  * reference data is checked against.
+  */
+object RunnerModelKinds {
+
+  /** The image server's: the diffusion families it draws, the video ones, and
+    * the upscaler.
+    */
+  val Images: Seq[String] = Seq(
+    "krea2",
+    "flux2-klein",
+    "flux2-dev",
+    "qwen-image-2.1",
+    "pid-flux2",
+    "pid-flux1",
+    "pid-qwen-image",
+    "hidream-o1",
+    "mage-flow",
+    "nucleus-image",
+    "llada-image",
+    "grn",
+    "minimax-h3",
+    "wan-2.2-14b",
+    "ltx-2.5",
+    "seedvr2"
+  )
+
+  /** The chat server's. */
+  val Chat: Seq[String] = Seq(
+    "qwen3",
+    "qwen3vl",
+    "qwen35",
+    "qwen35moe",
+    "qwen4exp"
+  )
+}

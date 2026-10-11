@@ -210,8 +210,10 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     they are read as they are stored, so they take no more memory than
     their file, and are decoded layer by layer as the model runs, for a
     fraction of a second a step.
-  - **None** does masks, hires fix or VAE tiling yet; the runner says so
-    when a request asks for them.
+  - **Masks** (inpainting, with an init image): Krea 2, FLUX.2, Qwen Image
+    2.1, Mage-Flow, Nucleus-Image and LLaDA-Image take one; HiDream O1 and GRN
+    do not. **None** does hires fix or VAE tiling yet. The runner says so when
+    a request asks for what a model does not do.
   - **Images differ from sd-cpp's** for the same seed: the runner follows
     the reference implementation's noise schedule and uses its own random
     numbers.

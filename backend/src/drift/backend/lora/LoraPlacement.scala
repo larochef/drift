@@ -1,6 +1,6 @@
 package drift.backend.lora
 
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.Path
@@ -35,7 +35,7 @@ final private[lora] class LoraPlacement(
       onSaved: Lora => Unit = _ => ()
   ): InstallLoraResponse = grouping match {
     case LoraGrouping.Into(loraId) =>
-      storage.get[Lora]("loras", loraId) match {
+      storage.get(Collections.loras, loraId) match {
         case None => LoraManager.failure(s"LoRA '$loraId' no longer exists")
         case Some(target) if target.architectureId != architectureId =>
           LoraManager.failure(
@@ -88,7 +88,7 @@ final private[lora] class LoraPlacement(
   ): Lora = {
     val base = LoraManager.idOf(architectureId, label, sourcePart)
     val id = if (ownId) freeId(base, files) else base
-    storage.get[Lora]("loras", id) match {
+    storage.get(Collections.loras, id) match {
       case Some(previous) => withFiles(metadata.refresh(previous), files)
       case None           =>
         metadata.fresh(
@@ -120,7 +120,7 @@ final private[lora] class LoraPlacement(
       .map(n => if (n == 1) base else s"$base-$n")
       .find(id =>
         storage
-          .get[Lora]("loras", id)
+          .get(Collections.loras, id)
           .forall(lora => wanted.subsetOf(lora.files.map(_.fileName).toSet))
       )
       .getOrElse(base)
@@ -134,7 +134,7 @@ final private[lora] class LoraPlacement(
   }
 
   private def save(lora: Lora, onSaved: Lora => Unit): Unit = {
-    storage.save("loras", lora.id, lora)
+    storage.save(Collections.loras, lora.id, lora)
     onSaved(lora)
     lora.files.foreach(file => downloads.queueDownload(lora, file))
   }

@@ -1,7 +1,7 @@
 package drift.backend.routes
 
 import drift.backend.cache.*
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import sttp.shared.Identity
@@ -18,7 +18,7 @@ def cacheEndpoints(
     cache.civitaiCachedFileIds
   ),
   cacheStatus.serverLogicSuccess[Identity] { _ =>
-    storage.list[Model]("models").map { model =>
+    storage.list(Collections.models).map { model =>
       cache.resolve(model.source) match {
         case CacheEntry.Present(path, bytes) =>
           ModelCacheStatus(

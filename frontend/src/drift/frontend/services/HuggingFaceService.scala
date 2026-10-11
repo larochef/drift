@@ -35,9 +35,10 @@ class HuggingFaceService
     with RepositoryDetails[HuggingFaceModelDetail] {
   import HuggingFaceService.{Command, PageSize}
 
-  private val searchFn = ApiClient.stream(drift.shared.searchHuggingFaceModels)
+  private val searchFn =
+    ApiClient.streamWithFailureReason(drift.shared.searchHuggingFaceModels)
   private val detailFn =
-    ApiClient.stream(drift.shared.getHuggingFaceModelDetail)
+    ApiClient.streamWithFailureReason(drift.shared.getHuggingFaceModelDetail)
   private val cardFn =
     ApiClient.streamWithFailureReason(drift.shared.getHuggingFaceModelCard)
 

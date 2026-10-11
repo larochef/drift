@@ -43,6 +43,15 @@ object Krea2Config {
   val Theta = 1000f
   val Epsilon = 1e-5f
 
+  /** Whether the weights are a Krea 2 transformer's: the names its
+    * configuration is read from.
+    */
+  def holds(source: WeightSource): Boolean =
+    source.has("first.weight") &&
+      source.has("blocks.0.attn.qknorm.qnorm.scale") &&
+      source.has("txtfusion.refiner_blocks.0.attn.qknorm.qnorm.scale") &&
+      source.has("txtmlp.1.weight")
+
   def of(source: WeightSource): Krea2Config = {
     def dimensions(name: String) = source(name).shape.dimensions.map(_.toInt)
     def count(prefix: String) =
@@ -490,11 +499,8 @@ final class Krea2 private (ops: Ops, source: WeightSource)
     val f = c.hidden.toLong
     // the timestep: a sinusoid (cosines first) through the time MLP
     val half = timeIn.weight.shape.last.toInt / 2
-    val sinusoid = Array.tabulate(2 * half) { i =>
-      val frequency = math.exp(-math.log(10000) * (i % half) / half).toFloat
-      val angle = timestep * 1000f * frequency
-      if (i < half) math.cos(angle).toFloat else math.sin(angle).toFloat
-    }
+    val sinusoid =
+      TimestepSinusoid(timestep * 1000f, half, singleFrequencies = true)
     val small = mutable.ArrayBuffer.empty[Tensor]
     def vector(elements: Long) = {
       val tensor = ops.allocate(DType.F32, Shape.of(1, elements))

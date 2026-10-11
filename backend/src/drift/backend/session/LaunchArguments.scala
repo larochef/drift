@@ -2,7 +2,7 @@ package drift.backend.session
 
 import drift.backend.cache.{CacheEntry, ModelCache}
 import drift.backend.runtime.LaunchRuntime
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.file.Path
@@ -30,18 +30,15 @@ final private[session] class LaunchArguments(
       runConfigurationId: String,
       launchRuntime: LaunchRuntime
   ): Either[String, (RunConfiguration, Architecture, List[String])] =
-    storage.get[RunConfiguration](
-      "run-configurations",
-      runConfigurationId
-    ) match {
+    storage.get(Collections.runConfigurations, runConfigurationId) match {
       case None =>
         Left(s"run configuration '$runConfigurationId' does not exist")
       case Some(configuration) =>
-        val architectures = storage.list[Architecture]("architectures")
+        val architectures = storage.list(Collections.architectures)
         argumentsFor(
           configuration,
           architectures,
-          storage.list[Model]("models"),
+          storage.list(Collections.models),
           launchRuntime,
           None
         ).left
@@ -125,7 +122,7 @@ final private[session] class LaunchArguments(
           LoraAdapters
             .relativePaths(
               configuration.architectureId,
-              storage.list[Lora]("loras")
+              storage.list(Collections.loras)
             )
             .map(lorasRoot.resolve)
             .filter(java.nio.file.Files.isRegularFile(_))

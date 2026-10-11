@@ -1,6 +1,6 @@
 package drift.backend.runtime
 
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.nio.charset.StandardCharsets
@@ -85,7 +85,7 @@ final private[runtime] class RunnerFiles(
   def refresh(): Unit =
     if (offer.available)
       storage
-        .list[drift.shared.Runtime]("runtimes")
+        .list(Collections.runtimes)
         .filter(_.engine == RuntimeEngine.DriftRunner)
         .foreach { runtime =>
           runtime.theRockPath.map(Paths.get(_)) match {

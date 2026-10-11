@@ -29,6 +29,7 @@ final class Krea2Pipeline(
 
   def family: String = "Krea 2"
   def takesInitImage: Boolean = true
+  override def takesMask: Boolean = true
   def takesReferences: Boolean = false
   def takesLoras: Boolean = true
   override def takesSigmas: Boolean = true
@@ -115,8 +116,15 @@ final class Krea2Pipeline(
     val random = new SplittableRandom(request.seed)
     val noise = Array.fill(tokens * channels)(Noise.gaussian(random))
     val latents = ops.fromFloats(Shape.of(tokens, channels), noise)
-    val velocity = ops.allocate(DType.F32, latents.shape)
-    val other = unconditional.map(_ => ops.allocate(DType.F32, latents.shape))
+    val inpainting =
+      request.mask.filter(_ => request.initImage.isDefined).map { mask =>
+        new Inpainting(
+          ops,
+          latents.shape,
+          Inpainting.weights(mask, gridHeight, gridWidth, channels),
+          noise
+        )
+      }
     try {
       // a request's own levels (a turbo LoRA's) in place of the schedule
       val sigmas = request.sigmas.getOrElse(
@@ -130,58 +138,57 @@ final class Krea2Pipeline(
         val start = FlowSchedule.firstStep(request.steps, request.strength)
         val encoded = initLatents(init, request.width, request.height)
         try {
-          ops.scale(latents, sigmas(start), latents)
-          ops.scale(encoded, 1 - sigmas(start), encoded)
-          ops.add(latents, encoded, latents)
+          FlowSampler.started(ops, latents, encoded, sigmas(start), inpainting)
         } finally ops.release(encoded)
         start
       }
-      val steps = request.steps - first
-      progress(0, steps)
-      (first until request.steps).foreach { i =>
-        transformer.velocity(
-          latents,
-          conditional,
-          sigmas(i),
-          gridHeight,
-          gridWidth,
-          velocity
-        )
-        for {
-          uncond <- unconditional
-          v <- other
-        } {
+      FlowSampler.run(
+        ops,
+        latents,
+        sigmas,
+        first,
+        request.steps,
+        velocityAt = (i, into) =>
           transformer.velocity(
             latents,
-            uncond,
+            conditional,
             sigmas(i),
             gridHeight,
             gridWidth,
-            v
-          )
-          // v = uncond + scale × (cond − uncond)
-          ops.scale(v, 1 - request.cfgScale, v)
-          ops.scale(velocity, request.cfgScale, velocity)
-          ops.add(velocity, v, velocity)
-        }
-        projection.foreach(drawn =>
-          preview(
-            i + 1 - first,
-            steps,
-            () =>
-              drawn.estimate(
-                ops.toFloats(latents),
-                ops.toFloats(velocity),
+            into
+          ),
+        guidance = unconditional.map(uncond =>
+          FlowSampler.Guidance(
+            request.cfgScale,
+            (i, into) =>
+              transformer.velocity(
+                latents,
+                uncond,
                 sigmas(i),
                 gridHeight,
-                gridWidth
+                gridWidth,
+                into
               )
           )
-        )
-        ops.scale(velocity, sigmas(i + 1) - sigmas(i), velocity)
-        ops.add(latents, velocity, latents)
-        progress(i + 1 - first, steps)
-      }
+        ),
+        inpainting = inpainting,
+        onVelocity = (step, steps, velocity, sigma) =>
+          projection.foreach(drawn =>
+            preview(
+              step,
+              steps,
+              () =>
+                drawn.estimate(
+                  ops.toFloats(latents),
+                  ops.toFloats(velocity),
+                  sigma,
+                  gridHeight,
+                  gridWidth
+                )
+            )
+          ),
+        progress = progress
+      )
       val image = ops.allocate(
         DType.F32,
         Shape.of(2L * gridHeight, 2L * gridWidth, channels / 4)
@@ -194,8 +201,8 @@ final class Krea2Pipeline(
         finally ops.release(rgb)
       } finally ops.release(image)
     } finally {
-      (Seq(conditional, latents, velocity) ++ unconditional ++ other)
-        .foreach(ops.release)
+      inpainting.foreach(_.release())
+      (Seq(conditional, latents) ++ unconditional).foreach(ops.release)
     }
   }
 

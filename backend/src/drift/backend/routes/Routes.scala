@@ -1,6 +1,6 @@
 package drift.backend.routes
 
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import sttp.shared.Identity
@@ -15,7 +15,7 @@ def promptTemplateEndpoints(
 ): List[ServerEndpoint[Any, Identity]] =
   endpointsFor[PromptTemplate](
     storage,
-    "prompt-templates",
+    Collections.promptTemplates,
     _.id,
     listPromptTemplates,
     getPromptTemplate,
@@ -32,7 +32,7 @@ def architectureEndpoints(
 ): List[ServerEndpoint[Any, Identity]] =
   endpointsFor[Architecture](
     storage,
-    "architectures",
+    Collections.architectures,
     _.id,
     listArchitectures,
     getArchitecture,
@@ -53,12 +53,12 @@ def modelEndpoints(
   def pruned(model: Model): Model =
     ParameterOverrides.prunedModel(
       model,
-      storage.list[Architecture]("architectures")
+      storage.list(Collections.architectures)
     )
 
   endpointsFor[Model](
     storage,
-    "models",
+    Collections.models,
     _.id,
     listModels,
     getModel,
@@ -81,13 +81,13 @@ def runConfigurationEndpoints(
   def pruned(configuration: RunConfiguration): RunConfiguration =
     ParameterOverrides.prunedConfiguration(
       configuration,
-      storage.get[Architecture]("architectures", configuration.architectureId),
-      storage.list[Model]("models")
+      storage.get(Collections.architectures, configuration.architectureId),
+      storage.list(Collections.models)
     )
 
   endpointsFor[RunConfiguration](
     storage,
-    "run-configurations",
+    Collections.runConfigurations,
     _.id,
     listRunConfigurations,
     getRunConfiguration,

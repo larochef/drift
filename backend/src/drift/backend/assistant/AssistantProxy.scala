@@ -1,7 +1,7 @@
 package drift.backend.assistant
 
 import drift.backend.session.SessionManager
-import drift.backend.storage.StorageService
+import drift.backend.storage.{Collections, StorageService}
 import drift.shared.*
 
 import java.net.URI
@@ -312,10 +312,7 @@ final class AssistantProxy(
     sessionManager.list
       .find(_.id == sessionId)
       .flatMap(session =>
-        storage.get[RunConfiguration](
-          "run-configurations",
-          session.runConfigurationId
-        )
+        storage.get(Collections.runConfigurations, session.runConfigurationId)
       )
       .map(_.loras)
       .filter(_.nonEmpty) match {
@@ -327,7 +324,7 @@ final class AssistantProxy(
               for {
                 tail <- rest
                 lora <- storage
-                  .get[Lora]("loras", configured.loraId)
+                  .get(Collections.loras, configured.loraId)
                   .toRight(
                     s"default LoRA '${configured.loraId}' is not installed"
                   )

@@ -1,6 +1,6 @@
 package drift.backend.routes
 
-import drift.backend.download.DownloadManager
+import drift.backend.models.DownloadManager
 import drift.shared.*
 
 import sttp.shared.Identity

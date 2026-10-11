@@ -219,10 +219,7 @@ final class Grn private (ops: Ops, source: WeightSource) extends AutoCloseable {
     val half = c.timeWidth / 2
     val sinusoid = ops.fromFloats(
       Shape.of(1, c.timeWidth),
-      Array.tabulate(2 * half) { i =>
-        val angle = progress * math.exp(-math.log(10000) * (i % half) / half)
-        (if (i < half) math.cos(angle) else math.sin(angle)).toFloat
-      }
+      TimestepSinusoid(progress, half)
     )
     try affine(sinusoid, timeIn, w.time)
     finally ops.release(sinusoid)

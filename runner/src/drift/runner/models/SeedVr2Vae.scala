@@ -1,7 +1,7 @@
 package drift.runner.models
 
 import drift.runner.formats.FormatException
-import drift.runner.ops.{Activation, Ops}
+import drift.runner.ops.Ops
 import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
@@ -212,18 +212,8 @@ final class SeedVr2Vae private (ops: Ops, source: WeightSource)
 
   // ---- frames ----------------------------------------------------------------------
 
-  private def frame(height: Long, width: Long, channels: Long): Tensor =
-    ops.allocate(DType.F32, Shape.of(height, width, channels))
-
-  private def pixels(x: Tensor): Tensor = {
-    val Seq(h, w, c) = x.shape.dimensions
-    x.view(h * w, c)
-  }
-
-  private def sizes(x: Tensor): (Long, Long, Long) = {
-    val Seq(h, w, c) = x.shape.dimensions
-    (h, w, c)
-  }
+  private val perFrame = new FrameLayers(ops)
+  import perFrame.{frame, linear, normSilu, pixels, sizes}
 
   private def copy(x: Tensor): Tensor = {
     val (h, w, c) = sizes(x)
@@ -271,37 +261,16 @@ final class SeedVr2Vae private (ops: Ops, source: WeightSource)
       out
     }
 
-  private def normSilu(x: Tensor, norm: ChannelNorm): Tensor = {
-    val (h, w, c) = sizes(x)
-    val out = frame(h, w, c)
-    norm(ops, pixels(x), pixels(out))
-    ops.activation(Activation.Silu, out, out)
-    out
-  }
-
-  private def linear(x: Tensor, conv: Convolution): Tensor = {
-    val (h, w, _) = sizes(x)
-    val out = frame(h, w, conv.outChannels)
-    ops.linear(pixels(x), conv.weight, pixels(out))
-    ops.addRow(pixels(out), conv.bias, pixels(out))
-    out
-  }
-
   /** A residual block on one frame; `x` is released. */
-  private def residual(x: Tensor, block: Residual): Tensor = {
-    val first = causal(normSilu(x, block.norm1), block.conv1)
-    val second = causal(normSilu(first, block.norm2), block.conv2)
-    ops.release(first)
-    block.shortcut match {
-      case Some(conv) =>
-        val shortcut = linear(x, conv)
-        ops.add(second, shortcut, second)
-        ops.release(shortcut)
-      case None => ops.add(second, x, second)
-    }
-    ops.release(x)
-    second
-  }
+  private def residual(x: Tensor, block: Residual): Tensor =
+    perFrame.residual(
+      x,
+      block.norm1,
+      block.conv1,
+      block.norm2,
+      block.conv2,
+      block.shortcut
+    )(causal)
 
   /** The middle on one frame; `x` is released. */
   private def middle(x: Tensor, parts: Middle): Tensor = {

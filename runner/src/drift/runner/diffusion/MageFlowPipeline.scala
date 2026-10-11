@@ -283,50 +283,44 @@ final class MageFlowPipeline(
         val encoded =
           latentsOf(init, request.width, request.height, None)
         try {
-          inpainting.foreach(_.remember(encoded))
-          ops.scale(x, sigmas(start), x)
-          ops.scale(encoded, 1 - sigmas(start), encoded)
-          ops.add(x, encoded, x)
+          FlowSampler.started(ops, x, encoded, sigmas(start), inpainting)
         } finally ops.release(encoded)
         start
       }
-      val velocity = hold(ops.allocate(DType.F32, x.shape))
-      val other =
-        unconditional.map(_ => hold(ops.allocate(DType.F32, x.shape)))
       val clean = references.toSeq.map(r => (r.latents, grid))
-      val steps = request.steps - first
-      progress(0, steps)
-      (first until request.steps).foreach { i =>
-        transformer.velocity(x, grid, clean, conditional, sigmas(i), velocity)
-        for {
-          uncond <- unconditional
-          v <- other
-        } {
-          transformer.velocity(x, grid, clean, uncond, sigmas(i), v)
-          // v = uncond + scale × (cond − uncond)
-          ops.scale(v, 1 - request.cfgScale, v)
-          ops.scale(velocity, request.cfgScale, velocity)
-          ops.add(velocity, v, velocity)
-        }
-        projection.foreach(drawn =>
-          preview(
-            i + 1 - first,
-            steps,
-            () =>
-              drawn.estimate(
-                ops.toFloats(x),
-                ops.toFloats(velocity),
-                sigmas(i),
-                grid.height,
-                grid.width
-              )
+      FlowSampler.run(
+        ops,
+        x,
+        sigmas,
+        first,
+        request.steps,
+        velocityAt = (i, into) =>
+          transformer.velocity(x, grid, clean, conditional, sigmas(i), into),
+        guidance = unconditional.map(uncond =>
+          FlowSampler.Guidance(
+            request.cfgScale,
+            (i, into) =>
+              transformer.velocity(x, grid, clean, uncond, sigmas(i), into)
           )
-        )
-        ops.scale(velocity, sigmas(i + 1) - sigmas(i), velocity)
-        ops.add(x, velocity, x)
-        inpainting.foreach(_.restore(x, sigmas(i + 1)))
-        progress(i + 1 - first, steps)
-      }
+        ),
+        inpainting = inpainting,
+        onVelocity = (step, steps, velocity, sigma) =>
+          projection.foreach(drawn =>
+            preview(
+              step,
+              steps,
+              () =>
+                drawn.estimate(
+                  ops.toFloats(x),
+                  ops.toFloats(velocity),
+                  sigma,
+                  grid.height,
+                  grid.width
+                )
+            )
+          ),
+        progress = progress
+      )
       inpainting.foreach(_.release())
       Images.decoding("the image")
       val rgb = autoencoder.decode(x.view(grid.height, grid.width, channels))

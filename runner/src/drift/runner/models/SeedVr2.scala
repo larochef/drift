@@ -441,11 +441,12 @@ final class SeedVr2 private (ops: Ops, source: WeightSource)
     try {
       // ---- the timestep: sines then cosines, through its MLP ----
       val half = timeIn.weight.shape.last.toInt / 2
-      val sinusoid = Array.tabulate(2 * half) { i =>
-        val angle =
-          timestep * math.exp(-math.log(10000) * (i % half) / half).toFloat
-        if (i < half) math.sin(angle).toFloat else math.cos(angle).toFloat
-      }
+      val sinusoid = TimestepSinusoid(
+        timestep,
+        half,
+        sinesFirst = true,
+        singleFrequencies = true
+      )
       val embedded = kept(ops.fromFloats(Shape.of(1, 2L * half), sinusoid))
       val (inner, hidden, modulation) = (rows(1, f), rows(1, f), rows(1, 6 * f))
       affine(embedded, timeIn, inner)

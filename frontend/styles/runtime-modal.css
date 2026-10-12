@@ -1,0 +1,8 @@
+/* The settings page's modal that adds a runtime. */
+
+/* Adding a runtime: the two forms are long (release lists, asset pickers), so
+   the card takes the width it can and its body scrolls. */
+.add-runtime-modal .modal-card {
+  width: min(900px, 95vw);
+  max-height: 90vh;
+}

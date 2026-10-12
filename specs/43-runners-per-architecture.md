@@ -94,6 +94,11 @@ configuration says which engine it runs on.
   `<runtimes>/llama-cpp/drift-runner-rocm/` and
   `<runtimes>/sd-cpp/drift-runner-rocm/`. `installRunner` answers both jobs,
   and the runtimes page has an "Install the drift runner" tab.
+- **Refresh.** At startup each installed runner gets the jar this drift
+  carries and the ROCm version its kernels were compiled with
+  (`RunnerFiles.refresh`). The TheRock tree it runs on stays the one chosen
+  for it; kernels compiled with another ROCm than that tree are said in the
+  log, with what to change.
 - **Flags.** A `RuntimeRule` names its engine (`specs/16`): the runner's
   images rule drops `--attn-scale` with a note; `--guidance` reaches the
   runner, which applies it to FLUX.2 [dev] and notes it ignored for the
@@ -120,6 +125,11 @@ configuration says which engine it runs on.
   - The runner installed on TheRock 10.0.0: both runtimes valid, the GPU named
     (Radeon 8060S), and their model kinds listed.
   - "Change ROCm" to 7.13.0 moved both runtimes, still valid.
+- On ROCm 10.1.0 (kernels compiled with it, both runtimes on its TheRock
+  tree): the GPU and CPU test suites pass; eight image families generate at
+  the step times of 10.0.0. Mage-Flow, HiDream O1 and GRN give the same
+  bytes as on 10.0.0; Krea 2 and Nucleus the same picture within rounding
+  (37 dB); FLUX.2 and Qwen Image 2.1 other bytes too, their pictures sound.
   - The Qwen 3.6 configuration set to the drift runner launched on
     `drift-runner` with no runtime picked, and answered.
   - Gemma 4 pinned to the runner was refused.

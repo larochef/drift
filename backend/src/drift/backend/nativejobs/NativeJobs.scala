@@ -47,13 +47,15 @@ object NativeJobs {
     * `serverExit` is the server's exit code once it has died, if drift runs it:
     * the wait then ends at once, naming it. `onSubmitted` is handed the native
     * job's id the moment the server accepts it, which is what a cancel needs to
-    * reach it (`cancel`).
+    * reach it (`cancel`); `onProgress` what the job says it is doing, each time
+    * it is polled, from the servers whose jobs say (`JobProgress`).
     */
   def image(
       port: Int,
       parameters: ImageGenerationParameters,
       serverExit: () => Option[Int],
-      onSubmitted: String => Unit
+      onSubmitted: String => Unit,
+      onProgress: JobProgress => Unit
   ): Either[String, Array[Byte]] =
     submitted(
       port,
@@ -62,7 +64,7 @@ object NativeJobs {
       serverExit,
       onSubmitted
     )
-      .flatMap(jobId => await(port, jobId, serverExit))
+      .flatMap(jobId => await(port, jobId, serverExit, onProgress))
       .flatMap(firstImage)
 
   private def firstImage(result: NativeJobResult): Either[String, Array[Byte]] =
@@ -72,13 +74,14 @@ object NativeJobs {
       .toRight("the server completed the job without an image")
 
   /** Submits the runner's `upscale` job on a picture and waits for it: a PNG.
-    * `serverExit` and `onSubmitted` as `image` has them.
+    * `serverExit`, `onSubmitted` and `onProgress` as `image` has them.
     */
   def upscale(
       port: Int,
       request: UpscaleJobRequest,
       serverExit: () => Option[Int],
-      onSubmitted: String => Unit
+      onSubmitted: String => Unit,
+      onProgress: JobProgress => Unit
   ): Either[String, Array[Byte]] =
     submitted(
       port,
@@ -87,7 +90,7 @@ object NativeJobs {
       serverExit,
       onSubmitted
     )
-      .flatMap(jobId => await(port, jobId, serverExit))
+      .flatMap(jobId => await(port, jobId, serverExit, onProgress))
       .flatMap(firstImage)
 
   /** Submits the runner's `upscale` job on a video and waits for it: the video
@@ -99,7 +102,8 @@ object NativeJobs {
       port: Int,
       request: UpscaleJobRequest,
       serverExit: () => Option[Int],
-      onSubmitted: String => Unit
+      onSubmitted: String => Unit,
+      onProgress: JobProgress => Unit
   ): Either[String, UpscaledVideo] =
     submitted(
       port,
@@ -108,7 +112,7 @@ object NativeJobs {
       serverExit,
       onSubmitted
     )
-      .flatMap(jobId => awaitEnd(port, jobId, serverExit))
+      .flatMap(jobId => awaitEnd(port, jobId, serverExit, onProgress))
       .flatMap { job =>
         val reason = job.status match {
           case "completed" => None
@@ -165,9 +169,10 @@ object NativeJobs {
   private def await(
       port: Int,
       jobId: String,
-      serverExit: () => Option[Int]
+      serverExit: () => Option[Int],
+      onProgress: JobProgress => Unit
   ): Either[String, NativeJobResult] =
-    awaitEnd(port, jobId, serverExit).flatMap(job =>
+    awaitEnd(port, jobId, serverExit, onProgress).flatMap(job =>
       job.status match {
         case "completed" =>
           job.result.toRight("the server completed the job without a result")
@@ -188,11 +193,12 @@ object NativeJobs {
   private def awaitEnd(
       port: Int,
       jobId: String,
-      serverExit: () => Option[Int]
+      serverExit: () => Option[Int],
+      onProgress: JobProgress => Unit
   ): Either[String, NativeJob] =
     NativeJobClient
-      .follow(port, jobId, label = s"Job $jobId", serverExit = serverExit)(_ =>
-        ()
+      .follow(port, jobId, label = s"Job $jobId", serverExit = serverExit)(
+        _.progress.foreach(onProgress)
       )
       .flatMap(_.toRight("the job was let go before it ended"))
 }

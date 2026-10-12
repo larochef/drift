@@ -1,10 +1,9 @@
 package drift.runner.diffusion
 
 import drift.runner.decode.Prompt
-import drift.runner.formats.Gguf
 import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
-import drift.runner.ops.Ops
+import drift.runner.ops.{Ops, TensorScope}
 import drift.runner.tensor.*
 import drift.runner.text.{GgufTokenizer, Tokenizer}
 import drift.runner.vision.{ImageSizing, PreparedImage}
@@ -57,11 +56,7 @@ final class QwenImage21Pipeline(
   def takesGuidance: Boolean = false
 
   private val encoder = Qwen3.open(ops, textEncoder)
-  private val tokenizer: Tokenizer = {
-    val (file, mapped) = Gguf.open(textEncoder)
-    try GgufTokenizer.read(file)
-    finally mapped.close()
-  }
+  private val tokenizer: Tokenizer = GgufTokenizer.of(textEncoder)
   private val transformer = QwenImage21.open(ops, diffusionModel)
   private val autoencoder = QwenImage21Vae.open(ops, vae)
   private val loraFiles = new LoraFiles(ops)
@@ -217,11 +212,7 @@ final class QwenImage21Pipeline(
     val tokens = gridHeight * gridWidth
     val channels = transformer.config.latentChannels
     val guided = request.cfgScale != 1f
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def hold(tensor: Tensor) = {
-      held += tensor
-      tensor
-    }
+    val held = new TensorScope(ops)
     val prefixes = mutable.ArrayBuffer.empty[QwenImage21Prefix]
     def keep(prefix: QwenImage21Prefix) = {
       prefixes += prefix
@@ -259,7 +250,7 @@ final class QwenImage21Pipeline(
       )
       val random = new SplittableRandom(request.seed)
       val noise = Array.fill(tokens * channels)(Noise.gaussian(random))
-      val x = hold(ops.fromFloats(Shape.of(tokens, channels), noise))
+      val x = held.fromFloats(Shape.of(tokens, channels), noise)
       val inpainting =
         request.mask.filter(_ => request.initImage.isDefined).map { mask =>
           new Inpainting(
@@ -340,7 +331,7 @@ final class QwenImage21Pipeline(
     } finally {
       prefixes.foreach(_.close())
       references.foreach(_.release())
-      held.foreach(ops.release)
+      held.close()
     }
   }
 

@@ -1,0 +1,45 @@
+/* A live panel's sticky header. */
+
+/* A live panel's header — the configuration, its status, and the session
+   controls. Bulma's `.level` never wraps, so in a narrow column (the
+   workspace's assistant column, or any narrow window) `.level-right` used to
+   overflow and carry Stop session out of sight. It
+   wraps to its own row instead, and neither group may push wider than the
+   column it sits in. */
+.panel-header {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  /* Stays put while a long conversation or a long result list scrolls past:
+     stopping the session is reachable from anywhere in the page, not only from
+     the top of it. `.bg-content`'s colour, so nothing shows through. */
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background-color: hsl(30, 22%, 26%);
+  padding: 0.5rem 0;
+}
+
+/* Bulma gives `.title:not(:last-child)` a 1.5rem bottom margin, and the level
+   centres each item on its *margin* box - so the status tag beside the title
+   sat visibly low. The header supplies its own spacing;
+   the title needs none of its own. */
+.panel-header .title,
+.panel-header .subtitle {
+  margin-bottom: 0;
+}
+
+.panel-header > .level-left,
+.panel-header > .level-right {
+  flex-wrap: wrap;
+  /* Both axes: a column gap of zero left the status tag welded to the title
+     and the buttons welded to each other, since neither is a `.level-item`
+     carrying Bulma's own margin. */
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* The gap above is the spacing now; the buttons' own margins would double it. */
+.panel-header .button.mr-2 {
+  margin-right: 0 !important;
+}

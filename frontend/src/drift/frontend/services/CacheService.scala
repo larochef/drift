@@ -25,7 +25,8 @@ class CacheService extends ServiceErrors {
 
   private val statusFn = ApiClient.stream(drift.shared.cacheStatus)
   private val filesFn = ApiClient.stream(drift.shared.listCachedFiles)
-  private val deleteFileFn = ApiClient.stream(drift.shared.deleteCachedFile)
+  private val deleteFileFn =
+    ApiClient.streamWithFailureReason(drift.shared.deleteCachedFile)
 
   private val _statuses = Var(List.empty[ModelCacheStatus])
   private val _files = Var(List.empty[CachedFileEntry])
@@ -62,16 +63,15 @@ class CacheService extends ServiceErrors {
       },
     cmdBus.events
       .collect { case Command.DeleteFile(path) => path }
-      .flatMapMerge(path =>
-        deleteFileFn(path).map(deleted => (path, deleted)).recoverToTry
-      ) --> Observer[Try[(String, Boolean)]] {
-      case Success((_, true)) =>
+      .flatMapMerge(path => deleteFileFn(path).recoverToTry) --> Observer[
+      Try[Unit]
+    ] {
+      case Success(()) =>
         clearError()
         // Both views change: the file is gone and models may have lost it.
         push(Command.LoadFiles)
         push(Command.Load)
-      case Success((path, false)) =>
-        reportFailure("Deleting the cached file", s"'$path' was not deleted.")
+      // The backend's own words: which file, and why it stays.
       case Failure(err) => reportFailure("Deleting the cached file", err)
     }
   )

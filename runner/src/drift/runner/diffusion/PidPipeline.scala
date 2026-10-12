@@ -1,7 +1,7 @@
 package drift.runner.diffusion
 
 import drift.runner.models.*
-import drift.runner.ops.Ops
+import drift.runner.ops.{Ops, TensorScope}
 import drift.runner.tensor.*
 import drift.runner.text.{Tokenizer, TokenizerJson}
 import drift.runner.weights.WeightSource
@@ -9,7 +9,6 @@ import drift.runner.weights.WeightSource
 import java.awt.image.BufferedImage
 import java.nio.file.Path
 import java.util.SplittableRandom
-import scala.collection.mutable
 
 /** PiD 1.5 end to end, as NVIDIA's distilled inference runs it
   * (`pid_distill_model_infer.py`): the request's first reference image is the
@@ -130,21 +129,15 @@ final class PidPipeline(
       )
     )
     val patch = decoder.config.patch
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def hold(tensor: Tensor) = {
-      held += tensor
-      tensor
-    }
+    val held = new TensorScope(ops)
     try {
-      val features = hold(text(request.prompt))
+      val features = held.keep(text(request.prompt))
       val quarter = Images.resized(source, width / 4, height / 4)
-      val pixels = hold(
-        ops.fromFloats(
-          Shape.of(height / 4L, width / 4L, 3),
-          Images.pixels(quarter)
-        )
+      val pixels = held.fromFloats(
+        Shape.of(height / 4L, width / 4L, 3),
+        Images.pixels(quarter)
       )
-      val latent = hold(encode(pixels))
+      val latent = held.keep(encode(pixels))
       val conditioning = decoder.conditionOn(
         features,
         latent,
@@ -158,8 +151,8 @@ final class PidPipeline(
         def noise() =
           Array.fill(width * height * 3)(Noise.gaussian(random))
         val shape = Shape.of(height.toLong, width.toLong, 3)
-        val x = hold(ops.fromFloats(shape, noise()))
-        val velocity = hold(ops.allocate(DType.F32, shape))
+        val x = held.fromFloats(shape, noise())
+        val velocity = held.allocate(DType.F32, shape)
         val steps = Sigmas.size - 1
         progress(0, steps)
         (0 until steps).foreach { i =>
@@ -180,7 +173,7 @@ final class PidPipeline(
         }
         Images.toImage(ops.toFloats(x), width, height)
       } finally conditioning.release()
-    } finally held.foreach(ops.release)
+    } finally held.close()
   }
 
   def close(): Unit = {

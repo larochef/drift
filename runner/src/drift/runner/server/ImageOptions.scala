@@ -21,14 +21,14 @@ final case class ImageOptions(
     port: Int,
     width: Int,
     height: Int,
-    /** `--steps`, when given; else the family's default (`ImageServer`). */
+    /** `--steps`, when given; else the family's default (`LaunchDefaults`). */
     steps: Option[Int],
     cfgScale: Double,
     /** The distilled guidance scale (`--guidance`), when given: read by the
       * models that embed one (FLUX.2 [dev]), noted and ignored by the others.
       */
     guidance: Option[Double],
-    /** `--flow-shift`, when given; else the family's own (`ImageServer`). */
+    /** `--flow-shift`, when given; else the family's own (`LaunchDefaults`). */
     flowShift: Option[Double],
     seed: Long,
     prompt: String,
@@ -90,102 +90,68 @@ object ImageOptions {
     */
   val DefaultGuidance = 3.5
 
-  def parse(arguments: Seq[String]): Either[String, ImageOptions] = {
-    val values = scala.collection.mutable.Map.empty[String, String]
-    val notes = Seq.newBuilder[String]
-    var rest = arguments.toList
-    var problem = Option.empty[String]
-    while (rest.nonEmpty && problem.isEmpty) {
-      val flag = rest.head
-      rest = rest.tail
-      def value(): Option[String] = rest match {
-        case v :: tail =>
-          rest = tail
-          Some(v)
-        case Nil =>
-          problem = Some(s"$flag needs a value")
-          None
-      }
-      flag match {
-        case read if ImageServerFlags.Valued(read) =>
-          value().foreach(v => values(canonical(flag)) = v)
-        case other if ImageServerFlags.NotYet.contains(other) =>
-          problem = Some(
-            s"$other is not supported yet: ${ImageServerFlags.NotYet(other)}"
-          )
-        case other if ImageServerFlags.Harmless.contains(other) =>
-          val taken =
-            (0 until ImageServerFlags.Harmless(other)).flatMap(_ => value())
-          notes += s"$other ${taken.mkString(" ")} accepted: it changes how sd-cpp runs, not the image"
-            .replace("  ", " ")
-        case other => problem = Some(s"unknown flag $other")
-      }
-    }
+  def parse(arguments: Seq[String]): Either[String, ImageOptions] =
+    ImageServerFlags
+      .read(arguments)
+      .flatMap(read => from(read.values, read.notes))
+
+  private def from(
+      values: Map[String, String],
+      notes: Seq[String]
+  ): Either[String, ImageOptions] = {
     def path(flag: String) =
       values
         .get(flag)
         .map(Paths.get(_))
         .toRight(s"no ${flag.stripPrefix("--")}: pass $flag <file>")
-    problem.map(Left(_)).getOrElse {
-      for {
-        diffusion <- path("--diffusion-model").left.flatMap(_ =>
-          path("--model").left.map(_ =>
-            "no diffusion model: pass --diffusion-model <file> (or --model <file>)"
-          )
+    for {
+      diffusion <- path("--diffusion-model").left.flatMap(_ =>
+        path("--model").left.map(_ =>
+          "no diffusion model: pass --diffusion-model <file> (or --model <file>)"
         )
-      } yield ImageOptions(
-        diffusion,
-        values.get("--vae").map(Paths.get(_)),
-        values.get("--llm").map(Paths.get(_)),
-        values.getOrElse("--listen-ip", "127.0.0.1"),
-        values.get("--listen-port").fold(1234)(_.toInt),
-        values.get("-W").fold(1024)(_.toInt),
-        values.get("-H").fold(1024)(_.toInt),
-        values.get("--steps").map(_.toInt),
-        values.get("--cfg-scale").fold(1.0)(_.toDouble),
-        values.get("--guidance").map(_.toDouble),
-        values.get("--flow-shift").map(_.toDouble),
-        values.get("-s").fold(-1L)(_.toLong),
-        values.getOrElse("-p", ""),
-        values.getOrElse("-n", ""),
-        values.get("--lora-model-dir").map(Paths.get(_)),
-        values.get("--tokenizer").map(Paths.get(_)),
-        values.get("--llm_vision").map(Paths.get(_)),
-        values.get("--audio-vae").map(Paths.get(_)),
-        values.get("--video-frames").fold(33)(_.toInt),
-        values.get("--high-noise-diffusion-model").map(Paths.get(_)),
-        values.get("--t5xxl").map(Paths.get(_)),
-        values.get("--high-noise-steps").map(_.toInt).filter(_ >= 0),
-        values.get("--high-noise-cfg-scale").map(_.toDouble),
-        values.get("--moe-boundary").fold(0.875)(_.toDouble),
-        values.get("--fps").map(_.toInt),
-        values.get("--control-net").map(Paths.get(_)),
-        values.get("--embeddings-connectors").map(Paths.get(_)),
-        Seq("queryformer", "text_projection", "sigvq")
-          .flatMap(name =>
-            values
-              .get(s"--llada-${name.replace('_', '-')}")
-              .map(file => name -> Paths.get(file))
-          )
-          .toMap,
-        values
-          .get("--sigmas")
-          .toSeq
-          .flatMap(_.split(',').map(_.trim).filter(_.nonEmpty))
-          .map(_.toDouble),
-        values.get("--sampling-method"),
-        notes.result()
       )
-    }
-  }
-
-  private def canonical(flag: String): String = flag match {
-    case "--width"           => "-W"
-    case "--height"          => "-H"
-    case "--seed"            => "-s"
-    case "--prompt"          => "-p"
-    case "--negative-prompt" => "-n"
-    case "-m"                => "--model"
-    case other               => other
+    } yield ImageOptions(
+      diffusion,
+      values.get("--vae").map(Paths.get(_)),
+      values.get("--llm").map(Paths.get(_)),
+      values.getOrElse("--listen-ip", "127.0.0.1"),
+      values.get("--listen-port").fold(1234)(_.toInt),
+      values.get("-W").fold(1024)(_.toInt),
+      values.get("-H").fold(1024)(_.toInt),
+      values.get("--steps").map(_.toInt),
+      values.get("--cfg-scale").fold(1.0)(_.toDouble),
+      values.get("--guidance").map(_.toDouble),
+      values.get("--flow-shift").map(_.toDouble),
+      values.get("-s").fold(-1L)(_.toLong),
+      values.getOrElse("-p", ""),
+      values.getOrElse("-n", ""),
+      values.get("--lora-model-dir").map(Paths.get(_)),
+      values.get("--tokenizer").map(Paths.get(_)),
+      values.get("--llm_vision").map(Paths.get(_)),
+      values.get("--audio-vae").map(Paths.get(_)),
+      values.get("--video-frames").fold(33)(_.toInt),
+      values.get("--high-noise-diffusion-model").map(Paths.get(_)),
+      values.get("--t5xxl").map(Paths.get(_)),
+      values.get("--high-noise-steps").map(_.toInt).filter(_ >= 0),
+      values.get("--high-noise-cfg-scale").map(_.toDouble),
+      values.get("--moe-boundary").fold(0.875)(_.toDouble),
+      values.get("--fps").map(_.toInt),
+      values.get("--control-net").map(Paths.get(_)),
+      values.get("--embeddings-connectors").map(Paths.get(_)),
+      Seq("queryformer", "text_projection", "sigvq")
+        .flatMap(name =>
+          values
+            .get(s"--llada-${name.replace('_', '-')}")
+            .map(file => name -> Paths.get(file))
+        )
+        .toMap,
+      values
+        .get("--sigmas")
+        .toSeq
+        .flatMap(_.split(',').map(_.trim).filter(_.nonEmpty))
+        .map(_.toDouble),
+      values.get("--sampling-method"),
+      notes
+    )
   }
 }

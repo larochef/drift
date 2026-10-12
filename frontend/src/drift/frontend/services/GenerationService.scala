@@ -74,8 +74,10 @@ object GenerationService {
   * queue position, progress and completion arrive without the browser ever
   * touching the session port.
   */
-class GenerationService(statusSocket: StatusSocketService)
-    extends ServiceErrors {
+class GenerationService(
+    statusSocket: StatusSocketService,
+    store: GenerationStore
+) extends ServiceErrors {
   import GenerationService.Command
 
   private val capabilitiesFn = ApiClient.stream(getSessionCapabilities)
@@ -99,9 +101,29 @@ class GenerationService(statusSocket: StatusSocketService)
   def capabilitiesOf(sessionId: String): Option[SessionCapabilities] =
     _capabilities.now().get(sessionId)
 
+  /** Which of the generations the page knows (`GenerationStore`) are the loaded
+    * session's, as the backend last listed them or the page made them.
+    */
+  private val _sessionGenerationIds = Var(List.empty[String])
+
   /** The loaded session's generations, oldest first. */
-  private val _generations = Var(List.empty[Generation])
-  val generations: Signal[List[Generation]] = _generations.signal
+  val generations: Signal[List[Generation]] =
+    store.byId
+      .combineWith(_sessionGenerationIds.signal)
+      .map((all, ids) => ids.flatMap(all.get).sortBy(_.submittedAt))
+      .distinct
+
+  /** The session's list as the backend has it. */
+  private def listed(listing: List[Generation]): Unit = {
+    store.put(listing)
+    _sessionGenerationIds.set(listing.map(_.id))
+  }
+
+  /** What a clear of the free-play results removed, from the disk too. */
+  private def cleared(ids: List[String]): Unit = {
+    _sessionGenerationIds.update(_.filterNot(ids.contains))
+    store.forget(ids)
+  }
 
   /** The pictures being sampled, as their last step saw them, keyed by
     * generation id (`specs/54-step-preview.md`).
@@ -142,8 +164,8 @@ class GenerationService(statusSocket: StatusSocketService)
   private def previewAsked: Option[String] =
     Option.when(_preferences.now().stepPreview)(StepPreview.Mode)
 
-  /** Which session `_generations` belongs to — socket pushes for any other
-    * session are not this panel's to display.
+  /** Which session `generations` shows — socket pushes for any other session
+    * are not this panel's to display.
     */
   private val watchedSessionId = Var(Option.empty[String])
 
@@ -161,8 +183,7 @@ class GenerationService(statusSocket: StatusSocketService)
     */
   def clearScratch(): Unit =
     clearScratchFn(()).recoverToTry.foreach {
-      case Success(cleared) =>
-        _generations.update(_.filterNot(g => cleared.contains(g.id)))
+      case Success(ids) => cleared(ids)
       case Failure(err) => reportFailure("Clearing the Sandbox's results", err)
     }(using unsafeWindowOwner)
 
@@ -219,9 +240,9 @@ class GenerationService(statusSocket: StatusSocketService)
 
   private def upsert(generation: Generation): Unit = {
     settle(List(generation))
-    _generations.update(all =>
-      (all.filterNot(_.id == generation.id) :+ generation)
-        .sortBy(_.submittedAt)
+    store.put(generation)
+    _sessionGenerationIds.update(ids =>
+      if (ids.contains(generation.id)) ids else ids :+ generation.id
     )
   }
 
@@ -271,7 +292,7 @@ class GenerationService(statusSocket: StatusSocketService)
       case Success(listing) =>
         clearError()
         settle(listing)
-        _generations.set(listing.sortBy(_.submittedAt))
+        listed(listing)
       case Failure(err) => reportFailure("Listing generations", err)
     },
     cmdBus.events
@@ -319,9 +340,9 @@ class GenerationService(statusSocket: StatusSocketService)
       .flatMapMerge(_ => clearScratchFn(()).recoverToTry) --> Observer[
       Try[List[String]]
     ] {
-      case Success(cleared) =>
+      case Success(ids) =>
         clearError()
-        _generations.update(_.filterNot(g => cleared.contains(g.id)))
+        cleared(ids)
       case Failure(err) => reportFailure("Clearing the free-play results", err)
     },
     cmdBus.events
@@ -352,7 +373,7 @@ class GenerationService(statusSocket: StatusSocketService)
           bySession(sessionId)
       } --> Observer[List[Generation]] { listing =>
       settle(listing)
-      _generations.set(listing.sortBy(_.submittedAt))
+      listed(listing)
     },
     statusSocket.previews --> _previews.writer
   )

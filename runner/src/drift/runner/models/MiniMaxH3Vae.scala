@@ -6,7 +6,6 @@ import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
-import scala.collection.mutable
 
 /** MiniMax H3's video VAE decoder (diffusers' `AutoencoderKLMiniMaxH3`,
   * sd-cpp's `minimax_h3_vae.hpp`): a ViT over every latent voxel plus learned
@@ -188,36 +187,26 @@ final class MiniMaxH3Vae private (
       val frames: Int,
       val height: Int,
       val widthLatents: Int
-  ) {
+  ) extends WorkBuffers(ops) {
     val patches: Int = frames * height * widthLatents
     val tokens: Int = patches + registers + 1
-    private val held = mutable.ArrayBuffer.empty[Tensor]
-    private def flat(elements: Long): Tensor = {
-      val tensor = ops.allocate(DType.F32, Shape.of(elements))
-      held += tensor
-      tensor
-    }
-    private val rows = tokens.toLong
+    private def flat(elements: Long): Tensor = flat(DType.F32, elements)
+    private val length = tokens.toLong
     val input: Tensor = flat(patches.toLong * paddedChannels)
-    val x: Tensor = flat(rows * width)
-    val normed: Tensor = flat(rows * width)
-    val q: Tensor = flat(rows * width)
-    val k: Tensor = flat(rows * width)
-    val v: Tensor = flat(rows * width)
-    val rotatedQueries: Tensor = flat(rows * width)
-    val rotatedKeys: Tensor = flat(rows * width)
-    val attended: Tensor = flat(rows * width)
-    val projected: Tensor = flat(rows * width)
-    val gate: Tensor = flat(rows * intermediate)
-    val value: Tensor = flat(rows * intermediate)
+    val x: Tensor = flat(length * width)
+    val normed: Tensor = flat(length * width)
+    val q: Tensor = flat(length * width)
+    val k: Tensor = flat(length * width)
+    val v: Tensor = flat(length * width)
+    val rotatedQueries: Tensor = flat(length * width)
+    val rotatedKeys: Tensor = flat(length * width)
+    val attended: Tensor = flat(length * width)
+    val projected: Tensor = flat(length * width)
+    val gate: Tensor = flat(length * intermediate)
+    val value: Tensor = flat(length * intermediate)
     val pixels: Tensor = flat(patches.toLong * outputs)
-    val cache: KvCache =
-      ops.allocateCache(1, (tokens + 15) / 16 * 16, heads, HeadDimension)
-    val pageTable: Tensor = {
-      val tensor = ops.fromInts(Shape.of(1), Array(0))
-      held += tensor
-      tensor
-    }
+    val cache: KvCache = page(tokens, heads, HeadDimension)
+    val pageTable: Tensor = onePage()
     // the rotary angles: the voxels' (t, h, w), each in [−1, 1), then the
     // registers and the zero token at 0
     private val pairs = 3 * RopeFrequencies
@@ -235,27 +224,14 @@ final class MiniMaxH3Vae private (
         2 * math.Pi * position * inverseFrequencies(frequency)
       }
     }
-    val cosines: Tensor = {
-      val tensor = ops.fromFloats(
-        Shape.of(tokens, pairs),
-        angles.map(a => math.cos(a).toFloat)
-      )
-      held += tensor
-      tensor
-    }
-    val sines: Tensor = {
-      val tensor = ops.fromFloats(
-        Shape.of(tokens, pairs),
-        angles.map(a => math.sin(a).toFloat)
-      )
-      held += tensor
-      tensor
-    }
-    def release(): Unit = {
-      held.foreach(ops.release)
-      ops.release(cache.keys)
-      ops.release(cache.values)
-    }
+    val cosines: Tensor = fromFloats(
+      Shape.of(tokens, pairs),
+      angles.map(a => math.cos(a).toFloat)
+    )
+    val sines: Tensor = fromFloats(
+      Shape.of(tokens, pairs),
+      angles.map(a => math.sin(a).toFloat)
+    )
   }
 
   private var buffers = Option.empty[Buffers]
@@ -270,11 +246,6 @@ final class MiniMaxH3Vae private (
         buffers = Some(created)
         created
       }
-
-  private def affine(x: Tensor, weight: Tensor, bias: Tensor, out: Tensor) = {
-    ops.linear(x, weight, out)
-    ops.addRow(out, bias, out)
-  }
 
   /** One tile's pixels: `latents` (`[frames × h × w, latentChannels]`,
     * normalized) through the ViT, `[frames × 4, h × 16, w × 16, 3]` in the
@@ -300,7 +271,7 @@ final class MiniMaxH3Vae private (
     )
     val uploaded = ops.fromFloats(Shape.of(patches, paddedChannels), padded)
     val x = w.x.prefix(tokens, width)
-    try affine(uploaded, embedding, embeddingBias, x.rows(0, patches))
+    try Affine(embedding, embeddingBias)(ops, uploaded, x.rows(0, patches))
     finally ops.release(uploaded)
     ops.copy(registerTokens, x.rows(patches, registers))
     ops.zero(x.rows(patches.toLong + registers, 1))
@@ -349,7 +320,7 @@ final class MiniMaxH3Vae private (
         attended
       )
       val projected = w.projected.prefix(tokens, width)
-      affine(attended.view(tokens, width), b.o, b.oBias, projected)
+      Affine(b.o, b.oBias)(ops, attended.view(tokens, width), projected)
       ops.gatedAdd(x, projected, b.scale1)
       ops.rmsNorm(x, b.norm2, Epsilon, 0f, normed)
       val (gate, value) = (
@@ -360,7 +331,7 @@ final class MiniMaxH3Vae private (
       ops.addRow(gate, b.gateBias, gate)
       ops.addRow(value, b.valueBias, value)
       ops.gated(Activation.Silu, gate, value, gate)
-      affine(gate, b.down, b.downBias, projected)
+      Affine(b.down, b.downBias)(ops, gate, projected)
       ops.gatedAdd(x, projected, b.scale2)
     }
     val voxels = normed.rows(0, patches)
@@ -372,7 +343,7 @@ final class MiniMaxH3Vae private (
       voxels
     )
     val pixels = w.pixels.prefix(patches, outputs)
-    affine(voxels, out, outBias, pixels)
+    Affine(out, outBias)(ops, voxels, pixels)
     val values = ops.toFloats(pixels)
     // token (t, y, x), feature (c, pt, py, px) → pixel (t × 4 + pt, y × 16 +
     // py, x × 16 + px, c)

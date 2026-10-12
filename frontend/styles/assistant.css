@@ -1,0 +1,41 @@
+/* The assistant's conversation: thinking, text and turns. */
+
+/* Assistant page (specs/21-assistant-page.md): chat text keeps the model's
+   line breaks, wraps long prompts, and paints no box of its own inside the
+   turn's card. */
+/* Qualified `.content pre` on purpose: Bulma ships
+   `.content pre { white-space: pre; word-wrap: normal }`, which out-specifies a
+   bare `.assistant-text` — so a model's long paragraph never wrapped, the page
+   stretched to the width of its longest line, and the header's session controls
+   went off the side of the window with it. `anywhere`
+   also breaks the unbroken tokens a chat produces: URLs, base64, long ids. */
+/* The assistant's thinking while it lasts (`ThinkingView`): the last lines of
+   it, however the text wraps — a box of about eight lines whose content sits
+   on its bottom edge, so what overflows is the beginning. */
+.assistant-thinking-tail {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  max-height: 12em;
+  overflow: hidden;
+  padding-left: 0.75em;
+  border-left: 2px solid var(--bulma-border);
+}
+
+.content pre.assistant-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  font-size: inherit;
+}
+.assistant-turn-user {
+  border-left: 3px solid var(--bulma-link, #485fc7);
+}
+.assistant-turn-assistant details > summary {
+  cursor: pointer;
+}

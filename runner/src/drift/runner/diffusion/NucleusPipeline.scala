@@ -1,8 +1,7 @@
 package drift.runner.diffusion
 
-import drift.runner.formats.Gguf
 import drift.runner.models.*
-import drift.runner.ops.Ops
+import drift.runner.ops.{Ops, TensorScope}
 import drift.runner.tensor.*
 import drift.runner.text.{GgufTokenizer, Tokenizer}
 
@@ -42,11 +41,7 @@ final class NucleusPipeline(
   def takesGuidance: Boolean = false
 
   private val encoder = Qwen3.open(ops, textEncoder)
-  private val tokenizer: Tokenizer = {
-    val (file, mapped) = Gguf.open(textEncoder)
-    try GgufTokenizer.read(file)
-    finally mapped.close()
-  }
+  private val tokenizer: Tokenizer = GgufTokenizer.of(textEncoder)
   private val transformer = Nucleus.open(ops, diffusionModel)
   private val autoencoder = WanVae.open(ops, vae)
   private val projection = LatentProjection.named(
@@ -103,11 +98,7 @@ final class NucleusPipeline(
     val channels = transformer.config.latentChannels
     val tokens = gridHeight * gridWidth
     val guided = request.cfgScale != 1f
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def hold(tensor: Tensor) = {
-      held += tensor
-      tensor
-    }
+    val held = new TensorScope(ops)
     val texts = mutable.ArrayBuffer.empty[NucleusText]
     def keep(text: NucleusText) = {
       texts += text
@@ -120,7 +111,7 @@ final class NucleusPipeline(
       )
       val random = new SplittableRandom(request.seed)
       val noise = Array.fill(tokens * channels)(Noise.gaussian(random))
-      val x = hold(ops.fromFloats(Shape.of(tokens, channels), noise))
+      val x = held.fromFloats(Shape.of(tokens, channels), noise)
       val sigmas = request.sigmas.getOrElse(
         FlowSchedule
           .sigmas(request.steps, math.log(request.shift.getOrElse(Shift)))
@@ -146,9 +137,9 @@ final class NucleusPipeline(
         } finally ops.release(encoded)
         start
       }
-      val velocity = hold(ops.allocate(DType.F32, x.shape))
+      val velocity = held.allocate(DType.F32, x.shape)
       val other =
-        unconditional.map(_ => hold(ops.allocate(DType.F32, x.shape)))
+        unconditional.map(_ => held.allocate(DType.F32, x.shape))
       val steps = request.steps - first
       progress(0, steps)
       (first until request.steps).foreach { i =>
@@ -213,7 +204,7 @@ final class NucleusPipeline(
       } finally ops.release(image)
     } finally {
       texts.foreach(_.close())
-      held.foreach(ops.release)
+      held.close()
     }
   }
 

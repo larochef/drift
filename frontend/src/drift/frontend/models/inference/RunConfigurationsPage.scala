@@ -11,6 +11,7 @@ import com.raquo.laminar.api.L.*
 class RunConfigurationsPage(
     service: RunConfigurationService,
     cacheService: CacheService,
+    locationsService: LocationsService,
     downloadService: DownloadService,
     sessionService: SessionService,
     runtimeService: RuntimeService,
@@ -181,6 +182,7 @@ class RunConfigurationsPage(
           val rule = previewRuntime.flatMap(
             RuntimeRule.forRuntime(_, runtimeRules)
           )
+          val lorasFolder = locationsService.now.map(_.loras)
           val resolved = CommandLine
             .resolve(
               rm,
@@ -191,13 +193,13 @@ class RunConfigurationsPage(
                   .get(m.id)
                   .flatMap(_.path)
                   .getOrElse(sourceLabel(m.source)),
-              // The launcher passes the absolute paths; the preview cannot
-              // know the home directory, so it shows the `~` forms.
-              loraModelDirectory = Some("~/.cache/drift/loras"),
+              // The launcher passes the absolute paths; the preview shows the
+              // folder as the backend names it.
+              loraModelDirectory = lorasFolder,
               rule = rule,
               loraAdapters = LoraAdapters
                 .relativePaths(rm.architectureId, loras)
-                .map(path => s"~/.cache/drift/loras/$path")
+                .flatMap(path => lorasFolder.map(folder => s"$folder/$path"))
             )
             .toOption
           val commandLine =

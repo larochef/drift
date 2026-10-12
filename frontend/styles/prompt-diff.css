@@ -1,0 +1,29 @@
+/* A prompt diff and a compaction's summary in the assistant. */
+
+/* A prompt diff (specs/20): what the assistant changed in the working prompt,
+   or what changed between two versions. Translucent tints rather than solid
+   colours, so the words keep the theme's own text colour and read on this
+   dark design as they would on a light one. A div, not a pre: Bulma's
+   `.content pre` forces `white-space: pre` and stretches the page. */
+.prompt-diff {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+.prompt-diff .diff-added {
+  background: rgba(72, 199, 116, 0.28);
+  border-radius: 2px;
+}
+.prompt-diff .diff-removed {
+  background: rgba(241, 70, 104, 0.28);
+  border-radius: 2px;
+  text-decoration: line-through;
+  opacity: 0.8;
+}
+
+/* A compaction's summary (specs/20): it stands for the archived messages
+   before it, so it reads as a different kind of block from a reply. */
+.assistant-turn-summary {
+  border-left: 3px solid rgba(62, 142, 208, 0.7);
+}

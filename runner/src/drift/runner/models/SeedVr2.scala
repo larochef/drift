@@ -5,7 +5,6 @@ import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
-import scala.collection.mutable
 
 /** SeedVR2's transformer shape, read from the checkpoint. */
 final case class SeedVr2Config(
@@ -181,8 +180,7 @@ final class SeedVr2 private (ops: Ops, source: WeightSource)
   private val f = c.hidden.toLong
   private val patch = SeedVr2Config.Patch * SeedVr2Config.Patch
 
-  private val made = mutable.ArrayBuffer.empty[Tensor]
-  private def keep(tensor: Tensor): Tensor = { made += tensor; tensor }
+  private val made = new TensorScope(ops)
 
   /** A stored vector or matrix as F32, on the host. */
   private def hostFloats(name: String): Array[Float] = {
@@ -200,28 +198,20 @@ final class SeedVr2 private (ops: Ops, source: WeightSource)
 
   private def floats(name: String): Tensor = {
     val values = hostFloats(name)
-    keep(ops.fromFloats(Shape.of(values.length), values))
+    made.fromFloats(Shape.of(values.length), values)
   }
 
   private def bf16(shape: Shape, values: Array[Float]): Tensor = {
     val uploaded = ops.fromFloats(shape, values)
     try {
-      val out = keep(ops.allocate(DType.BF16, shape))
+      val out = made.allocate(DType.BF16, shape)
       ops.convert(uploaded, out)
       out
     } finally ops.release(uploaded)
   }
 
-  final private case class Affine(weight: Tensor, bias: Tensor)
-
   private def affineLayer(prefix: String): Affine =
     Affine(source(s"$prefix.weight"), floats(s"$prefix.bias"))
-
-  /** `out = x · weight + bias`. */
-  private def affine(x: Tensor, layer: Affine, out: Tensor): Unit = {
-    ops.linear(x, layer.weight, out)
-    ops.addRow(out, layer.bias, out)
-  }
 
   /** One modality's weights of a layer (`vid`, `txt`, or `all` for both). */
   final private class Branch(prefix: String, tag: String) {
@@ -294,11 +284,9 @@ final class SeedVr2 private (ops: Ops, source: WeightSource)
           weight(stored(i / c.hidden) * c.hidden + i % c.hidden)
         )
       ),
-      keep(
-        ops.fromFloats(
-          Shape.of(rows),
-          Array.tabulate(rows)(r => bias(stored(r)))
-        )
+      made.fromFloats(
+        Shape.of(rows),
+        Array.tabulate(rows)(r => bias(stored(r)))
       )
     )
   }
@@ -314,9 +302,8 @@ final class SeedVr2 private (ops: Ops, source: WeightSource)
     if (c.swiglu) hostFloats("vid_out_ada.out_scale") else Array.empty[Float]
 
   /** No weight: a weightless RMS norm takes it with an offset of 1. */
-  private val noWeight = keep(
-    ops.fromFloats(Shape.of(f), new Array[Float](c.hidden))
-  )
+  private val noWeight =
+    made.fromFloats(Shape.of(f), new Array[Float](c.hidden))
 
   private val rope = Rope(
     SeedVr2Config.RopeTheta,
@@ -344,7 +331,7 @@ final class SeedVr2 private (ops: Ops, source: WeightSource)
     * `out` (`[L, hidden]`): once for every picture and clip.
     */
   def encodeText(embedding: Tensor, out: Tensor): Unit =
-    affine(embedding, textIn, out)
+    textIn(ops, embedding, out)
 
   /** A grid's windows as one attention runs them: the tokens in window order
     * (`order(i)` is the grid's token at window position `i`), the way back,
@@ -433,10 +420,9 @@ final class SeedVr2 private (ops: Ops, source: WeightSource)
       s"velocity: tokens ${tokens.shape}, text ${text.shape}, out ${out.shape} for a $frames × $gridHeight × $gridWidth grid"
     )
     val (heads, d) = (c.heads.toLong, c.headDimension.toLong)
-    val live = mutable.ArrayBuffer.empty[Tensor]
-    def kept(tensor: Tensor): Tensor = { live += tensor; tensor }
+    val live = new TensorScope(ops)
     def rows(n: Long, width: Long) =
-      kept(ops.allocate(DType.F32, Shape.of(n, width)))
+      live.allocate(DType.F32, Shape.of(n, width))
     var cache = Option.empty[KvCache]
     try {
       // ---- the timestep: sines then cosines, through its MLP ----
@@ -447,13 +433,13 @@ final class SeedVr2 private (ops: Ops, source: WeightSource)
         sinesFirst = true,
         singleFrequencies = true
       )
-      val embedded = kept(ops.fromFloats(Shape.of(1, 2L * half), sinusoid))
+      val embedded = live.fromFloats(Shape.of(1, 2L * half), sinusoid)
       val (inner, hidden, modulation) = (rows(1, f), rows(1, f), rows(1, 6 * f))
-      affine(embedded, timeIn, inner)
+      timeIn(ops, embedded, inner)
       ops.activation(Activation.Silu, inner, inner)
-      affine(inner, timeHidden, hidden)
+      timeHidden(ops, inner, hidden)
       ops.activation(Activation.Silu, hidden, hidden)
-      affine(hidden, timeOut, modulation)
+      timeOut(ops, hidden, modulation)
       val time = ops.toFloats(modulation)
       // the timestep's vector `part` (shift, scale, gate of the attention, then
       // of the MLP) plus a layer's own; `one` takes 1 off, for `modulate`
@@ -462,20 +448,18 @@ final class SeedVr2 private (ops: Ops, source: WeightSource)
           time(i * 6 + part) + own(i) - (if (one) 1f else 0f)
         )
       // per layer: the video's six vectors, then the text's
-      val table = kept(
-        ops.fromFloats(
-          Shape.of(c.layers * 12L + 2, f),
-          (blocks.flatMap(block =>
-            Seq(block.video, block.text).flatMap(branch =>
-              (0 until 6).flatMap(part =>
-                vector(branch.modulation(part), part, one = part % 3 == 1)
-              )
+      val table = live.fromFloats(
+        Shape.of(c.layers * 12L + 2, f),
+        (blocks.flatMap(block =>
+          Seq(block.video, block.text).flatMap(branch =>
+            (0 until 6).flatMap(part =>
+              vector(branch.modulation(part), part, one = part % 3 == 1)
             )
-          ) ++ (if (c.swiglu)
-                  vector(outShift, 0, one = false) ++
-                    vector(outScale, 1, one = true)
-                else new Array[Float](2 * c.hidden))).toArray
-        )
+          )
+        ) ++ (if (c.swiglu)
+                vector(outShift, 0, one = false) ++
+                  vector(outScale, 1, one = true)
+              else new Array[Float](2 * c.hidden))).toArray
       )
       def modulationOf(layer: Int, text: Boolean, part: Int): Tensor =
         table.rows(layer * 12L + (if (text) 6 else 0) + part, 1).view(f)
@@ -488,14 +472,14 @@ final class SeedVr2 private (ops: Ops, source: WeightSource)
             gridHeight,
             gridWidth,
             length,
-            kept
+            live.keep
           )
         )
       require(
         layouts.forall(_.tokens == count),
         s"velocity: windows over ${layouts.map(_.tokens)} of $count tokens"
       )
-      val textPositions = kept(
+      val textPositions = live.keep(
         ops.fromInts(
           Shape.of(3, length),
           Array.tabulate(3 * length)(_ % length)
@@ -504,12 +488,12 @@ final class SeedVr2 private (ops: Ops, source: WeightSource)
       val pageSize = (layouts.map(_.largest).max + length + 15) / 16 * 16
       val kv = ops.allocateCache(1, pageSize, c.heads, c.headDimension)
       cache = Some(kv)
-      val pageTable = kept(ops.fromInts(Shape.of(1), Array(0)))
+      val pageTable = live.keep(ops.fromInts(Shape.of(1), Array(0)))
 
       // ---- the streams and their buffers ----
       val video = rows(count, f)
       val words = rows(length, f)
-      affine(tokens, videoIn, video)
+      videoIn(ops, tokens, video)
       ops.copy(text, words)
 
       final class Buffers(n: Long) {
@@ -648,13 +632,13 @@ final class SeedVr2 private (ops: Ops, source: WeightSource)
           )
           ops.add(onText.attended, textPart, onText.attended)
         }
-        affine(onVideo.attended, block.video.out, gathered)
+        block.video.out(ops, onVideo.attended, gathered)
         ops.embedding(gathered, layout.back, onVideo.projected)
         ops.gatedAdd(video, onVideo.projected, part(false, 2))
         if (textual) {
           // the text's outputs, averaged over the windows
           ops.scale(onText.attended, 1f / layout.spans.size, onText.attended)
-          affine(onText.attended, block.text.out, onText.projected)
+          block.text.out(ops, onText.attended, onText.projected)
           ops.gatedAdd(words, onText.projected, part(true, 2))
         }
 
@@ -677,11 +661,11 @@ final class SeedVr2 private (ops: Ops, source: WeightSource)
             table.rows(c.layers * 12L, 1).view(f),
             onVideo.normed
           )
-          affine(onVideo.normed, videoOut, out)
-        case None => affine(video, videoOut, out)
+          videoOut(ops, onVideo.normed, out)
+        case None => videoOut(ops, video, out)
       }
     } finally {
-      live.foreach(ops.release)
+      live.close()
       cache.foreach { kv =>
         ops.release(kv.keys)
         ops.release(kv.values)
@@ -690,7 +674,7 @@ final class SeedVr2 private (ops: Ops, source: WeightSource)
   }
 
   def close(): Unit = {
-    made.foreach(ops.release)
+    made.close()
     source.close()
   }
 }

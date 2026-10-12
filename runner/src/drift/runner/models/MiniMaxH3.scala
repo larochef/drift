@@ -512,7 +512,6 @@ final class MiniMaxH3 private (
 
   /** The transformer this checkpoint is: keyframes or references. */
   val partition: MiniMaxH3Partition = MiniMaxH3Partition.of(path, source)
-  final private case class Affine(weight: Tensor, bias: Tensor)
 
   /** A weight file's layers, as the blocks read them: the transformer's or its
     * ControlNet's.
@@ -521,8 +520,14 @@ final class MiniMaxH3 private (
     val weights = new HybridWeights(ops, source, gguf = true)
     def floats(name: String, count: Long): Tensor =
       weights.floats(name, name, Shape.of(count))
+
+    /** The linear at `prefix`, its LoRA site, and its bias. */
     def affine(prefix: String, outputs: Long): Affine =
-      Affine(source(s"$prefix.weight"), floats(s"$prefix.bias", outputs))
+      Affine(
+        source(s"$prefix.weight"),
+        floats(s"$prefix.bias", outputs),
+        prefix
+      )
   }
 
   private val own = new Layers(source)
@@ -586,8 +591,7 @@ final class MiniMaxH3 private (
     /** `[timesteps, outputs]` for `embedded` (`[timesteps, timeWidth]`). */
     def apply(embedded: TimeEmbedding, out: Tensor): Unit = embedded match {
       case TimeEmbedding.Device(values) =>
-        linear(values, prefix, out)
-        ops.addRow(out, layer.bias, out)
+        layer(ops, values, out, updates)
       case TimeEmbedding.Host(values) =>
         val (weight, bias) = host
         val width = c.timeWidth
@@ -744,7 +748,8 @@ final class MiniMaxH3 private (
             }
           )
         ),
-        layers.floats("control_proj_in.bias", c.hidden)
+        layers.floats("control_proj_in.bias", c.hidden),
+        "control_proj_in"
       )
     }
     val before: Affine =
@@ -880,18 +885,6 @@ final class MiniMaxH3 private (
     updates(x, site, out)
   }
 
-  /** `out = x · weightᵀ + bias` for the layer at `site`, and its LoRA updates.
-    */
-  private def affine(
-      x: Tensor,
-      site: String,
-      layer: Affine,
-      out: Tensor
-  ): Unit = {
-    linear(x, site, out)
-    ops.addRow(out, layer.bias, out)
-  }
-
   private val attention = Attention(
     (1 / math.sqrt(c.headDimension)).toFloat,
     causal = false,
@@ -901,54 +894,32 @@ final class MiniMaxH3 private (
   )
 
   /** Flat buffers for `tokens` rows, grown when too small. */
-  final private class Buffers(val tokens: Int) {
-    private val held = mutable.ArrayBuffer.empty[Tensor]
-    private def flat(dtype: DType, elements: Long): Tensor = {
-      val tensor = ops.allocate(dtype, Shape.of(elements))
-      held += tensor
-      tensor
-    }
+  final private class Buffers(val tokens: Int) extends WorkBuffers(ops) {
     private val inner = c.heads.toLong * c.headDimension
-    private val rows = tokens.toLong
-    val x: Tensor = flat(DType.F32, rows * c.hidden)
-    val normed: Tensor = flat(DType.F32, rows * math.max(c.hidden, c.textWidth))
-    val q: Tensor = flat(DType.F32, rows * inner)
-    val k: Tensor = flat(DType.F32, rows * inner)
-    val v: Tensor = flat(DType.F32, rows * inner)
-    val rotatedQueries: Tensor = flat(DType.F32, rows * inner)
-    val rotatedKeys: Tensor = flat(DType.F32, rows * inner)
-    val attended: Tensor = flat(DType.F32, rows * inner)
-    val projected: Tensor = flat(DType.F32, rows * c.hidden)
-    val gate: Tensor = flat(DType.F32, rows * c.intermediate)
-    val value: Tensor = flat(DType.F32, rows * c.intermediate)
-    val cosines: Tensor = flat(DType.F32, rows * c.ropePairs)
-    val sines: Tensor = flat(DType.F32, rows * c.ropePairs)
+    private val length = tokens.toLong
+    val x: Tensor = flat(DType.F32, length * c.hidden)
+    val normed: Tensor =
+      flat(DType.F32, length * math.max(c.hidden, c.textWidth))
+    val q: Tensor = flat(DType.F32, length * inner)
+    val k: Tensor = flat(DType.F32, length * inner)
+    val v: Tensor = flat(DType.F32, length * inner)
+    val rotatedQueries: Tensor = flat(DType.F32, length * inner)
+    val rotatedKeys: Tensor = flat(DType.F32, length * inner)
+    val attended: Tensor = flat(DType.F32, length * inner)
+    val projected: Tensor = flat(DType.F32, length * c.hidden)
+    val gate: Tensor = flat(DType.F32, length * c.intermediate)
+    val value: Tensor = flat(DType.F32, length * c.intermediate)
+    val cosines: Tensor = flat(DType.F32, length * c.ropePairs)
+    val sines: Tensor = flat(DType.F32, length * c.ropePairs)
     // the ControlNet's: the stream before the first block, its own, its output
-    lazy val pristine: Tensor = flat(DType.F32, rows * c.hidden)
-    lazy val controlStream: Tensor = flat(DType.F32, rows * c.hidden)
-    lazy val controlOut: Tensor = flat(DType.F32, rows * c.hidden)
-    val cache: KvCache =
-      ops.allocateCache(1, (tokens + 15) / 16 * 16, c.heads, c.headDimension)
-    val pageTable: Tensor = {
-      val tensor = ops.fromInts(Shape.of(1), Array(0))
-      held += tensor
-      tensor
-    }
-    def release(): Unit = {
-      held.foreach(ops.release)
-      ops.release(cache.keys)
-      ops.release(cache.values)
-    }
+    lazy val pristine: Tensor = flat(DType.F32, length * c.hidden)
+    lazy val controlStream: Tensor = flat(DType.F32, length * c.hidden)
+    lazy val controlOut: Tensor = flat(DType.F32, length * c.hidden)
+    val cache: KvCache = page(tokens, c.heads, c.headDimension)
+    val pageTable: Tensor = onePage()
   }
 
-  private var buffers = Option.empty[Buffers]
-  private def buffersFor(tokens: Int): Buffers =
-    buffers.filter(_.tokens >= tokens).getOrElse {
-      buffers.foreach(_.release())
-      val created = new Buffers(tokens)
-      buffers = Some(created)
-      created
-    }
+  private val buffers = new GrownBuffers(new Buffers(_))
 
   /** A modulated span of rows: `[start, start + count)` at its table row. */
   final private case class Span(start: Int, count: Int, row: Int)
@@ -1119,20 +1090,20 @@ final class MiniMaxH3 private (
           out
         }
       try
-        affine(
+        net.projectIn(
+          ops,
           padded,
-          "control_proj_in",
-          net.projectIn,
-          controlled.rows(layout.videoStart, layout.videoRows)
+          controlled.rows(layout.videoStart, layout.videoRows),
+          updates
         )
       finally if (padded ne input.rows) ops.release(padded)
-      affine(controlled, "control_blocks.0.before_proj", net.before, out)
+      net.before(ops, controlled, out, updates)
       ops.add(out, pristine, controlled)
     }
     val (b, modulation, after) = net.blocks(index)
     modulation(embedded, table)
     block(b, controlled, Some(table -> spans), rotate = true, w)
-    affine(controlled, s"control_blocks.$index.after_proj", after, out)
+    after(ops, controlled, out, updates)
     val audio = layout.conditions.zip(layout.conditionStarts).map {
       case (condition, (_, audioAt)) =>
         (audioAt, MiniMaxH3Layout.AudioChannels * condition.audioLatents)
@@ -1157,8 +1128,8 @@ final class MiniMaxH3 private (
         out.shape == Shape.of(tokens, c.hidden),
       s"encodeText: text ${text.shape}, out ${out.shape}"
     )
-    val w = buffersFor(tokens.toInt)
-    affine(text, "condition_proj", textIn, out)
+    val w = buffers(tokens.toInt)
+    textIn(ops, text, out, updates)
     refiner.foreach(block(_, out, None, rotate = false, w))
     val normed = w.normed.prefix(tokens, c.hidden)
     ops.rmsNorm(out, refinerNorm, epsilon, 0f, normed)
@@ -1194,9 +1165,9 @@ final class MiniMaxH3 private (
         val time = keep(
           ops.allocate(DType.F32, Shape.of(rows, c.timeWidth.toLong))
         )
-        affine(embedded, "time_embedder.proj_in", timeIn.get, inner)
+        timeIn.get(ops, embedded, inner, updates)
         ops.activation(Activation.Silu, inner, inner)
-        affine(inner, "time_embedder.proj_out", timeOut.get, time)
+        timeOut.get(ops, inner, time, updates)
         // every modulation reads it through a SiLU
         ops.activation(Activation.Silu, time, time)
         TimeEmbedding.Device(time)
@@ -1271,7 +1242,7 @@ final class MiniMaxH3 private (
       (net, input)
     }
     val tokens = layout.rows
-    val w = buffersFor(tokens)
+    val w = buffers(tokens)
     val f = c.hidden.toLong
     val small = mutable.ArrayBuffer.empty[Tensor]
     try {
@@ -1371,34 +1342,24 @@ final class MiniMaxH3 private (
         references.zip(layout.referenceStarts)).foreach {
         case (supplied, (videoAt, audioAt)) =>
           supplied.video.foreach(rows =>
-            affine(
+            videoIn(
+              ops,
               rows,
-              "video_patch_proj",
-              videoIn,
-              stream.rows(videoAt, rows.shape.dimensions.head)
+              stream.rows(videoAt, rows.shape.dimensions.head),
+              updates
             )
           )
           supplied.audio.foreach(rows =>
-            affine(
+            audioIn(
+              ops,
               rows,
-              "audio_patch_proj",
-              audioIn,
-              stream.rows(audioAt, rows.shape.dimensions.head)
+              stream.rows(audioAt, rows.shape.dimensions.head),
+              updates
             )
           )
       }
-      affine(
-        audioRows,
-        "audio_patch_proj",
-        audioIn,
-        stream.rows(layout.audioStart, audio)
-      )
-      affine(
-        videoRows,
-        "video_patch_proj",
-        videoIn,
-        stream.rows(layout.videoStart, video)
-      )
+      audioIn(ops, audioRows, stream.rows(layout.audioStart, audio), updates)
+      videoIn(ops, videoRows, stream.rows(layout.videoStart, video), updates)
       // the rotary angles: (t, h, w) × each axis' frequencies
       val positions = layout.positions
       val pairs = c.ropePairs
@@ -1458,20 +1419,18 @@ final class MiniMaxH3 private (
           start: Int,
           count: Int,
           timestep: Int,
-          site: String,
           layer: Affine,
           out: Tensor
       ) = {
         val part = normed.rows(start, count)
         val row = last.rows(timestep, 1).view(2, f)
         ops.modulate(part, row.rows(1, 1).view(f), row.rows(0, 1).view(f), part)
-        affine(part, site, layer, out)
+        layer(ops, part, out, updates)
       }
       head(
         layout.videoStart,
         video,
         videoRow,
-        "final_layer.video_out",
         videoHead,
         videoOut
       )
@@ -1479,7 +1438,6 @@ final class MiniMaxH3 private (
         layout.audioStart,
         audio,
         audioRow,
-        "final_layer.audio_out",
         audioHead,
         audioOut
       )
@@ -1488,7 +1446,7 @@ final class MiniMaxH3 private (
 
   def close(): Unit = {
     updates.close()
-    buffers.foreach(_.release())
+    buffers.release()
     control.foreach(_.release())
     weights.release()
     source.close()

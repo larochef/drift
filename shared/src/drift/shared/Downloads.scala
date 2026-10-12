@@ -22,6 +22,17 @@ enum DownloadState derives CanEqual {
   }
 }
 
+/** A file being fetched, whatever it is — a model, a LoRA's file, an upscaler:
+  * where its transfer stands and how far it is. What tells one from another is
+  * its key, which each kind of job adds.
+  */
+trait TransferJob {
+  def state: DownloadState
+  def downloadedBytes: Long
+  def totalBytes: Option[Long]
+  def error: Option[String]
+}
+
 /** One download, keyed by the model it fetches — a model has at most one
   * download in flight, so the model id is the job id.
   */
@@ -33,7 +44,7 @@ case class DownloadJob(
     error: Option[String] = None,
     startedAt: Option[Long] = None,
     completedAt: Option[Long] = None
-)
+) extends TransferJob
 object DownloadJob {
   // No discriminator, so `DownloadState` encodes as a plain string. The config
   // must be inline -- the macro needs a constant expression.

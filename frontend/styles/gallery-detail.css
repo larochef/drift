@@ -1,0 +1,397 @@
+/* The gallery's detail view: the picture, its overlays, the batch strip and the parameters. */
+
+/* The full-size view: as wide as the screen allows, the output capped to
+   the viewport so the parameters stay reachable beside it. */
+.gallery-detail .modal-card {
+  width: min(1400px, 95vw);
+  /* A *definite* height, not a maximum: every percentage height below this —
+     the image's included — resolves against it. With `max-height` the chain
+     stayed `auto`, the image sized itself from its width, and the body's
+     hidden overflow cut it off instead of shrinking it. */
+  height: 95vh;
+  max-height: 95vh;
+}
+
+/* The detail view is a height budget: header and footer take what they take,
+   and the image gets the rest. Nothing in it scrolls but the open section of
+   the right column. */
+.gallery-detail .modal-card-body {
+  overflow: hidden;
+}
+
+.gallery-detail .modal-card-body > .columns {
+  height: 100%;
+  /* Bulma's own negative margins are what pushed the card 13 px past the
+     window; the gutter comes back as padding on the columns. */
+  margin: 0;
+}
+
+.gallery-detail .modal-card-body > .columns > .column {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.gallery-detail .modal-card-body > .columns > .column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* What is being looked at sits in the header, beside the title. */
+.gallery-detail .modal-card-head {
+  gap: 0.75rem;
+}
+
+.gallery-detail .modal-card-head .gallery-compare,
+.gallery-detail .modal-card-head .buttons {
+  margin-bottom: 0;
+}
+
+.gallery-batch-count {
+  white-space: nowrap;
+}
+
+.gallery-panel-toggle {
+  white-space: nowrap;
+}
+
+/* The image and the batch beside it, filling what is left. */
+.gallery-media-column,
+.gallery-media-row {
+  display: flex;
+  min-height: 0;
+  /* A zero basis, not `auto`: with `flex: 1` the image sized itself from its
+     own aspect and pushed the card past the window. */
+  flex: 1 1 0;
+}
+
+.gallery-media-column {
+  flex-direction: column;
+}
+
+.gallery-media-row {
+  flex-direction: row;
+  gap: 0.5rem;
+  /* Both halves centred on the same line: a picture shorter than the card and
+     the strip beside it read as one block, rather than hanging from the top
+     over a band of nothing. */
+  align-items: center;
+}
+
+.gallery-media-row .gallery-detail-media {
+  flex: 1 1 0;
+  min-width: 0;
+  /* Definite, so the wrapper's `max-height: 100%` resolves against it. */
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* The batch, down the side: it costs no height, so it cannot fall off the
+   bottom of the window and take the knowledge that this was a batch with it. */
+.gallery-strip.is-vertical {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  /* Centred against the picture, not hung from the top: the strip is as tall
+     as the batch makes it, and sits beside the middle of the image. */
+  justify-content: center;
+  align-items: flex-start;
+  width: auto;
+  max-width: 76px;
+  max-height: 100%;
+  overflow-y: auto;
+  margin-top: 0;
+  gap: 0.35rem;
+}
+
+/* Square thumbnails, cropped from the top: a 2048×1024 frame letterboxed into
+   a strip is a sliver of picture between two bands of nothing, and a crop of
+   the top is where the subject usually is.
+   Their side shrinks with the size of the batch — the height a strip has is
+   the card's, less its head and foot — so eight fit as readably as two. */
+.gallery-strip.is-vertical img,
+.gallery-strip.is-vertical video {
+  width: min(68px, calc((95vh - 240px) / var(--strip-count, 6) - 0.35rem));
+  aspect-ratio: 1 / 1;
+  height: auto;
+  object-fit: cover;
+  object-position: top center;
+  flex: 0 0 auto;
+}
+
+/* One section of the right column at a time, behind tabs. */
+.gallery-detail-side {
+  overflow: hidden;
+}
+
+.detail-tabs {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.detail-tabs .tabs {
+  flex: 0 0 auto;
+  margin-bottom: 0.5rem;
+}
+
+.detail-tabs .tabs a {
+  padding: 0.3rem 0.7rem;
+}
+
+.detail-section-body {
+  min-height: 0;
+  flex: 1 1 0;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+/* Prompts are prose: the label column of the table left them a sliver, and the
+   prompt is what the page is most often read for. Full width, cut short, and
+   the whole of it one click away. */
+.gallery-prose {
+  margin-bottom: 0.6rem;
+}
+
+.gallery-prose-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.gallery-prose-open {
+  padding: 0 0.4rem;
+  height: 1.4rem;
+}
+
+.gallery-prose-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  cursor: zoom-in;
+  border-left: 2px solid hsl(25, 10%, 32%);
+  padding-left: 0.5rem;
+}
+
+.gallery-prose-full {
+  white-space: pre-wrap;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+/* Its own size: the detail card's definite 95vh must not reach this one. */
+.gallery-prose-modal .modal-card {
+  width: min(900px, 90vw);
+  height: auto;
+  max-height: 80vh;
+}
+
+.gallery-detail-media img,
+.gallery-detail-media video {
+  /* The wrapper carries the picture's ratio and is capped by the box; the
+     picture simply fills it. */
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 4px;
+}
+
+/* The box dragged over a detail image to redraw one part of it
+   (specs/27-redraw.md). The wrapper hugs the picture — the overlay is placed
+   in percentages of it, so it holds wherever the browser scales the image to —
+   and the box is drawn light over dark so it reads on any picture. */
+.gallery-selectable {
+  position: relative;
+  display: block;
+  /* Sized by its ratio (set inline from the picture's own dimensions) and
+     capped by the space the layout leaves, so it never exceeds either. */
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+  line-height: 0;
+  user-select: none;
+}
+
+/* Only the result takes a box: the compare view shows the original, which a
+   redraw does not act on. */
+.gallery-selectable.is-selecting {
+  cursor: crosshair;
+}
+
+/* A line of the tile grid under the pointer: pressing it moves the whole grid
+   rather than drawing a box (specs/27-redraw.md). */
+.gallery-selectable.is-on-grid {
+  cursor: move;
+}
+
+/* The handles on the box's corners, and what it says it will cost. Sized in
+   screen pixels so they stay grabbable however far the picture is scaled. */
+.gallery-grip {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.65);
+  border-radius: 2px;
+}
+
+.gallery-grip.is-top-left { left: -6px; top: -6px; cursor: nwse-resize; }
+.gallery-grip.is-top-right { right: -6px; top: -6px; cursor: nesw-resize; }
+.gallery-grip.is-bottom-left { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.gallery-grip.is-bottom-right { right: -6px; bottom: -6px; cursor: nwse-resize; }
+
+.gallery-selection-label {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  margin-bottom: 4px;
+  padding: 1px 6px;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: hsl(35, 20%, 92%);
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 3px;
+}
+
+.gallery-selection {
+  position: absolute;
+  border: 1px dashed rgba(255, 255, 255, 0.95);
+  outline: 1px dashed rgba(0, 0, 0, 0.65);
+  background: rgba(255, 255, 255, 0.12);
+  /* The drag is handled on the picture underneath, which knows where the box
+     is: the overlay must not swallow the press. */
+  pointer-events: none;
+  cursor: move;
+}
+
+/* What a running job has made so far, over the picture it works on: the
+   result as it would be if the job ended now, so the finished tiles show what
+   the model made of them (specs/15-post-hoc-resize.md). Under the tile grid
+   and the selection box, and never in the way of a drag. */
+.gallery-job-picture {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+}
+
+/* The tiles a redraw would run, drawn over the picture (specs/27-redraw.md):
+   one pass of the model each, and the brighter bands where two of them overlap
+   and are feathered together. Under the selection box, clipped to the picture
+   — the last row and column reach a few px past it, since the backend pads the
+   area up to the model's multiple — and never in the way of a drag. */
+.gallery-tiles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.gallery-tile {
+  position: absolute;
+  border: 1px dashed rgba(255, 255, 255, 0.55);
+  outline: 1px dashed rgba(0, 0, 0, 0.35);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* A running job paints its tiles in order, so the picture fills up as it
+   goes: what is done, what is under the model right now, what is still to
+   come. */
+.gallery-tile.is-done {
+  border-color: rgba(72, 199, 142, 0.85);
+  outline-color: rgba(0, 0, 0, 0.3);
+  background: transparent;
+}
+
+
+.gallery-tile.is-running {
+  border: 2px solid rgba(255, 224, 138, 0.95);
+  outline: 1px solid rgba(0, 0, 0, 0.45);
+  background: rgba(255, 224, 138, 0.22);
+  animation: gallery-tile-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes gallery-tile-pulse {
+  0%,
+  100% {
+    background: rgba(255, 224, 138, 0.12);
+  }
+  50% {
+    background: rgba(255, 224, 138, 0.32);
+  }
+}
+
+.gallery-strip {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+  justify-content: center;
+}
+
+.gallery-strip img,
+.gallery-strip video {
+  height: 64px;
+  width: 64px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.gallery-strip .is-selected {
+  border-color: hsl(30, 95%, 52%);
+}
+
+/* Bulma's table paints its own ground (white in the light scheme, under the
+   theme's light text); the modal body's is the one to show through. */
+.gallery-parameters {
+  background-color: transparent;
+}
+
+.gallery-parameters td {
+  vertical-align: top;
+  font-size: 0.85rem;
+  border-color: hsl(25, 10%, 32%);
+}
+
+.gallery-parameters td:first-child {
+  white-space: nowrap;
+}
+
+.gallery-inputs img,
+.gallery-inputs video {
+  max-height: 96px;
+  max-width: 160px;
+  border-radius: 4px;
+}
+
+.gallery-detail-foot {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.gallery-detail-foot .button {
+  margin: 0;
+}
+
+/* The detail view's scale controls and lineage (spec 15). */
+.gallery-scale .field.has-addons:not(.post-field) {
+  flex-wrap: wrap;
+}
+
+.gallery-compare .button.is-selected {
+  z-index: 1;
+}

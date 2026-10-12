@@ -170,12 +170,16 @@ final private[postprocess] class SeedVr2Upscale(
         s"# drift ${job.kind} ${job.id} on runtime '$runtimeId'\n" +
           s"# ${if (video) "video" else "picture"} ${src.fileName} ×${request.scale}, seed ${request.seed}\n"
       )
-      val outcome = sessionManager
-        .startJobServer(
+      // Not stopped by a cancel at once: the runner is first asked to end
+      // the job, which keeps the frames it has made.
+      val outcome = ChosenServer
+        .own(
+          jobs,
+          sessionManager,
+          job,
           request.runConfigurationId,
-          Some(runtimeId),
-          jobs.files.logFileOf(job),
-          line => jobs.noteLine(job, line)
+          runtimeId,
+          stoppedByCancel = false
         )
         .flatMap { server =>
           stopServer = server.stop
@@ -198,9 +202,10 @@ final private[postprocess] class SeedVr2Upscale(
                   if (now - askedAt > SeedVr2Upscale.StopGraceMillis)
                     server.stop()
                 }
-                server.exitCode
+                server.exitCode()
               },
-              nativeJob => jobs.waitingFor(job, server.port, nativeJob)
+              nativeJob => jobs.waitingFor(job, server.port, nativeJob),
+              jobs.report(job, _)
             )
         }
       jobs.doneWaiting(job)

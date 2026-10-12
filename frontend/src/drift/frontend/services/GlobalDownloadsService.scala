@@ -87,41 +87,25 @@ class GlobalDownloadsService(statusSocket: StatusSocketService) {
       conversionJobs.signal
     )
     .map { (models, loras, upscalers, runtimes, conversions) =>
-      val fromModels = models.filter(_.state.isActive).map { job =>
-        ActiveDownload(
-          target = DownloadTarget.Model(job.modelId),
-          kind = "model",
-          label = job.modelId,
-          detail = if (job.state == DownloadState.Queued) "queued" else "",
-          downloadedBytes = job.downloadedBytes,
-          totalBytes = job.totalBytes,
-          queued = job.state == DownloadState.Queued
+      val fromModels =
+        transfers(models, "model")(
+          job => DownloadTarget.Model(job.modelId),
+          _.modelId,
+          _ => ""
         )
-      }
-      val fromLoras = loras.filter(_.state.isActive).map { job =>
-        ActiveDownload(
-          target = DownloadTarget.Lora(job.loraId, job.fileName),
-          kind = "lora",
-          label = job.loraId,
-          detail =
-            if (job.state == DownloadState.Queued) "queued"
-            else job.fileName,
-          downloadedBytes = job.downloadedBytes,
-          totalBytes = job.totalBytes,
-          queued = job.state == DownloadState.Queued
+      // A pair's two files are told apart by their names.
+      val fromLoras =
+        transfers(loras, "lora")(
+          job => DownloadTarget.Lora(job.loraId, job.fileName),
+          _.loraId,
+          _.fileName
         )
-      }
-      val fromUpscalers = upscalers.filter(_.state.isActive).map { job =>
-        ActiveDownload(
-          target = DownloadTarget.Upscaler(job.upscalerId),
-          kind = "upscaler",
-          label = job.upscalerId,
-          detail = if (job.state == DownloadState.Queued) "queued" else "",
-          downloadedBytes = job.downloadedBytes,
-          totalBytes = job.totalBytes,
-          queued = job.state == DownloadState.Queued
+      val fromUpscalers =
+        transfers(upscalers, "upscaler")(
+          job => DownloadTarget.Upscaler(job.upscalerId),
+          _.upscalerId,
+          _ => ""
         )
-      }
       val fromRuntimes = runtimes.filter(_.state.isActive).map { job =>
         val stateText = job.state match {
           case RuntimeInstallState.Queued     => "queued"
@@ -160,6 +144,28 @@ class GlobalDownloadsService(statusSocket: StatusSocketService) {
         )
       }
       fromModels ++ fromLoras ++ fromUpscalers ++ fromRuntimes ++ fromConversions
+    }
+
+  /** The rows of the transfers under way of one kind: each job's key says what
+    * a cancel stops and what the row is called, `transferring` what it shows
+    * beside its bar while it is not waiting its turn.
+    */
+  private def transfers[J <: TransferJob](jobs: List[J], kind: String)(
+      target: J => DownloadTarget,
+      label: J => String,
+      transferring: J => String
+  ): List[ActiveDownload] =
+    jobs.filter(_.state.isActive).map { job =>
+      val queued = job.state == DownloadState.Queued
+      ActiveDownload(
+        target = target(job),
+        kind = kind,
+        label = label(job),
+        detail = if (queued) "queued" else transferring(job),
+        downloadedBytes = job.downloadedBytes,
+        totalBytes = job.totalBytes,
+        queued = queued
+      )
     }
 
   private val cancelModelFn = ApiClient.stream(drift.shared.cancelDownload)

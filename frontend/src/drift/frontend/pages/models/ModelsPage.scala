@@ -29,6 +29,7 @@ class ModelsPage(
     architectureService: ArchitectureService,
     modelService: ModelService,
     cacheService: CacheService,
+    locationsService: LocationsService,
     downloadService: DownloadService,
     sessionService: SessionService,
     runtimeService: RuntimeService,
@@ -70,6 +71,7 @@ class ModelsPage(
     RunConfigurationsPage(
       runConfigurationService,
       cacheService,
+      locationsService,
       downloadService,
       sessionService,
       runtimeService,

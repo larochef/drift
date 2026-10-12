@@ -155,8 +155,8 @@ Per model, on the drift runner:
 
 ## Results
 
-- Each submission shows its queue position, then the sampling progress from the
-  log, then the image or video. Wan 2.2 with two experts shows a bar per expert,
+- Each submission shows its queue position, then the sampling progress, then
+  the image or video. Wan 2.2 with two experts shows a bar per expert,
   marked "high noise" then "low noise"; a bar moves once a step is done, which
   takes minutes for a long or large video (the log gives the token count and
   each expert's steps before the first one). After the last step an LTX 2.5

@@ -51,13 +51,14 @@ object HistoryService {
   }
 }
 
-/** The gallery's read side (`specs/12-gallery.md`): the day index and the days
-  * loaded so far, keyed by date. A day is loaded on demand — the layout on disk
-  * is the paging — and a generation that completes while the gallery is open is
-  * folded into its day straight off the status socket instead of re-fetching
-  * the listing.
+/** The gallery's read side (`specs/12-gallery.md`): the day index and which
+  * days are loaded so far. A day is loaded on demand — the layout on disk is
+  * the paging — and what a loaded day holds is a view of the generations the
+  * page knows (`GenerationStore`): a generation that completes while the
+  * gallery is open is in its day without the listing being fetched again.
   */
-class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
+class HistoryService(statusSocket: StatusSocketService, store: GenerationStore)
+    extends ServiceErrors {
   import HistoryService.{Command, Event}
 
   private val daysFn = ApiClient.stream(listHistoryDays)
@@ -76,10 +77,21 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
   private val importVideoFn =
     ApiClient.streamWithFailureReason(importHistoryVideo, within = 30.minutes)
 
+  /** The index as the backend listed it: every day and how many it holds. */
   private val _days = Var(List.empty[HistoryDay])
 
-  /** Every day with recorded generations, newest first. */
-  val days: Signal[List[HistoryDay]] = _days.signal
+  /** The days whose listing has been read. */
+  private val _loadedDays = Var(Set.empty[String])
+
+  private def byDay(
+      all: Map[String, Generation],
+      loaded: Set[String]
+  ): Map[String, List[Generation]] = {
+    val filed = all.values.toList
+      .filter(GenerationStore.recorded)
+      .groupBy(g => GenerationStore.dayOf(g).getOrElse(""))
+    loaded.map(date => date -> newestFirst(filed.getOrElse(date, Nil))).toMap
+  }
 
   /** Whether the index has answered at least once — an empty gallery must say
     * "nothing yet", not look like it is still loading.
@@ -87,16 +99,40 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
   private val _daysLoaded = Var(false)
   val daysLoaded: Signal[Boolean] = _daysLoaded.signal
 
-  /** The loaded days' generations, each list newest first. */
-  private val _generationsByDay = Var(Map.empty[String, List[Generation]])
+  /** The loaded days' generations, each list newest first; a loaded day that
+    * holds nothing any more is there, empty.
+    */
   val generationsByDay: Signal[Map[String, List[Generation]]] =
-    _generationsByDay.signal
+    store.byId
+      .combineWith(_loadedDays.signal)
+      .map(byDay)
+      .distinct
+
+  private def generationsByDayNow: Map[String, List[Generation]] =
+    byDay(store.now, _loadedDays.now())
+
+  /** Every day with recorded generations, newest first: a loaded day counts
+    * what it holds now, and is gone once it holds nothing.
+    */
+  val days: Signal[List[HistoryDay]] =
+    _days.signal
+      .combineWith(generationsByDay)
+      .map((index, loaded) =>
+        index.flatMap(day =>
+          loaded.get(day.date) match {
+            case None       => Some(day)
+            case Some(Nil)  => None
+            case Some(list) => Some(day.copy(count = list.size))
+          }
+        )
+      )
+      .distinct
 
   private val _loadingDays = Var(Set.empty[String])
   val loadingDays: Signal[Set[String]] = _loadingDays.signal
 
-  /** Generations already folded from the socket — every push repeats a
-    * session's whole list, so the fold must be idempotent per id.
+  /** Generations already seen on a day that is not loaded — every push repeats
+    * a session's whole list, and the index is re-read once for each.
     */
   private var folded = Set.empty[String]
 
@@ -118,44 +154,26 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
     */
   def adopt(generation: Generation): Unit = fold(generation)
 
-  /** A generation whose record changed — its project — in place, where its day
-    * is loaded.
-    */
-  private def replace(generation: Generation): Unit =
-    _generationsByDay.update(
-      _.view
-        .mapValues(_.map(g => if (g.id == generation.id) generation else g))
-        .toMap
-    )
+  /** A generation whose record changed — its project. */
+  private def replace(generation: Generation): Unit = store.put(generation)
 
-  /** A completion pushed by the socket. A loaded day takes the generation in
-    * place; a day that is not loaded (or not yet listed) only needs the index
+  /** A generation that has just been recorded: an import, a derived entry, a
+    * completion pushed by the socket. Its day shows it at once when it is
+    * loaded; a day that is not loaded (or not yet listed) only needs the index
     * re-read — one directory walk — so that its count is right when it is
     * opened, whose listing then reads the sidecar like any other.
     */
-  private def fold(generation: Generation): Unit =
-    generation.outputs.headOption.map(_.date).foreach { date =>
-      if (!folded.contains(generation.id)) {
+  private def fold(generation: Generation): Unit = {
+    // Never over what is held: the socket's pushes are the store's to take
+    // (`GenerationStore.effects`), and a job's result may be an older copy.
+    store.adopt(generation)
+    GenerationStore.dayOf(generation).foreach { date =>
+      if (!_loadedDays.now()(date) && !folded.contains(generation.id)) {
         folded += generation.id
-        _generationsByDay.now().get(date) match {
-          case Some(list) if list.exists(_.id == generation.id) => ()
-          case Some(list)                                       =>
-            _generationsByDay.update(
-              _ + (date -> newestFirst(generation :: list))
-            )
-            if (_days.now().exists(_.date == date))
-              _days.update(
-                _.map(day =>
-                  if (day.date == date) day.copy(count = day.count + 1) else day
-                )
-              )
-            else
-              _days
-                .update(days => byDateDescending(HistoryDay(date, 1) :: days))
-          case None => push(Command.LoadDays)
-        }
+        push(Command.LoadDays)
       }
     }
+  }
 
   val effects: Modifier[HtmlElement] = Seq(
     cmdBus.events
@@ -170,9 +188,9 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
         // The service outlives the page: a day loaded on an earlier visit is
         // shown at once, then refreshed in place — no flash of nothing — and
         // one that has vanished from disk is dropped.
-        _generationsByDay.now().keys.foreach { date =>
+        _loadedDays.now().foreach { date =>
           if (listing.exists(_.date == date)) push(Command.LoadDay(date))
-          else _generationsByDay.update(_ - date)
+          else _loadedDays.update(_ - date)
         }
       case Failure(err) => reportFailure("Listing the history", err)
     },
@@ -185,7 +203,14 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
       case Success((date, listing)) =>
         clearError()
         _loadingDays.update(_ - date)
-        _generationsByDay.update(_ + (date -> newestFirst(listing)))
+        // The listing is the day as the disk has it.
+        store.settle(
+          g =>
+            GenerationStore.recorded(g) &&
+              GenerationStore.dayOf(g).contains(date),
+          listing
+        )
+        _loadedDays.update(_ + date)
       case Failure(err) =>
         // The date is not recoverable from the failure; a retry re-marks it.
         _loadingDays.set(Set.empty)
@@ -197,7 +222,7 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
     cmdBus.events
       .collect { case Command.LoadGeneration(generationId) => generationId }
       .filterNot(generationId =>
-        _generationsByDay.now().values.exists(_.exists(_.id == generationId))
+        generationsByDayNow.values.exists(_.exists(_.id == generationId))
       )
       .flatMapMerge(generationId => dayOfFn(generationId).recoverToTry) -->
       Observer[Try[Option[HistoryDay]]] {
@@ -207,7 +232,7 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
           // since it did; the listing needs it to render the day at all.
           if (!_days.now().exists(_.date == day.date))
             _days.update(days => byDateDescending(day :: days))
-          if (!_generationsByDay.now().contains(day.date))
+          if (!_loadedDays.now()(day.date))
             push(Command.LoadDay(day.date))
         case Success(None) => clearError()
         case Failure(err)  =>
@@ -224,20 +249,14 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
       ) --> Observer[Try[(String, String, Boolean)]] {
       case Success((date, generationId, true)) =>
         clearError()
-        val remaining = _generationsByDay
-          .now()
-          .get(date)
-          .map(_.filterNot(_.id == generationId))
-        remaining match {
-          case Some(Nil)  => _generationsByDay.update(_ - date)
-          case Some(list) => _generationsByDay.update(_ + (date -> list))
-          case None       => ()
-        }
-        _days.update(_.flatMap { day =>
-          if (day.date != date) Some(day)
-          else if (day.count <= 1) None
-          else Some(day.copy(count = day.count - 1))
-        })
+        store.forget(List(generationId))
+        // A day that is not loaded only has its count to keep right.
+        if (!_loadedDays.now()(date))
+          _days.update(_.flatMap { day =>
+            if (day.date != date) Some(day)
+            else if (day.count <= 1) None
+            else Some(day.copy(count = day.count - 1))
+          })
         evtBus.writer.onNext(Event.Deleted(generationId))
       case Success((_, generationId, false)) =>
         reportFailure(
@@ -296,10 +315,7 @@ class HistoryService(statusSocket: StatusSocketService) extends ServiceErrors {
         // A free-play result has no sidecar and lives under `outputs/scratch/`
         // (`specs/22-…`): folding it in would invent a day called "scratch".
         // Keeping it clears the flag, and then it folds like any other.
-        .filter(g =>
-          g.status == GenerationStatus.Completed && g.outputs.nonEmpty &&
-            !g.scratch
-        )
+        .filter(GenerationStore.recorded)
         .foreach(fold)
     )
   )

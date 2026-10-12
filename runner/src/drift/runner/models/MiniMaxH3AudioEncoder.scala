@@ -1,12 +1,11 @@
 package drift.runner.models
 
 import drift.runner.formats.FormatException
-import drift.runner.ops.{Activation, Ops}
+import drift.runner.ops.*
 import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
-import scala.collection.mutable
 
 /** MiniMax H3's audio encoder (diffusers' `AutoencoderKLMiniMaxH3Audio.encode`,
   * ComfyUI's `MiniMaxH3AudioVAE.encode`), from the audio VAE's `encoder`,
@@ -178,28 +177,25 @@ final class MiniMaxH3AudioEncoder private (
 
   /** `x` (`[T, width]`) through `pre_block`: `[T, channels]`. */
   private def preBlock(x: Tensor): Tensor = {
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def keep(tensor: Tensor) = { held += tensor; tensor }
+    val held = new TensorScope(ops)
     try {
       val length = sizes(x)._1
-      val normed = keep(layerNorm(x, norm1))
+      val normed = held.keep(layerNorm(x, norm1))
       val Seq(q, k, v) = qkv.map { weight =>
-        val out = keep(ops.allocate(DType.F32, Shape.of(length, width)))
+        val out = held.allocate(DType.F32, Shape.of(length, width))
         ops.linear(normed, weight, out)
         out
       }
       ops.addRow(q, queryBias, q)
       ops.addRow(v, valueBias, v)
-      val causal = keep(
-        ops.fromFloats(
-          Shape.of(heads, length, length),
-          Array.tabulate((heads * length * length).toInt) { i =>
-            val pair = i % (length * length)
-            if (pair % length > pair / length) -1e30f else 0f
-          }
-        )
+      val causal = held.fromFloats(
+        Shape.of(heads, length, length),
+        Array.tabulate((heads * length * length).toInt) { i =>
+          val pair = i % (length * length)
+          if (pair % length > pair / length) -1e30f else 0f
+        }
       )
-      val attended = keep(ops.allocate(DType.F32, Shape.of(length, width)))
+      val attended = held.allocate(DType.F32, Shape.of(length, width))
       def headed(t: Tensor) = t.view(length, 1, heads, headWidth)
       ops.shortAttention(
         headed(q),
@@ -210,16 +206,18 @@ final class MiniMaxH3AudioEncoder private (
         Some(causal)
       )
       val h = affine(attended, (pooledProjection, pooledBias))
-      val projected = keep(affine(keep(layerNorm(x, norm3)), projection))
+      val projected =
+        held.keep(affine(held.keep(layerNorm(x, norm3)), projection))
       ops.add(h, projected, h)
-      val m = keep(layerNorm(h, norm2))
-      val inner = keep(layerNorm(m, mlpNorm))
-      val (gate, value) = (keep(affine(inner, w0)), keep(affine(inner, w1)))
+      val m = held.keep(layerNorm(h, norm2))
+      val inner = held.keep(layerNorm(m, mlpNorm))
+      val (gate, value) =
+        (held.keep(affine(inner, w0)), held.keep(affine(inner, w1)))
       ops.gated(Activation.GeluTanh, gate, value, gate)
-      val mlp = keep(affine(gate, w2))
+      val mlp = held.keep(affine(gate, w2))
       ops.add(h, mlp, h)
       h
-    } finally held.foreach(ops.release)
+    } finally held.close()
   }
 
   /** One channel's normalized latents `[⌈samples / hop⌉, channels]` (row-major)

@@ -7,7 +7,6 @@ import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
-import scala.collection.mutable
 
 /** LLaDA-Image's transformer, read off its weights (released: 3840 wide, 30
   * heads of 128, 30 blocks after 2 refiner blocks of each kind, MLPs of 10240,
@@ -145,14 +144,9 @@ final class LladaImage private (ops: Ops, source: WeightSource)
     weights.floats(name, name, Shape.of(count))
   private def matrix(name: String): Tensor = source(s"$name.weight")
 
-  final private case class Affine(weight: Tensor, bias: Tensor)
   private def affineLayer(name: String): Affine = {
     val weight = matrix(name)
     Affine(weight, floats(s"$name.bias", weight.shape.dimensions.head))
-  }
-  private def affine(x: Tensor, layer: Affine, out: Tensor): Unit = {
-    ops.linear(x, layer.weight, out)
-    ops.addRow(out, layer.bias, out)
   }
 
   final private class Block(prefix: String, modulated: Boolean) {
@@ -205,17 +199,13 @@ final class LladaImage private (ops: Ops, source: WeightSource)
   )
   private val attention =
     new PlainAttention(ops, c.heads, c.heads, c.headDimension)
+  private val rotary =
+    new RotaryAttention(ops, c.heads, c.heads, c.headDimension, rope)
 
   private def padded(count: Int) = (count + Multiple - 1) / Multiple * Multiple
 
   /** Buffers for sequences of up to `tokens`. */
-  final private class Buffers(val tokens: Int) {
-    private val held = mutable.ArrayBuffer.empty[Tensor]
-    private def rows(dtype: DType, count: Long, columns: Long): Tensor = {
-      val tensor = ops.allocate(dtype, Shape.of(count, columns))
-      held += tensor
-      tensor
-    }
+  final private class Buffers(val tokens: Int) extends WorkBuffers(ops) {
     val x: Tensor = rows(DType.F32, tokens, width)
     val normed: Tensor = rows(DType.F32, tokens, width)
     val q: Tensor = rows(DType.F32, tokens, width)
@@ -228,16 +218,8 @@ final class LladaImage private (ops: Ops, source: WeightSource)
     val mlpGate: Tensor = rows(DType.F32, tokens, c.intermediate)
     val mlpUp: Tensor = rows(DType.F32, tokens, c.intermediate)
     val positions: Tensor = rows(DType.I32, 3, tokens)
-    def release(): Unit = held.foreach(ops.release)
   }
-  private var buffers = Option.empty[Buffers]
-  private def buffersFor(tokens: Int): Buffers =
-    buffers.filter(_.tokens >= tokens).getOrElse {
-      buffers.foreach(_.release())
-      val created = new Buffers(tokens)
-      buffers = Some(created)
-      created
-    }
+  private val buffers = new GrownBuffers(new Buffers(_))
 
   /** A modulation of the rows `[first, first + count)`: four vectors (scale,
     * gate, scale, gate), the gates through `tanh` already.
@@ -254,7 +236,6 @@ final class LladaImage private (ops: Ops, source: WeightSource)
   ): Unit = {
     def first(t: Tensor, columns: Long = width) =
       t.view(t.shape.elementCount).prefix(tokens, columns)
-    val (heads, d) = (c.heads.toLong, c.headDimension.toLong)
     val (x, normed, projected) =
       (first(w.x), first(w.normed), first(w.projected))
     def scaled(part: Int): Unit = {
@@ -281,33 +262,25 @@ final class LladaImage private (ops: Ops, source: WeightSource)
         )
     }
     scaled(0)
-    val (q, k, v) = (first(w.q), first(w.k), first(w.v))
-    ops.linears(normed, Seq(block.query, block.key, block.value), Seq(q, k, v))
-    Seq(q, k).foreach(t =>
-      ops.rmsNorm(
-        t.view(tokens * heads, d),
-        headOnes,
-        c.epsilon,
-        0f,
-        t.view(tokens * heads, d)
-      )
-    )
-    val (rotatedQueries, rotatedKeys) =
-      (first(w.rotatedQueries), first(w.rotatedKeys))
-    ops.rope(
-      q.view(tokens, heads, d),
+    rotary.projected(
+      normed,
+      block.query,
+      block.key,
+      block.value,
+      headOnes,
+      headOnes,
+      c.epsilon,
       positions,
-      rope,
-      rotatedQueries.view(tokens, heads, d)
+      attention,
+      block.output,
+      first(w.q),
+      first(w.k),
+      first(w.v),
+      first(w.rotatedQueries),
+      first(w.rotatedKeys),
+      first(w.attended),
+      projected
     )
-    ops.rope(
-      k.view(tokens, heads, d),
-      positions,
-      rope,
-      rotatedKeys.view(tokens, heads, d)
-    )
-    attention(rotatedQueries, rotatedKeys, v, first(w.attended))
-    ops.linear(first(w.attended), block.output, projected)
     residual(1)
     scaled(2)
     val (gate, up) =
@@ -338,7 +311,7 @@ final class LladaImage private (ops: Ops, source: WeightSource)
         0f,
         normed
       )
-      affine(normed, layer, out.rows(0, supplied))
+      layer(ops, normed, out.rows(0, supplied))
       (supplied until total).foreach(i =>
         ops.copy(pad, out.rows(i, 1).view(width))
       )
@@ -383,7 +356,7 @@ final class LladaImage private (ops: Ops, source: WeightSource)
     val length = padded(supplied)
     require(editing || semantic.isEmpty, "semantic tokens are an edit's")
     val copies = if (editing) 2 else 1
-    val w = buffersFor(
+    val w = buffers(
       math.max(
         copies * length,
         semantic.fold(0)(s => padded(s.shape.dimensions.head.toInt))
@@ -438,12 +411,9 @@ final class LladaImage private (ops: Ops, source: WeightSource)
     )
   }
 
-  private val small = mutable.ArrayBuffer.empty[Tensor]
-  private def vector(rows: Long, elements: Long): Tensor = {
-    val tensor = ops.allocate(DType.F32, Shape.of(rows, elements))
-    small += tensor
-    tensor
-  }
+  private val small = new TensorScope(ops)
+  private def vector(rows: Long, elements: Long): Tensor =
+    small.allocate(DType.F32, Shape.of(rows, elements))
   private val timeInner = vector(1, timeIn.bias.shape.elementCount)
   private val time = vector(1, c.timeWidth)
   private val timeSilu = vector(1, c.timeWidth)
@@ -458,15 +428,15 @@ final class LladaImage private (ops: Ops, source: WeightSource)
       Shape.of(1, c.timeWidth),
       LladaImage.sinusoid(timestep, c.timeWidth)
     )
-    try affine(sinusoid, timeIn, timeInner)
+    try timeIn(ops, sinusoid, timeInner)
     finally ops.release(sinusoid)
     ops.activation(Activation.Silu, timeInner, timeInner)
-    affine(timeInner, timeOut, time)
+    timeOut(ops, timeInner, time)
     modulatedBlocks.zipWithIndex.foreach((block, i) =>
-      affine(time, block.modulation.get, raw.rows(i, 1))
+      block.modulation.get(ops, time, raw.rows(i, 1))
     )
     ops.activation(Activation.Silu, time, timeSilu)
-    affine(timeSilu, finalModulation, finalScale)
+    finalModulation(ops, timeSilu, finalScale)
     val parts = ops.toFloats(raw)
     parts.indices.foreach { i =>
       if (i / c.hidden % 2 == 1) parts(i) = math.tanh(parts(i)).toFloat
@@ -502,14 +472,16 @@ final class LladaImage private (ops: Ops, source: WeightSource)
     val semantics =
       condition.semantic.fold(0)(_._1.shape.dimensions.head.toInt)
     val tokens = images * each + captions + semantics
-    val w = buffersFor(tokens)
-    val made = mutable.ArrayBuffer.empty[Tensor]
+    val w = buffers(tokens)
+    val made = new TensorScope(ops)
     try {
       val (noisy, noisyFinal) = modulations(timestep)
-      made ++= Seq(noisy, noisyFinal)
+      made.keep(noisy)
+      made.keep(noisyFinal)
       val clean = Option.when(condition.editing) {
         val both = modulations(0f)
-        made ++= Seq(both._1, both._2)
+        made.keep(both._1)
+        made.keep(both._2)
         both
       }
       def parts(of: Tensor, block: Int) = of.rows(4L * block, 4)
@@ -534,7 +506,7 @@ final class LladaImage private (ops: Ops, source: WeightSource)
           )
         else Seq(1 + condition.captionLength)
       supplied.zipWithIndex.foreach { (image, i) =>
-        affine(image, imageIn, stream.rows(i.toLong * each, grid.tokens))
+        imageIn(ops, image, stream.rows(i.toLong * each, grid.tokens))
         (grid.tokens until each).foreach(p =>
           ops.copy(imagePad, stream.rows(i.toLong * each + p, 1).view(width))
         )
@@ -627,15 +599,15 @@ final class LladaImage private (ops: Ops, source: WeightSource)
       val normed = w.normed.view(w.tokens * width).prefix(grid.tokens, width)
       ops.layerNorm(rows, None, None, 1e-6f, normed)
       ops.modulate(normed, noisyFinal, zero, normed)
-      affine(normed, finalOut, out)
+      finalOut(ops, normed, out)
       ops.scale(out, -1f, out)
-    } finally made.foreach(ops.release)
+    } finally made.close()
   }
 
   def close(): Unit = {
     attention.close()
-    small.foreach(ops.release)
-    buffers.foreach(_.release())
+    small.close()
+    buffers.release()
     weights.release()
     source.close()
   }
@@ -643,26 +615,17 @@ final class LladaImage private (ops: Ops, source: WeightSource)
 
 object LladaImage {
 
-  private def bf16(value: Float): Float = {
-    val bits = java.lang.Float.floatToRawIntBits(value)
-    java.lang.Float.intBitsToFloat(
-      ((bits + 0x7fff + ((bits >>> 16) & 1)) >>> 16) << 16
-    )
-  }
-
   /** The timestep's sinusoid as the released pipeline computes it in BF16: σ
     * rounded, times 1000 rounded, the product with each frequency in F32, its
     * cosine (first half) and sine (second) rounded.
     */
-  def sinusoid(timestep: Float, channels: Int): Array[Float] = {
-    val half = channels / 2
-    val level = bf16(bf16(timestep) * 1000f)
-    Array.tabulate(2 * half) { i =>
-      val frequency = math.exp(-math.log(10000) * (i % half) / half).toFloat
-      val angle = (level * frequency).toDouble
-      bf16((if (i < half) math.cos(angle) else math.sin(angle)).toFloat)
-    }
-  }
+  def sinusoid(timestep: Float, channels: Int): Array[Float] =
+    TimestepSinusoid(
+      Bf16.round(Bf16.round(timestep) * 1000f),
+      channels / 2,
+      singleFrequencies = true,
+      bf16 = true
+    )
 
   def open(ops: Ops, path: Path): LladaImage = {
     val source = WeightSource.open(ops, path)

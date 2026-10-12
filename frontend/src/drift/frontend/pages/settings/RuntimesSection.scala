@@ -1,7 +1,7 @@
 package drift.frontend.pages.settings
 
 import drift.frontend.components.Component
-import drift.frontend.services.RuntimeService
+import drift.frontend.services.{LocationsService, RuntimeService}
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -13,7 +13,10 @@ import com.raquo.laminar.api.L.*
   * backend, the matching TheRock build being the backend's job — or adopts a
   * directory that is already on disk.
   */
-class RuntimesSection(runtimeService: RuntimeService) extends Component {
+class RuntimesSection(
+    runtimeService: RuntimeService,
+    locationsService: LocationsService
+) extends Component {
 
   /** Per-runtime TheRock picks on the runtime rows (for a "Change ROCm" or an
     * upgrade whose release declares another ROCm), and which rows have the
@@ -74,6 +77,7 @@ class RuntimesSection(runtimeService: RuntimeService) extends Component {
                 selection,
                 releases,
                 runtimeService,
+                locationsService,
                 theRockPicks,
                 changeRocmOpen,
                 gfxTarget

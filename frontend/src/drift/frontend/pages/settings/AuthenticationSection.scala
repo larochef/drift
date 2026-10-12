@@ -1,7 +1,7 @@
 package drift.frontend.pages.settings
 
 import drift.frontend.components.*
-import drift.frontend.services.AuthTokenService
+import drift.frontend.services.{AuthTokenService, LocationsService}
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -10,8 +10,10 @@ import org.scalajs.dom.window
 /** The API tokens drift downloads with: the saved ones, which is active per
   * provider, and a modal to add one — like adding a runtime.
   */
-class AuthenticationSection(authTokenService: AuthTokenService)
-    extends Component {
+class AuthenticationSection(
+    authTokenService: AuthTokenService,
+    locationsService: LocationsService
+) extends Component {
 
   /** The add modal's fields outlive the modal, so closing and reopening does
     * not lose what was typed; saving clears them and closes it.
@@ -144,12 +146,16 @@ class AuthenticationSection(authTokenService: AuthTokenService)
     ),
     p(
       cls := "text-secondary is-size-7",
-      "API tokens for gated downloads (Civitai answers 401 without one) and " +
-        "private or gated repositories on HuggingFace and ModelScope. Stored " +
-        "as plain text under ~/.config/drift/auth-tokens/. The active token " +
-        "applies immediately — no restart; with none active, the " +
-        "CIVITAI_API_TOKEN / HF_TOKEN / MODELSCOPE_API_TOKEN environment " +
-        "variables are the fallback."
+      child.text <-- locationsService
+        .shown(_.authTokens)
+        .map(folder =>
+          "API tokens for gated downloads (Civitai answers 401 without one) and " +
+            "private or gated repositories on HuggingFace and ModelScope. Stored " +
+            s"as plain text under $folder/. The active token " +
+            "applies immediately — no restart; with none active, the " +
+            "CIVITAI_API_TOKEN / HF_TOKEN / MODELSCOPE_API_TOKEN environment " +
+            "variables are the fallback."
+        )
     ),
     children <-- authTokenService.tokens
       .combineWith(authTokenService.selection)

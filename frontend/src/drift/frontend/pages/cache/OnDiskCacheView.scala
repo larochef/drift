@@ -21,6 +21,7 @@ class OnDiskCacheView(
     /** The URL of a cache's tab, by label. */
     kindUrl: String => String,
     cacheService: CacheService,
+    locationsService: LocationsService,
     modelService: ModelService,
     architectureService: ArchitectureService,
     runConfigurationService: RunConfigurationService,
@@ -62,7 +63,8 @@ class OnDiskCacheView(
       }
 
   /** One modal for the whole view; a row's Convert… opens it on that file. */
-  private val convertModal = ConvertModelModal(conversionService, knownFamilies)
+  private val convertModal =
+    ConvertModelModal(conversionService, locationsService, knownFamilies)
 
   /** A weight file sd-cpp can read: safetensors or GGUF, whole, not a LoRA. */
   private def convertible(entry: CachedFileEntry): Boolean = {
@@ -312,21 +314,33 @@ class OnDiskCacheView(
           case CachedFileKind.Local =>
             p(
               cls := "text-secondary is-size-7",
-              "Local models live under ~/.cache/drift/models — files placed there (or downloads whose sidecar is gone) show up here."
+              child.text <-- locationsService
+                .shown(_.models)
+                .map(folder =>
+                  s"Local models live under $folder — files placed there (or downloads whose sidecar is gone) show up here."
+                )
             )
           case CachedFileKind.ModelScope =>
             p(
               cls := "text-secondary is-size-7",
-              "ModelScope downloads live under ~/.cache/drift/modelscope, " +
-                "one folder per repository. Deleting a row removes that file."
+              child.text <-- locationsService
+                .shown(_.modelScope)
+                .map(folder =>
+                  s"ModelScope downloads live under $folder, " +
+                    "one folder per repository. Deleting a row removes that file."
+                )
             )
           case CachedFileKind.Lora =>
             p(
               cls := "text-secondary is-size-7",
-              "LoRAs live under ~/.cache/drift/loras, one folder per LoRA. " +
-                "Deleting a row removes the whole folder — a wan 2.2 " +
-                "pair's two files travel together. An orphan folder can " +
-                "be re-attached to an architecture with Adopt."
+              child.text <-- locationsService
+                .shown(_.loras)
+                .map(folder =>
+                  s"LoRAs live under $folder, one folder per LoRA. " +
+                    "Deleting a row removes the whole folder — a wan 2.2 " +
+                    "pair's two files travel together. An orphan folder can " +
+                    "be re-attached to an architecture with Adopt."
+                )
             )
           case _ => emptyNode
         }

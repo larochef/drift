@@ -1,6 +1,5 @@
 package drift.runner.diffusion
 
-import drift.runner.formats.Gguf
 import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
 import drift.runner.ops.Ops
@@ -36,11 +35,7 @@ final class Krea2Pipeline(
   def takesGuidance: Boolean = false
 
   private val encoder = Qwen3.open(ops, textEncoder)
-  private val tokenizer: Tokenizer = {
-    val (file, mapped) = Gguf.open(textEncoder)
-    try GgufTokenizer.read(file)
-    finally mapped.close()
-  }
+  private val tokenizer: Tokenizer = GgufTokenizer.of(textEncoder)
   private val transformer = Krea2.open(ops, diffusionModel)
   private val autoencoder = WanVae.open(ops, vae)
 

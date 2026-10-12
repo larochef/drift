@@ -1,8 +1,7 @@
 package drift.runner.diffusion
 
+import drift.runner.diffusion.Pipeline.Family
 import drift.runner.models.*
-import drift.runner.ops.Ops
-import drift.runner.weights.WeightSource
 
 import java.awt.image.BufferedImage
 import java.nio.file.Path
@@ -149,10 +148,12 @@ final case class PreviewClip(
 )
 
 /** A video model family end to end, from a prompt to frames. */
-trait VideoPipeline extends AutoCloseable {
+trait VideoPipeline extends Pipeline {
 
-  /** The family's name, as messages give it. */
-  def family: String
+  def mode: String = "vid_gen"
+
+  /** sd-cpp's 20. */
+  def defaultSteps: Int = 20
 
   /** The frame rate the model generates at, whatever a request asks. */
   def fps: Int
@@ -239,96 +240,68 @@ object VideoPipeline {
     */
   def samples(stage: String): Boolean = stage.startsWith("sampling")
 
-  private enum Family { case MiniMaxH3, Wan, Ltx }
-
-  private def family(ops: Ops, diffusionModel: Path): Option[Family] = {
-    val source = WeightSource.open(ops, diffusionModel)
-    try
-      if (MiniMaxH3Config.holds(source)) Some(Family.MiniMaxH3)
-      else if (WanConfig.holds(source)) Some(Family.Wan)
-      else if (Ltx2Config.holds(source)) Some(Family.Ltx)
-      else None
-    finally source.close()
-  }
-
-  /** Whether `diffusionModel` is a video model this runner draws. */
-  def holds(ops: Ops, diffusionModel: Path): Boolean =
-    family(ops, diffusionModel).isDefined
-
-  /** The pipeline of `diffusionModel`'s family: MiniMax H3, which takes a video
-    * VAE, the Qwen3-VL text encoder (`--llm`) and Qwen3's `tokenizer.json`;
-    * Wan, which takes the Wan 2.1 VAE, UMT5 (`--t5xxl`) and its
-    * `tokenizer.json`, and a high-noise expert for Wan 2.2 A14B; LTX 2.5, which
-    * takes its conv VAE and its Gemma 4 text encoder (`--llm`). MiniMax H3 and
-    * LTX 2.5 decode their soundtrack with an `audioVae` (LTX's with its
+  /** The video families, in the order they are tried: MiniMax H3, which takes a
+    * video VAE, the Qwen3-VL text encoder (`--llm`) and Qwen3's
+    * `tokenizer.json`; Wan, which takes the Wan 2.1 VAE, UMT5 (`--t5xxl`) and
+    * its `tokenizer.json`, and a high-noise expert for Wan 2.2 A14B; LTX 2.5,
+    * which takes its conv VAE and its Gemma 4 text encoder (`--llm`). MiniMax
+    * H3 and LTX 2.5 decode their soundtrack with an audio VAE (LTX's with its
     * vocoder), else their videos are silent.
     */
-  def open(
-      ops: Ops,
-      diffusionModel: Path,
-      highNoiseModel: Option[Path],
-      vaeFile: Option[Path],
-      textEncoderFile: Option[Path],
-      t5File: Option[Path],
-      tokenizer: Option[Path],
-      fps: Option[Int],
-      audioVae: Option[Path],
-      controlNet: Option[Path],
-      vision: Option[Path]
-  ): VideoPipeline = {
-    def needed(file: Option[Path], flag: String, what: String) =
-      file.getOrElse(
-        throw new IllegalArgumentException(
-          s"${diffusionModel.getFileName} needs $what: pass $flag <file>"
-        )
-      )
-    val detected = family(ops, diffusionModel)
-    if (controlNet.isDefined && !detected.contains(Family.MiniMaxH3))
-      throw new IllegalArgumentException(
-        s"--control-net: ${diffusionModel.getFileName} takes no ControlNet"
-      )
-    detected match {
-      case Some(Family.MiniMaxH3) =>
+  val Families: Seq[Family] = Seq(
+    Family(
+      "MiniMax H3",
+      Seq("minimax-h3"),
+      MiniMaxH3Config.holds,
+      (ops, files) =>
         new MiniMaxH3Pipeline(
           ops,
-          diffusionModel,
-          needed(vaeFile, "--vae", "MiniMax H3's video VAE"),
-          needed(
-            textEncoderFile,
+          files.diffusionModel,
+          files.needed(files.vae, "--vae", "MiniMax H3's video VAE"),
+          files.needed(
+            files.textEncoder,
             "--llm",
             "MiniMax H3's Qwen3-VL text encoder"
           ),
-          needed(tokenizer, "--tokenizer", "Qwen3's tokenizer.json"),
-          audioVae,
-          controlNet,
-          vision
-        )
-      case Some(Family.Wan) =>
+          files
+            .needed(files.tokenizer, "--tokenizer", "Qwen3's tokenizer.json"),
+          files.audioVae,
+          files.controlNet,
+          files.textEncoderVision
+        ),
+      takesControlNet = true
+    ),
+    Family(
+      "Wan",
+      Seq("wan-2.2-14b"),
+      WanConfig.holds,
+      (ops, files) =>
         new WanPipeline(
           ops,
-          diffusionModel,
-          highNoiseModel,
-          needed(vaeFile, "--vae", "the Wan 2.1 VAE"),
-          needed(t5File, "--t5xxl", "UMT5-XXL"),
-          needed(tokenizer, "--tokenizer", "UMT5's tokenizer.json")
+          files.diffusionModel,
+          files.highNoiseModel,
+          files.needed(files.vae, "--vae", "the Wan 2.1 VAE"),
+          files.needed(files.t5, "--t5xxl", "UMT5-XXL"),
+          files.needed(files.tokenizer, "--tokenizer", "UMT5's tokenizer.json")
         )
-      case Some(Family.Ltx) =>
+    ),
+    Family(
+      "LTX 2.5",
+      Seq("ltx-2.5"),
+      Ltx2Config.holds,
+      (ops, files) =>
         new LtxPipeline(
           ops,
-          diffusionModel,
-          needed(vaeFile, "--vae", "LTX 2.5's convolutional video VAE"),
-          needed(
-            textEncoderFile,
+          files.diffusionModel,
+          files.needed(files.vae, "--vae", "LTX 2.5's convolutional video VAE"),
+          files.needed(
+            files.textEncoder,
             "--llm",
             "LTX 2.5's Gemma 4 text encoder (with its projections)"
           ),
-          fps.getOrElse(24),
-          audioVae
+          files.fps.getOrElse(24),
+          files.audioVae
         )
-      case None =>
-        throw new IllegalArgumentException(
-          s"${diffusionModel.getFileName} is no video model the runner draws"
-        )
-    }
-  }
+    )
+  )
 }

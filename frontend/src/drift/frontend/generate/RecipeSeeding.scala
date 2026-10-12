@@ -5,8 +5,6 @@ import drift.frontend.services.*
 import drift.frontend.services.GenerationService.Reuse
 import drift.shared.*
 
-import com.raquo.laminar.api.L.Var
-
 /** Lays values over the form: a mode's defaults, a reused generation
   * (`specs/12-gallery.md`), a project version (`specs/19-…`) and the
   * configuration's default LoRAs (`specs/28-configuration-loras.md`). It only
@@ -51,21 +49,20 @@ class RecipeSeeding(
   /** How the model runs, from a mode's defaults: size, steps and CFG — the
     * high-noise expert's too —, the guidance beyond CFG, the sampler and its
     * schedule, and a video's frames and FPS. Each sampling field holds a
-    * default again afterwards, so the LoRAs' layer may write over it.
+    * default again afterwards, so the LoRAs' layer shows through it.
     */
   private def seedGenerationParameters(defaults: GenerationDefaults): Unit = {
     val sample = cleanse(defaults.sampleParams)
-    untouchSampling()
     widthVar.set(defaults.width.toString)
     heightVar.set(defaults.height.toString)
-    stepsVar.set(sample.sampleSteps.toString)
-    defaults.highNoiseSampleParams.foreach(applyHighNoise)
-    cfgVar.set(sample.guidance.txtCfg.toString)
     applyGuidance(sample.guidance)
-    samplerVar.set(sample.sampleMethod.getOrElse(""))
-    schedulerVar.set(sample.scheduler.getOrElse(""))
-    sigmasVar.set(GenerationFormState.sigmasText(sample.customSigmas))
-    flowShiftVar.set(sample.flowShift.fold("")(_.toString))
+    laySampling(
+      sample,
+      defaults.highNoiseSampleParams.map(cleanse),
+      SamplingField.Offer.any
+    )(_.value.set(_))
+    // what was just written is the session's, not the user's
+    settleSampling()
     videoFramesVar.set(defaults.videoFrames.toString)
     fpsVar.set(defaults.fps.toString)
   }
@@ -297,10 +294,30 @@ class RecipeSeeding(
     seedVar.set(if (seed < 0) "" else seed.toString)
   }
 
-  /** Guidance beyond txt CFG into the form, from defaults or a recording. */
+  /** The sampling fields from a block of sampling parameters, and from the
+    * high-noise expert's when there is one (`SamplingField`): `put` is what is
+    * done with each field's text — written as the user's, or laid as a default.
+    */
+  private def laySampling(
+      sample: SampleParameters,
+      highNoise: Option[SampleParameters],
+      offer: SamplingField.Offer
+  )(put: (LayeredField, String) => Unit): Unit = {
+    SamplingField.Main.foreach(field =>
+      put(state.sampling(field.name), field.read(sample, offer))
+    )
+    highNoise.foreach(expert =>
+      SamplingField.HighNoise.foreach(field =>
+        put(state.sampling(field.name), field.read(expert, offer))
+      )
+    )
+  }
+
+  /** The guidance the form shows beyond the sampling fields — image CFG and
+    * skip-layer guidance — from defaults or a recording.
+    */
   private def applyGuidance(guidance: GuidanceParameters): Unit = {
     imgCfgVar.set(guidance.imgCfg.map(_.toString).getOrElse(""))
-    distilledGuidanceVar.set(guidance.distilledGuidance.toString)
     val slg = guidance.slg.getOrElse(SlgParameters())
     slgLayersVar.set(slg.layers.mkString(","))
     slgLayerStartVar.set(slg.layerStart.toString)
@@ -317,18 +334,11 @@ class RecipeSeeding(
   ): Unit = {
     val cleansed = cleanse(sample)
     // a recording's values are the user's: no LoRA's settings replace them
-    touchSampling()
-    stepsVar.set(cleansed.sampleSteps.toString)
-    cfgVar.set(cleansed.guidance.txtCfg.toString)
+    holdSampling()
     applyGuidance(cleansed.guidance)
-    samplerVar.set(
-      cleansed.sampleMethod.filter(capabilities.samplers.contains).getOrElse("")
+    laySampling(cleansed, None, SamplingField.Offer.of(capabilities))(
+      _.value.set(_)
     )
-    schedulerVar.set(
-      cleansed.scheduler.filter(capabilities.schedulers.contains).getOrElse("")
-    )
-    sigmasVar.set(GenerationFormState.sigmasText(cleansed.customSigmas))
-    flowShiftVar.set(cleansed.flowShift.fold("")(_.toString))
     // Dropping one is the rule, not a fault — the select could not show it —
     // but doing it silently changes the recipe behind the user's back, and the
     // next run then differs from the version it came from.
@@ -353,8 +363,12 @@ class RecipeSeeding(
     */
   private def applyHighNoise(highNoise: SampleParameters): Unit = {
     val cleansed = cleanse(highNoise)
-    highNoiseStepsVar.set(cleansed.sampleSteps.toString)
-    highNoiseCfgVar.set(cleansed.guidance.txtCfg.toString)
+    SamplingField.HighNoise.foreach(field =>
+      state
+        .sampling(field.name)
+        .value
+        .set(field.read(cleansed, SamplingField.Offer.any))
+    )
   }
 
   private def applyImageParameters(
@@ -476,9 +490,11 @@ class RecipeSeeding(
 
   /** The selected LoRAs' sampling settings over the mode's defaults
     * (`specs/49-lora-sampling-settings.md`), into the fields that still hold a
-    * default — and, when `force`d, into the ones the LoRAs set whatever they
-    * hold, which makes those defaults again. With no setting a field goes back
-    * to the session's own, so removing a LoRA takes its values away with it.
+    * default — as the default layer of each (`LayeredField`), which never
+    * replaces what the user wrote — and, when `force`d, into the ones the LoRAs
+    * set whatever they hold, which makes those defaults again. With no setting
+    * a field goes back to the session's own, so removing a LoRA takes its
+    * values away with it.
     *
     * Only for the mode the form was seeded for: asked for another — the mode a
     * form held before the seeding that is still under way — it would write that
@@ -498,37 +514,13 @@ class RecipeSeeding(
       .getOrElse("lora", false)
     val layer = if (takesLoras) sampling else LoraSampling.none
     val sample = layer.over(cleanse(defaults.sampleParams))
-    if (force) untouch(layer.fields)
-    def write(field: String, target: Var[String], value: String): Unit =
-      if (!touched(field)) target.set(value)
-    write("steps", stepsVar, sample.sampleSteps.toString)
-    write("cfg", cfgVar, sample.guidance.txtCfg.toString)
-    write("flowShift", flowShiftVar, sample.flowShift.fold("")(_.toString))
-    write(
-      "sigmas",
-      sigmasVar,
-      GenerationFormState.sigmasText(sample.customSigmas)
-    )
-    write(
-      "sampler",
-      samplerVar,
-      sample.sampleMethod.filter(capabilities.samplers.contains).getOrElse("")
-    )
-    write(
-      "scheduler",
-      schedulerVar,
-      sample.scheduler.filter(capabilities.schedulers.contains).getOrElse("")
-    )
-    write(
-      "distilledGuidance",
-      distilledGuidanceVar,
-      sample.guidance.distilledGuidance.toString
-    )
-    defaults.highNoiseSampleParams.foreach { highNoise =>
-      val expert = layer.overHighNoise(cleanse(highNoise))
-      write("highNoiseSteps", highNoiseStepsVar, expert.sampleSteps.toString)
-      write("highNoiseCfg", highNoiseCfgVar, expert.guidance.txtCfg.toString)
-    }
+    if (force) layer.fields.foreach(state.sampling(_).release())
+    laySampling(
+      sample,
+      defaults.highNoiseSampleParams
+        .map(highNoise => layer.overHighNoise(cleanse(highNoise))),
+      SamplingField.Offer.of(capabilities)
+    )(_.default(_))
   }
 
   /** The configuration's default LoRAs (`specs/28-configuration-loras.md`) as

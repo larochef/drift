@@ -33,6 +33,7 @@ class ModelCachePage(
     loraService: LoraService,
     upscalerService: UpscalerService,
     conversionService: ConversionService,
+    locationsService: LocationsService,
     browsers: BrowserServices,
     /** The path after `/model-cache/`: the view, then the on-disk cache. */
     section: Signal[List[String]]
@@ -177,6 +178,7 @@ class ModelCachePage(
           kindTabs,
           kindUrl,
           cacheService,
+          locationsService,
           modelService,
           architectureService,
           runConfigurationService,
@@ -192,7 +194,8 @@ class ModelCachePage(
         ).element
       case View.Missing =>
         MissingModelsView(missingModels, cacheService, downloadService).element
-      case View.Upscalers => UpscalerSection(browsers, upscalerService).element
+      case View.Upscalers =>
+        UpscalerSection(browsers, upscalerService, locationsService).element
     }
   )
 }

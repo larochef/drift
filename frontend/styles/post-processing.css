@@ -1,0 +1,127 @@
+/* The detail view's post-processing tab. */
+
+/* The post-processing tab (specs 15, 26, 27): one task at a time behind a
+   picker, its fields in labelled groups, its button on the last line. The
+   controls stay small — bigger ones were no more readable — and the room the
+   panel has goes into the space between the rows instead. */
+.post-tasks {
+  margin-bottom: 1rem;
+}
+
+.post-tasks .button {
+  margin-bottom: 0;
+}
+
+.post-panel {
+  margin-bottom: 1.25rem;
+}
+
+.post-intro {
+  line-height: 1.6;
+  margin-bottom: 0.9rem;
+}
+
+/* A group is a row: its name in a column of its own, its fields beside it,
+   wrapping under one another rather than inside a field.
+
+   The space between the rows is each row's own margin, not a gap on a flex
+   parent: a panel's rows sit inside the panel's own element, one level below
+   `.post-panel`, so a gap there spaced nothing at all.
+   A margin holds wherever a row is put, which is what the three panels
+   needed. */
+.post-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+}
+
+.post-group-label {
+  flex: 0 0 4.6rem;
+  text-align: right;
+  padding-top: 0.4rem;
+  line-height: 1.4;
+}
+
+.post-group-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  /* A row that wraps is spaced like the rows themselves, so a wrapped field
+     does not read as part of the next group. */
+  gap: 0.8rem 0.75rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Bulma spaces stacked fields; here the group's gap does it. */
+.post-panel .field {
+  margin-bottom: 0;
+}
+
+/* A prompt takes the whole row: it is prose, and the room is the point. */
+.post-field.is-wide {
+  flex: 1 1 100%;
+}
+
+.post-field textarea.textarea {
+  line-height: 1.6;
+  resize: vertical;
+}
+
+/* A field's own name is a tag on it, not a heading: the group's name is the
+   one that carries weight. */
+.post-field .button.is-static {
+  font-weight: 400;
+}
+
+.post-check {
+  padding-top: 0.3rem;
+}
+
+/* Everything but the model folded behind its title (specs 15, 26, 27), in the
+   architecture page's own fold — `FoldedSection`. Its rows carry their own
+   spacing; the header's `mb-2` is what separates it from them. */
+.post-advanced .folded-body {
+  margin-top: 0.2rem;
+}
+
+.post-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-top: 1px solid var(--bulma-border);
+  padding-top: 0.9rem;
+  margin-top: 0.2rem;
+}
+
+.post-foot .button {
+  flex: 0 0 auto;
+}
+
+.post-foot-summary {
+  min-width: 0;
+  line-height: 1.6;
+}
+
+/* The left of the footer is everything read off the picture: what the job
+   would cost, and under it the switches for the grid drawn over it — which
+   change nothing about the job, and so are no part of the form. */
+.post-foot-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.post-foot-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.post-foot-controls .post-check {
+  padding-top: 0;
+}

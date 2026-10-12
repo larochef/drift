@@ -1,0 +1,20 @@
+/* The generation form's compact number fields. */
+
+/* The generation form's numbers (CoreFields): each input as wide as the
+   characters it holds, plus padding and the spinner, and the fields side by
+   side, wrapping. */
+.form-compact-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+.form-compact-row > .field {
+  margin-bottom: 0;
+}
+/* Firefox always draws the spinner, Chromium only on hover: room for it
+   either way, apart from the text. */
+.input.is-digits {
+  width: calc(var(--digits) * 1ch + 4em);
+}

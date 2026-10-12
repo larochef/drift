@@ -35,11 +35,12 @@ To do:
 2. Runner: the PNG encode and the stitch off the worker thread; the next VAE tile cut while one runs; a buffer
    pool in the SeedVR2 VAE.
 
-### 3 — Klein 9B with a 2048² reference fails on the runner (low to medium)
+### 3 — Klein 9B with a 2048² reference fails on the runner (fixed 2026-10-12, to confirm)
 
-`requirement failed: 83968 ints at once`, 2048² picture with one 2048² reference, 4 steps; 1536² runs in 100 s.
-Not looked into — a buffer of ints (positions?) outgrows a limit in or under `Flux2Pipeline`. Worth it because
-a 4096² edit would run at half size and come back ×2 instead of ×4, which is gentler on faces.
+`requirement failed: 83968 ints at once`: the positions of a 2048² picture with a 2048² reference are more ints
+than the runner staged in one copy to the GPU. A write of any length now goes through the staging in several
+copies (tested on the GPU). The same request completes in 158 s through drift and reads its reference (a
+gradient came back as the watercolour asked for).
 
 ### 4 — LTX decode crawls on long videos (high for long videos)
 
@@ -66,7 +67,7 @@ To do:
 Declined (2026-10-08): releasing Gemma between the prompt and the decode — every component stays loaded for the
 next generation.
 
-### 5 — LLaDA-Image and Nucleus do not repeat a picture for the same seed (medium for LLaDA)
+### 5 — LLaDA-Image, Nucleus and (under load) LTX 2.5 do not repeat a result for the same seed (medium for LLaDA)
 
 Found 2026-10-11, checking the shared sampling loop: the same request three times in one session of the runner,
 512², 4 steps, seed 7. Krea 2, FLUX.2 klein, Mage-Flow Turbo, Qwen Image 2.1, HiDream O1 and GRN give the same
@@ -74,7 +75,13 @@ file to the byte. LLaDA-Image Turbo gives three visibly different pictures (PSNR
 code before the shared loop as on the code after, with the spare buffers on or off. Nucleus differs at rounding
 level only (45–51 dB).
 
-No unseeded random generator is in either family's code. To look at: an operation whose result depends on the
+LTX 2.5 too, once (2026-10-12): the same request — 512², 25 frames, 8 steps with its turbo LoRA, seed 7 — in
+five fresh sessions gave the same frames four times, across two builds, and other frames (32 dB) once: the first
+LTX session after a 2048² FLUX.2 job on the same drift. Cause not found.
+
+No unseeded random generator is in either family's code. A hypothesis that would fit all three: a buffer read
+before anything wrote it — a spare buffer, or fresh device memory taken for zero — which shows as rare
+differences tied to what ran before in the process or on the device. To look at: an operation whose result depends on the
 order work finishes in (a sum over experts, a kernel that accumulates across threads), which LLaDA's semantic
 tokens — an argmax over logits — would turn from a rounding difference into another picture; and what the two
 families share that the six repeatable ones do not.

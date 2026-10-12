@@ -1,6 +1,5 @@
 package drift.runner.server
 
-import drift.protocol.RunnerModelKinds
 import drift.runner.diffusion.*
 import drift.runner.native.HipRuntime
 import drift.runner.ops.{HipOps, MatVecInputs}
@@ -15,10 +14,10 @@ object ImageMain {
 
   val Version = "drift runner 0.1.0 (images)"
 
-  /** The diffusion families it draws (`diffusion/ImagePipeline`), as drift's
-    * architectures name their model kind (`specs/43`).
+  /** The model kinds its families run (`Pipeline.Families`), as drift's
+    * architectures name them (`specs/43`).
     */
-  val ModelKinds: Seq[String] = RunnerModelKinds.Images
+  val ModelKinds: Seq[String] = Pipeline.Families.flatMap(_.kinds)
 
   def main(arguments: Array[String]): Unit = {
     if (arguments.contains("--version")) RunnerIdentity.version(Version)
@@ -26,7 +25,7 @@ object ImageMain {
       RunnerIdentity.modelKinds(ModelKinds)
     if (arguments.contains("--help") || arguments.contains("-h")) {
       println(
-        s"$Version: sd-server's native API on drift's own engine (Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, PiD, HiDream O1, Mage-Flow, Nucleus-Image, LLaDA-Image, GRN; MiniMax H3, Wan 2.2 A14B and LTX 2.5 video; SeedVR2 upscaling)\n" +
+        s"$Version: sd-server's native API on drift's own engine (${Pipeline.Families.map(_.name).mkString(", ")})\n" +
           "  --diffusion-model FILE  --vae FILE  --llm FILE  (or --model FILE, one file)  --tokenizer FILE  --listen-ip HOST  --listen-port PORT\n" +
           "  LLaDA-Image: --llada-queryformer FILE  --llada-text-projection FILE  --llada-sigvq FILE  (or --embeddings-connectors FILE)\n" +
           "  -W WIDTH  -H HEIGHT  --steps N  --cfg-scale S  --guidance G  --flow-shift MU  -s SEED  --video-frames N  --audio-vae FILE\n" +
@@ -45,55 +44,24 @@ object ImageMain {
         println(s"device: ${hip.deviceName} (${hip.rocmRoot})")
         val ops = new HipOps(hip, MatVecInputs.Float)
         val started = System.nanoTime()
-        val upscaler = SeedVr2Pipeline.holds(ops, options.diffusionModel)
-        val video =
-          !upscaler && VideoPipeline.holds(ops, options.diffusionModel)
-        println(
-          f"  model recognized: ${(System.nanoTime() - started) / 1e9}%.1f s"
+        val pipeline = Pipeline.open(
+          ops,
+          Pipeline.ModelFiles(
+            diffusionModel = options.diffusionModel,
+            highNoiseModel = options.highNoiseModel,
+            vae = options.vae,
+            textEncoder = options.llm,
+            t5 = options.t5xxl,
+            tokenizer = options.tokenizer,
+            textEncoderVision = options.llmVision,
+            connectors = options.connectors,
+            lladaParts = options.lladaParts,
+            audioVae = options.audioVae,
+            controlNet = options.controlNet,
+            fps = options.fps
+          )
         )
-        val pipeline: ImagePipeline | VideoPipeline | SeedVr2Pipeline =
-          if (upscaler)
-            new SeedVr2Pipeline(
-              ops,
-              options.diffusionModel,
-              options.vae.getOrElse(
-                throw new IllegalArgumentException("SeedVR2 needs its --vae")
-              )
-            )
-          else if (video)
-            VideoPipeline.open(
-              ops,
-              options.diffusionModel,
-              options.highNoiseModel,
-              options.vae,
-              options.llm,
-              options.t5xxl,
-              options.tokenizer,
-              options.fps,
-              options.audioVae,
-              options.controlNet,
-              options.llmVision
-            )
-          else if (options.controlNet.isDefined)
-            throw new IllegalArgumentException(
-              "--control-net: the runner's image models take no ControlNet"
-            )
-          else
-            ImagePipeline.open(
-              ops,
-              options.diffusionModel,
-              options.vae,
-              options.llm,
-              options.tokenizer,
-              options.llmVision,
-              options.connectors,
-              options.lladaParts
-            )
-        val family = pipeline match {
-          case image: ImagePipeline      => image.family
-          case video: VideoPipeline      => video.family
-          case upscaler: SeedVr2Pipeline => upscaler.family
-        }
+        val family = pipeline.family
         println(
           f"$family loaded in ${(System.nanoTime() - started) / 1e9}%.1f s"
         )

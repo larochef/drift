@@ -368,6 +368,8 @@ final class Flux2 private (ops: Ops, source: WeightSource)
     RopeLayout.Interleaved,
     RopeSections.Axes(Seq.fill(4)(c.headDimension / 8))
   )
+  private val rotary =
+    new RotaryAttention(ops, c.heads, c.heads, c.headDimension, rope)
   private val attention = Attention(
     (1 / math.sqrt(c.headDimension)).toFloat,
     causal = false,
@@ -379,13 +381,7 @@ final class Flux2 private (ops: Ops, source: WeightSource)
   /** Flat buffers for `tokens` rows, grown when too small; each use takes the
     * `prefix` it needs.
     */
-  final private class Buffers(val tokens: Int) {
-    private val held = mutable.ArrayBuffer.empty[Tensor]
-    private def flat(dtype: DType, elements: Long): Tensor = {
-      val tensor = ops.allocate(dtype, Shape.of(elements))
-      held += tensor
-      tensor
-    }
+  final private class Buffers(val tokens: Int) extends WorkBuffers(ops) {
     private val wide = tokens * width
     private val mlp = tokens.toLong * c.intermediate
     val x: Tensor = flat(DType.F32, wide)
@@ -402,28 +398,11 @@ final class Flux2 private (ops: Ops, source: WeightSource)
     val positions: Tensor = flat(DType.I32, 4L * tokens)
     // attention's keys and values, one page for the whole sequence (pages
     // hold a multiple of 16 tokens)
-    val cache: KvCache =
-      ops.allocateCache(1, (tokens + 15) / 16 * 16, c.heads, c.headDimension)
-    val pageTable: Tensor = {
-      val tensor = ops.fromInts(Shape.of(1), Array(0))
-      held += tensor
-      tensor
-    }
-    def release(): Unit = {
-      held.foreach(ops.release)
-      ops.release(cache.keys)
-      ops.release(cache.values)
-    }
+    val cache: KvCache = page(tokens, c.heads, c.headDimension)
+    val pageTable: Tensor = onePage()
   }
 
-  private var buffers = Option.empty[Buffers]
-  private def buffersFor(tokens: Int): Buffers =
-    buffers.filter(_.tokens >= tokens).getOrElse {
-      buffers.foreach(_.release())
-      val created = new Buffers(tokens)
-      buffers = Some(created)
-      created
-    }
+  private val buffers = new GrownBuffers(new Buffers(_))
 
   /** The prompt's text for every step: the encoder's taps side by side (`[L,
     * textWidth]`) into `out` (`[L, hidden]`).
@@ -466,13 +445,10 @@ final class Flux2 private (ops: Ops, source: WeightSource)
       s"velocity: latents ${latents.shape}, out ${out.shape} on $grid, references ${references
           .map((r, g) => s"${r.shape} on $g")}"
     )
-    val w = buffersFor(tokens)
-    val small = mutable.ArrayBuffer.empty[Tensor]
-    def vector(elements: Long) = {
-      val tensor = ops.allocate(DType.F32, Shape.of(1, elements))
-      small += tensor
-      tensor
-    }
+    val w = buffers(tokens)
+    val small = new TensorScope(ops)
+    def vector(elements: Long) =
+      small.allocate(DType.F32, Shape.of(1, elements))
     try {
       // the timestep (and the guidance scale): a sinusoid (cosines first)
       // through its MLP, the two summed, then SiLU once for every modulation
@@ -480,8 +456,7 @@ final class Flux2 private (ops: Ops, source: WeightSource)
       def embed(value: Float, first: Tensor, second: Tensor, site: String) = {
         val sinusoid =
           TimestepSinusoid(value * 1000f, half, singleFrequencies = true)
-        val embedded = ops.fromFloats(Shape.of(1, 2L * half), sinusoid)
-        small += embedded
+        val embedded = small.fromFloats(Shape.of(1, 2L * half), sinusoid)
         val (inner, result) = (vector(width), vector(width))
         ops.linear(embedded, first, inner)
         lora(embedded, s"$site.in_layer", inner)
@@ -552,28 +527,19 @@ final class Flux2 private (ops: Ops, source: WeightSource)
         ops.rmsNorm(x.view(rows, d), weight, epsilon, 0f, x.view(rows, d))
       }
       // q, k, v of every token → attended, all [tokens, width]
-      def attend(q: Tensor, k: Tensor, v: Tensor, attended: Tensor): Unit = {
-        val rotatedQueries = w.normed.prefix(tokens, heads, d)
-        val rotatedKeys = w.rotatedKeys.prefix(tokens, heads, d)
-        ops.rope(q.view(tokens, heads, d), positions, rope, rotatedQueries)
-        ops.rope(k.view(tokens, heads, d), positions, rope, rotatedKeys)
-        ops.cacheWrite(
-          rotatedKeys,
-          v.view(tokens, heads, d),
+      def attend(q: Tensor, k: Tensor, v: Tensor, attended: Tensor): Unit =
+        rotary.paged(
+          q,
+          k,
+          v,
+          positions,
+          w.normed,
+          w.rotatedKeys,
           w.cache,
           w.pageTable,
-          0
-        )
-        ops.attention(
-          rotatedQueries,
-          w.cache,
-          w.pageTable,
-          0,
-          tokens,
           attention,
-          attended.view(tokens, heads, d)
+          attended
         )
-      }
       val (q, k, v, attended, projected) = (
         w.q.prefix(tokens, width),
         w.k.prefix(tokens, width),
@@ -658,13 +624,13 @@ final class Flux2 private (ops: Ops, source: WeightSource)
       ops.modulate(normed, part(finalMod, 1), part(finalMod, 0), normed)
       ops.linear(normed, finalOut, out)
       lora(normed, "final_layer.linear", out)
-    } finally small.foreach(ops.release)
+    } finally small.close()
   }
 
   def close(): Unit = {
     updates.close()
     madeForLoras.foreach(ops.release)
-    buffers.foreach(_.release())
+    buffers.release()
     weights.release()
     source.close()
   }

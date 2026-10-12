@@ -130,11 +130,8 @@ final private[postprocess] class TileRun(
   }
   // On the job's runtime only: that is the build the job was checked
   // against (a PiD needs one that keeps its reference's size).
-  val session = sessionManager.list.find(session =>
-    session.runConfigurationId == runConfigurationId &&
-      session.runtimeId.contains(launch.runtime.id) &&
-      session.status == SessionStatus.Ready && session.port.isDefined
-  )
+  val session =
+    ChosenServer.readySession(sessionManager, runConfigurationId, launch)
   var stopServer: () => Unit = () => ()
 
   /** Runs the tiles and ends the job with what they make: the blend written as
@@ -187,29 +184,12 @@ final private[postprocess] class TileRun(
         String,
         (Int, Tiling.Tile, Tiling.Tile, BufferedImage) => Either[String, Unit]
       ] =
-        session
-          .flatMap(_.port)
-          .map(port => port -> (() => Option.empty[Int]))
-          .toRight(())
-          .left
-          .flatMap(_ =>
-            sessionManager
-              .startJobServer(
-                runConfigurationId,
-                Some(launch.runtime.id),
-                jobs.files.logFileOf(job),
-                line => jobs.noteLine(job, line)
-              )
-              .map { server =>
-                stopServer = server.stop
-                // The job's own server, so a cancel stops it at once: the
-                // tile in flight then ends on a dead server, which `fail`
-                // records as the cancel it is. A session's server
-                // is not the job's to stop.
-                jobs.runsOn(job, server.stop)
-                server.port -> (() => server.exitCode)
-              }
-          )
+        ChosenServer
+          .of(jobs, sessionManager, job, runConfigurationId, launch, session)
+          .map { server =>
+            stopServer = server.stop
+            server.port -> server.exitCode
+          }
           .flatMap { (port, exitCode) =>
             // What asks the server for one tile and waits for it: an img_gen
             // built from the server's defaults, or the runner's upscale job.
@@ -239,7 +219,9 @@ final private[postprocess] class TileRun(
                           port,
                           parameters,
                           exitCode,
-                          nativeJobId => jobs.waitingFor(job, port, nativeJobId)
+                          nativeJobId =>
+                            jobs.waitingFor(job, port, nativeJobId),
+                          jobs.report(job, _)
                         )
                       finally jobs.doneWaiting(job)
                     }
@@ -253,7 +235,8 @@ final private[postprocess] class TileRun(
                         port,
                         make(input),
                         exitCode,
-                        nativeJobId => jobs.waitingFor(job, port, nativeJobId)
+                        nativeJobId => jobs.waitingFor(job, port, nativeJobId),
+                        jobs.report(job, _)
                       )
                   finally jobs.doneWaiting(job)
                 }
@@ -392,18 +375,13 @@ final private[postprocess] class TileRun(
                      Right(())
                    } else make(index, tile, window, prepareTile(crop)))
                   .flatMap { _ =>
-                    (PostProcessImages.imageSize(output) match {
-                      case None => Some("no readable image was written")
-                      case Some((width, height))
-                          if width != tile.width || height != tile.height =>
-                        Some(
-                          s"the image is ${width}×$height, not ${tile.width}×${tile.height}"
-                        )
-                      case Some(_) =>
-                        Option.when(PostProcessImages.isBlack(output))(
-                          "the image is entirely black — the model's result was NaN"
-                        )
-                    }).toLeft(())
+                    TilePass
+                      .refusal(
+                        PostProcessImages.imageSize(output),
+                        tile,
+                        PostProcessImages.isBlack(output)
+                      )
+                      .toLeft(())
                   }
                   .flatMap { _ =>
                     correctTile.fold[Either[String, Unit]](Right(()))(correct =>

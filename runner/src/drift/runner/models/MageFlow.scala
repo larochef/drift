@@ -115,13 +115,12 @@ final class MageFlow private (ops: Ops, source: WeightSource)
   private def floats(name: String, count: Long): Tensor =
     weights.floats(name, name, Shape.of(count))
 
-  /** A linear layer with a bias, by its name (a LoRA's site). */
-  final private case class Affine(name: String, weight: Tensor, bias: Tensor)
-
   private val layers = mutable.Map.empty[String, Affine]
+
+  /** A linear layer with a bias, by its name (a LoRA's site). */
   private def affineLayer(name: String, outputs: Long): Affine = {
     val layer =
-      Affine(name, source(s"$name.weight"), floats(s"$name.bias", outputs))
+      Affine(source(s"$name.weight"), floats(s"$name.bias", outputs), name)
     layers(name) = layer
     layer
   }
@@ -207,13 +206,6 @@ final class MageFlow private (ops: Ops, source: WeightSource)
     placed.collect { case (target, _, false) => target }.distinct
   }
 
-  /** `out = x · weightᵀ + bias`, and the active LoRAs' updates. */
-  private def affine(x: Tensor, layer: Affine, out: Tensor): Unit = {
-    ops.linear(x, layer.weight, out)
-    updates(x, layer.name, out)
-    ops.addRow(out, layer.bias, out)
-  }
-
   private val rope = Rope(
     MageFlowConfig.Theta,
     c.headDimension,
@@ -252,13 +244,7 @@ final class MageFlow private (ops: Ops, source: WeightSource)
   /** Flat buffers for `tokens` rows, grown when too small; each use takes the
     * `prefix` it needs.
     */
-  final private class Buffers(val tokens: Int) {
-    private val held = mutable.ArrayBuffer.empty[Tensor]
-    private def flat(dtype: DType, elements: Long): Tensor = {
-      val tensor = ops.allocate(dtype, Shape.of(elements))
-      held += tensor
-      tensor
-    }
+  final private class Buffers(val tokens: Int) extends WorkBuffers(ops) {
     private val wide = tokens * width
     val x: Tensor = flat(DType.F32, wide)
     val normed: Tensor = flat(DType.F32, wide)
@@ -272,38 +258,18 @@ final class MageFlow private (ops: Ops, source: WeightSource)
     val positions: Tensor = flat(DType.I32, 3L * tokens)
     // attention's keys and values, one page for the whole sequence (pages
     // hold a multiple of 16 tokens)
-    val cache: KvCache =
-      ops.allocateCache(1, (tokens + 15) / 16 * 16, c.heads, c.headDimension)
-    val pageTable: Tensor = {
-      val tensor = ops.fromInts(Shape.of(1), Array(0))
-      held += tensor
-      tensor
-    }
-    def release(): Unit = {
-      held.foreach(ops.release)
-      ops.release(cache.keys)
-      ops.release(cache.values)
-    }
+    val cache: KvCache = page(tokens, c.heads, c.headDimension)
+    val pageTable: Tensor = onePage()
   }
 
-  private var buffers = Option.empty[Buffers]
-  private def buffersFor(tokens: Int): Buffers =
-    buffers.filter(_.tokens >= tokens).getOrElse {
-      buffers.foreach(_.release())
-      val created = new Buffers(tokens)
-      buffers = Some(created)
-      created
-    }
+  private val buffers = new GrownBuffers(new Buffers(_))
 
   /** The timestep's vectors, kept between steps: its embedding and every
     * modulation made from it.
     */
-  private val small = mutable.ArrayBuffer.empty[Tensor]
-  private def vector(elements: Long): Tensor = {
-    val tensor = ops.allocate(DType.F32, Shape.of(1, elements))
-    small += tensor
-    tensor
-  }
+  private val small = new TensorScope(ops)
+  private def vector(elements: Long): Tensor =
+    small.allocate(DType.F32, Shape.of(1, elements))
   private val timeInner = vector(width)
   private val time = vector(width)
   private val modulations =
@@ -323,7 +289,7 @@ final class MageFlow private (ops: Ops, source: WeightSource)
     val normed = ops.allocate(DType.F32, features.shape)
     try {
       ops.rmsNorm(features, textNorm, epsilon, 0f, normed)
-      affine(normed, textIn, out)
+      textIn(ops, normed, out, updates)
     } finally ops.release(normed)
   }
 
@@ -352,23 +318,23 @@ final class MageFlow private (ops: Ops, source: WeightSource)
       s"velocity: latents ${latents.shape}, out ${out.shape} on $grid, references ${references
           .map((r, g) => s"${r.shape} on $g")}"
     )
-    val w = buffersFor(tokens)
+    val w = buffers(tokens)
 
     // the timestep through its MLP, then SiLU once for every modulation
     val sinusoid = ops.fromFloats(
       Shape.of(1, c.timeChannels),
       MageFlow.sinusoid(timestep, c.timeChannels)
     )
-    try affine(sinusoid, timeIn, timeInner)
+    try timeIn(ops, sinusoid, timeInner, updates)
     finally ops.release(sinusoid)
     ops.activation(Activation.Silu, timeInner, timeInner)
-    affine(timeInner, timeOut, time)
+    timeOut(ops, timeInner, time, updates)
     ops.activation(Activation.Silu, time, time)
     blocks.zip(modulations).foreach { (block, parts) =>
-      affine(time, block.text.modulation, parts._1)
-      affine(time, block.image.modulation, parts._2)
+      block.text.modulation(ops, time, parts._1, updates)
+      block.image.modulation(ops, time, parts._2, updates)
     }
-    affine(time, finalModulation, finalParts)
+    finalModulation(ops, time, finalParts, updates)
     def part(modulation: Tensor, i: Int) =
       modulation
         .view(modulation.shape.last / width, width)
@@ -378,9 +344,9 @@ final class MageFlow private (ops: Ops, source: WeightSource)
     // [text ; target ; references]
     val stream = w.x.prefix(tokens, width)
     ops.copy(text, stream.rows(0, length))
-    affine(latents, imageIn, stream.rows(length, grid.tokens))
+    imageIn(ops, latents, stream.rows(length, grid.tokens), updates)
     references.foldLeft(length + grid.tokens) { case (at, (reference, g)) =>
-      affine(reference, imageIn, stream.rows(at, g.tokens))
+      imageIn(ops, reference, stream.rows(at, g.tokens), updates)
       at + g.tokens
     }
     val axes = Seq.tabulate(3)(_ => mutable.ArrayBuilder.make[Int])
@@ -428,7 +394,7 @@ final class MageFlow private (ops: Ops, source: WeightSource)
           Seq(rows(q), rows(k), rows(v))
         )
         Seq(s.query -> q, s.key -> k, s.value -> v).foreach { (layer, y) =>
-          updates(normed, layer.name, rows(y))
+          updates(normed, layer.site, rows(y))
           ops.addRow(rows(y), layer.bias, rows(y))
         }
         headNorm(rows(q), s.queryNorm)
@@ -459,15 +425,15 @@ final class MageFlow private (ops: Ops, source: WeightSource)
       streams.zip(spans).foreach { case ((s, mod), (first, n)) =>
         def rows(t: Tensor) = t.rows(first, n)
         val x = rows(stream)
-        affine(rows(attended), s.output, rows(projected))
+        s.output(ops, rows(attended), rows(projected), updates)
         ops.gatedAdd(x, rows(projected), part(mod, 2))
         val normed = rows(w.normed.prefix(tokens, width))
         ops.layerNorm(x, None, None, epsilon, normed)
         ops.modulate(normed, part(mod, 4), part(mod, 3), normed)
         val up = w.mlp.prefix(n, c.intermediate)
-        affine(normed, s.mlpIn, up)
+        s.mlpIn(ops, normed, up, updates)
         ops.activation(Activation.GeluTanh, up, up)
-        affine(up, s.mlpOut, rows(projected))
+        s.mlpOut(ops, up, rows(projected), updates)
         ops.gatedAdd(x, rows(projected), part(mod, 5))
       }
     }
@@ -477,13 +443,13 @@ final class MageFlow private (ops: Ops, source: WeightSource)
     val normed = w.normed.prefix(grid.tokens, width)
     ops.layerNorm(target, None, None, epsilon, normed)
     ops.modulate(normed, part(finalParts, 0), part(finalParts, 1), normed)
-    affine(normed, finalOut, out)
+    finalOut(ops, normed, out, updates)
   }
 
   def close(): Unit = {
     updates.close()
-    small.foreach(ops.release)
-    buffers.foreach(_.release())
+    small.close()
+    buffers.release()
     weights.release()
     source.close()
   }
@@ -491,28 +457,19 @@ final class MageFlow private (ops: Ops, source: WeightSource)
 
 object MageFlow {
 
-  /** `value` rounded to BF16 (to nearest, ties to even). */
-  private def bf16(value: Float): Float = {
-    val bits = java.lang.Float.floatToRawIntBits(value)
-    java.lang.Float.intBitsToFloat(
-      ((bits + 0x7fff + ((bits >>> 16) & 1)) >>> 16) << 16
-    )
-  }
-
   /** The timestep's sinusoid as the released model computes it in BF16: σ and
     * each frequency rounded, their product times 1000 in F32, its cosine (first
     * half) and sine (second) rounded.
     */
-  def sinusoid(timestep: Float, channels: Int): Array[Float] = {
-    val half = channels / 2
-    val level = bf16(timestep)
-    Array.tabulate(2 * half) { i =>
-      val frequency =
-        bf16(math.exp(-math.log(10000) * (i % half) / half).toFloat)
-      val angle = (level * frequency * 1000f).toDouble
-      bf16((if (i < half) math.cos(angle) else math.sin(angle)).toFloat)
-    }
-  }
+  def sinusoid(timestep: Float, channels: Int): Array[Float] =
+    TimestepSinusoid(
+      Bf16.round(timestep),
+      channels / 2,
+      singleFrequencies = true,
+      bf16Frequencies = true,
+      after = 1000f,
+      bf16 = true
+    )
 
   def open(ops: Ops, path: Path): MageFlow = {
     val source = WeightSource.open(ops, path)

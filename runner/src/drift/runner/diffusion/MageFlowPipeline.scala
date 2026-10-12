@@ -1,11 +1,10 @@
 package drift.runner.diffusion
 
 import drift.runner.decode.Prompt
-import drift.runner.formats.Gguf
 import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
 import drift.runner.models.Flux2.Grid
-import drift.runner.ops.Ops
+import drift.runner.ops.{Ops, TensorScope}
 import drift.runner.tensor.*
 import drift.runner.text.{GgufTokenizer, Tokenizer}
 import drift.runner.vision.{ImageSizing, PreparedImage}
@@ -55,11 +54,7 @@ final class MageFlowPipeline(
   def takesGuidance: Boolean = false
 
   private val encoder = Qwen3.open(ops, textEncoder)
-  private val tokenizer: Tokenizer = {
-    val (file, mapped) = Gguf.open(textEncoder)
-    try GgufTokenizer.read(file)
-    finally mapped.close()
-  }
+  private val tokenizer: Tokenizer = GgufTokenizer.of(textEncoder)
   private val transformer = MageFlow.open(ops, diffusionModel)
   private val autoencoder = MageVae.open(ops, vae)
   private val loraFiles = new LoraFiles(ops)
@@ -235,11 +230,7 @@ final class MageFlowPipeline(
     val grid = Grid(request.height / scale, request.width / scale)
     val channels = transformer.config.latentChannels
     val guided = request.cfgScale != 1f
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def hold(tensor: Tensor) = {
-      held += tensor
-      tensor
-    }
+    val held = new TensorScope(ops)
     val references = mutable.ArrayBuffer.empty[Reference]
     try {
       if (request.references.nonEmpty && tower.isEmpty)
@@ -259,15 +250,15 @@ final class MageFlowPipeline(
           posterior
         )
       )
-      val conditional = hold(text(request.prompt, references.toSeq))
+      val conditional = held.keep(text(request.prompt, references.toSeq))
       val unconditional = Option.when(guided)(
-        hold(text(request.negativePrompt, references.toSeq))
+        held.keep(text(request.negativePrompt, references.toSeq))
       )
       val sigmas = request.sigmas.getOrElse(
         FlowSchedule
           .sigmas(request.steps, math.log(request.shift.getOrElse(Shift)))
       )
-      val x = hold(ops.fromFloats(Shape.of(grid.tokens, channels), noise))
+      val x = held.fromFloats(Shape.of(grid.tokens, channels), noise)
       val inpainting =
         request.mask.filter(_ => request.initImage.isDefined).map { mask =>
           new Inpainting(
@@ -328,7 +319,7 @@ final class MageFlowPipeline(
       finally ops.release(rgb)
     } finally {
       references.foreach(_.release())
-      held.foreach(ops.release)
+      held.close()
     }
   }
 

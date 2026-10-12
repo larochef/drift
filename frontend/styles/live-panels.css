@@ -1,0 +1,15 @@
+/* Two live panels side by side. */
+
+/* Two live panels on one page (an image model and an assistant): side by side
+   where there is room, stacked when there is not. */
+.live-panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 1500px) {
+  .live-panels:has(> .content ~ .content) {
+    grid-template-columns: 1fr 1fr;
+  }
+}

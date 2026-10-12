@@ -122,14 +122,16 @@ object PostProcessImages {
     * reports as a success.
     */
   def isBlack(file: Path): Boolean =
-    Option(ImageIO.read(file.toFile)).exists { image =>
-      val width = image.getWidth
-      val row = new Array[Int](width)
-      (0 until image.getHeight).forall { y =>
-        image.getRGB(0, y, width, 1, row, 0, width)
-        row.forall(pixel => (pixel & 0xffffff) == 0)
-      }
+    Option(ImageIO.read(file.toFile)).exists(isBlack)
+
+  def isBlack(image: BufferedImage): Boolean = {
+    val width = image.getWidth
+    val row = new Array[Int](width)
+    (0 until image.getHeight).forall { y =>
+      image.getRGB(0, y, width, 1, row, 0, width)
+      row.forall(pixel => (pixel & 0xffffff) == 0)
     }
+  }
 
   /** Scales with JDK classes only: halves with bilinear filtering (a 2:1
     * bilinear pass is a box filter) until within 2× of the target, then one

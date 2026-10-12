@@ -91,7 +91,7 @@ case class UpscalerDownloadJob(
     downloadedBytes: Long = 0L,
     totalBytes: Option[Long] = None,
     error: Option[String] = None
-)
+) extends TransferJob
 object UpscalerDownloadJob {
   given JsonValueCodec[List[UpscalerDownloadJob]] =
     JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))

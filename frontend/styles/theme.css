@@ -1,0 +1,103 @@
+/* The palette, the page's grounds, the text and ground utilities, and scroll containment. */
+
+:root {
+  --bulma-primary-h: 35;
+  --bulma-primary-s: 90%;
+  --bulma-primary-l: 48%;
+  --bulma-primary-invert-l: 90%;
+  --bulma-link-h: 220;
+  --bulma-link-s: 45%;
+  --bulma-link-l: 50%;
+  --bulma-link-invert-l: 90%;
+  --bulma-info-h: 35;
+  --bulma-info-s: 50%;
+  --bulma-info-l: 40%;
+  --bulma-info-invert-l: 90%;
+  --bulma-success-h: 85;
+  --bulma-success-s: 38%;
+  --bulma-success-l: 38%;
+  --bulma-success-invert-l: 90%;
+  --bulma-danger-h: 10;
+  --bulma-danger-s: 50%;
+  --bulma-danger-l: 40%;
+  --bulma-danger-invert-l: 90%;
+  --bulma-warning-h: 40;
+  --bulma-warning-s: 90%;
+  --bulma-warning-l: 48%;
+  --bulma-warning-invert-l: 90%;
+
+  --bulma-dark-h: 25;
+  --bulma-dark-s: 20%;
+  --bulma-dark-l: 11%;
+
+  --bulma-light-h: 35;
+  --bulma-light-s: 20%;
+  --bulma-light-l: 92%;
+}
+
+html, body {
+  background-color: hsl(25, 20%, 11%);
+}
+
+#app {
+  min-height: 100vh;
+}
+
+#app > .columns {
+  min-height: 100vh;
+}
+
+.bg-surface {
+  background-color: hsl(25, 20%, 11%);
+}
+
+.text-primary {
+  color: hsl(35, 20%, 92%);
+}
+
+.title.text-primary,
+.subtitle.text-primary {
+  color: hsl(35, 20%, 92%);
+}
+
+.subtitle.text-secondary {
+  color: hsl(30, 12%, 65%);
+}
+
+.table td.text-primary,
+.table th.text-primary {
+  color: hsl(35, 20%, 92%);
+}
+
+.table th.text-secondary {
+  color: hsl(30, 12%, 65%);
+}
+
+.bg-content {
+  background-color: hsl(30, 22%, 26%);
+}
+
+.bg-card {
+  background-color: hsl(25, 14%, 23%);
+}
+
+.bg-table-header {
+  background-color: hsl(25, 16%, 20%);
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.text-secondary {
+  color: hsl(30, 12%, 65%);
+}
+
+/* Scrolling stays where the pointer is: a panel that
+   reaches its end keeps the wheel instead of handing it on to what is behind
+   it. Overlays also lock their background outright (`ScrollLock`). */
+.modal-card-body,
+.sidebar-layout,
+.content pre.session-log-body {
+  overscroll-behavior: contain;
+}

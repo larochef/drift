@@ -1,0 +1,14 @@
+/* The mark beside the sidebar's title. */
+
+/* The mark beside the sidebar's title — the same SVG as the favicon. */
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.sidebar-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+}

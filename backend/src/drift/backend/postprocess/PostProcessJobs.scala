@@ -5,8 +5,9 @@ import drift.backend.nativejobs.NativeJobs
 import drift.backend.outputs.GenerationHistory
 import drift.backend.process.ChildProcesses
 import drift.backend.runtime.LaunchRuntime
-import drift.backend.session.SessionLog
+import drift.backend.session.{SessionLog, SessionManager}
 import drift.backend.storage.{Collections, StorageService}
+import drift.protocol.JobProgress
 import drift.shared.*
 
 import java.nio.charset.StandardCharsets
@@ -22,13 +23,15 @@ import com.github.plokhotnyuk.jsoniter_scala.core.{writeToString, WriterConfig}
 import com.typesafe.scalalogging.Logger
 import ox.*
 
-/** What a running job is waiting on, so a cancel can reach it: the `sd-cli`
-  * process it started, or the img_gen job one of its tiles submitted to an
-  * sd-server. Both are set while they run and cleared after, so a cancel acts
-  * on what is running now — and on nothing at all between two tiles, where the
-  * flag alone stops the job at the next one.
+/** A job while it runs, one record from `start` until its thread ends.
+  *
+  * What it is waiting on, so a cancel can reach it: the `sd-cli` process it
+  * started, or the img_gen job one of its tiles submitted to an sd-server. Both
+  * are set while they run and cleared after, so a cancel acts on what is
+  * running now — and on nothing at all between two tiles, where the flag alone
+  * stops the job at the next one.
   */
-final private[postprocess] class JobCancellation {
+final private[postprocess] class RunningJob {
   val stopped: AtomicBoolean = AtomicBoolean(false)
 
   /** Asked to pause (`specs/40-pause-and-resume.md`): read where `stopped` is,
@@ -47,6 +50,39 @@ final private[postprocess] class JobCancellation {
     */
   val server: AtomicReference[Option[() => Unit]] =
     AtomicReference[Option[() => Unit]](None)
+
+  /** Its log, the very ring buffer a session keeps
+    * (`specs/13-log-streaming.md`): it collapses sd-cpp's bar redraws, reads
+    * the progress out of them and remembers the last narrative line, so a job
+    * shows what a session's panel shows without parsing anything of its own.
+    */
+  val log: SessionLog = SessionLog()
+
+  /** Where its log progress comes from when it does not own the process writing
+    * it: tiles sent to a ready session are run by a server whose output belongs
+    * to that session, so the job reads the session's own progress instead, at
+    * the moment it is listed.
+    */
+  val followed: AtomicReference[
+    Option[() => (Option[SessionProgress], Option[String])]
+  ] =
+    AtomicReference(None)
+
+  /** What the server job it waits for says it is doing, for the servers whose
+    * jobs say (`drift.protocol.JobProgress`): there from the first poll that
+    * carries one until the wait ends.
+    */
+  val reported: AtomicReference[Option[JobProgress]] = AtomicReference(None)
+
+  /** The picture a tiled job is making (`LivePicture`), from the start of its
+    * run until the run ends — a paused job's is on disk.
+    */
+  val picture: AtomicReference[Option[LivePicture]] = AtomicReference(None)
+
+  /** What a tiled job is doing and in how many tiles, for the record a pause
+    * writes.
+    */
+  val work: AtomicReference[Option[(PausedWork, Int)]] = AtomicReference(None)
 }
 
 /** An image output of a recorded generation, as a job takes it. */
@@ -78,36 +114,41 @@ final private[postprocess] class PostProcessJobs(
   private val jobs = ConcurrentHashMap[String, PostProcessJob]()
   private val counter = AtomicLong(0)
 
-  /** One entry per running job, put there by `start` and removed when its
-    * thread ends.
+  /** The jobs running now (`RunningJob`), put there by `start` and removed when
+    * their thread ends.
     */
-  private val cancellations = ConcurrentHashMap[String, JobCancellation]()
+  private val running = ConcurrentHashMap[String, RunningJob]()
 
-  /** The log of each running job, the very ring buffer a session keeps
-    * (`specs/13-log-streaming.md`): it collapses sd-cpp's bar redraws, reads
-    * the progress out of them and remembers the last narrative line, so a job
-    * shows what a session's panel shows without parsing anything of its own.
+  private def runningOf(id: String): Option[RunningJob] =
+    Option(running.get(id))
+
+  /** Whether a run of the job is under way: its thread has not ended. */
+  def isRunning(id: String): Boolean = running.containsKey(id)
+
+  /** The server job `job` waits for says what it is doing. */
+  def report(job: PostProcessJob, told: JobProgress): Unit =
+    runningOf(job.id).foreach(_.reported.set(Some(told)))
+
+  /** A job that says what it is doing is believed (drift's runner); otherwise
+    * the bar is what a log's say: the job's own, or the session's its tiles run
+    * on.
     */
-  private val logs = ConcurrentHashMap[String, SessionLog]()
-
-  /** Where a job's log progress comes from when the job does not own the
-    * process writing it: tiles sent to a ready session are run by a server
-    * whose output belongs to that session, so the job reads the session's own
-    * progress instead, at the moment it is listed.
-    */
-  private val followed =
-    ConcurrentHashMap[String, () => (Option[SessionProgress], Option[String])]()
-
   def list: List[PostProcessJob] =
     jobs.values.asScala.toList
-      .map(job =>
-        Option(followed.get(job.id)).filter(_ => job.state.isActive) match {
+      .map { job =>
+        val now = runningOf(job.id).filter(_ => job.state.isActive)
+        val followedNow = now.flatMap(_.followed.get()) match {
           case None         => job
           case Some(source) =>
             val (progress, activity) = source()
             job.copy(logProgress = progress, activity = activity)
         }
-      )
+        now
+          .flatMap(_.reported.get())
+          .fold(followedNow)(told =>
+            followedNow.copy(logProgress = SessionManager.barOf(told))
+          )
+      }
       .sortBy(-_.startedAt)
 
   /** Reads this job's progress from `source` — a live session — until
@@ -116,29 +157,26 @@ final private[postprocess] class PostProcessJobs(
   def follows(
       job: PostProcessJob,
       source: () => (Option[SessionProgress], Option[String])
-  ): Unit = followed.put(job.id, source)
+  ): Unit = runningOf(job.id).foreach(_.followed.set(Some(source)))
 
-  def unfollow(job: PostProcessJob): Unit = followed.remove(job.id)
-
-  /** The picture each running tiled job is making (`LivePicture`), from the
-    * start of its run until the run ends — a paused job's is on disk.
-    */
-  private val pictures = ConcurrentHashMap[String, LivePicture]()
+  def unfollow(job: PostProcessJob): Unit =
+    runningOf(job.id).foreach(_.followed.set(None))
 
   def showPicture(id: String, picture: LivePicture): Unit =
-    pictures.put(id, picture)
+    runningOf(id).foreach(_.picture.set(Some(picture)))
 
   /** Forgets `picture` as this job's — only if it still is: a resumed run may
     * have put its own there already.
     */
   def hidePicture(id: String, picture: LivePicture): Unit =
-    pictures.remove(id, picture)
+    runningOf(id).foreach(_.picture.compareAndSet(Some(picture), None))
 
   /** The picture a running or paused tiled job has made so far, as PNG bytes:
     * at most `side` px on its longest edge, or at full size.
     */
   def picture(id: String, side: Option[Int]): Option[Array[Byte]] =
-    Option(pictures.get(id))
+    runningOf(id)
+      .flatMap(_.picture.get())
       .flatMap(live =>
         side.fold(
           live
@@ -300,15 +338,13 @@ final private[postprocess] class PostProcessJobs(
         tiles = tiles
       )
     )
-    cancellations.put(job.id, JobCancellation())
-    logs.put(job.id, SessionLog())
+    val state = RunningJob()
+    running.put(job.id, state)
     background.start(s"drift-$kind-${job.id}") {
       try run(job)
-      finally {
-        cancellations.remove(job.id)
-        logs.remove(job.id)
-        work.remove(job.id).discard
-      }
+      // Only if it still is this run's: a resumed run of the same id may
+      // have put its own there already.
+      finally running.remove(job.id, state).discard
     }
     job
   }
@@ -320,7 +356,7 @@ final private[postprocess] class PostProcessJobs(
     * nothing beyond this record.
     */
   def noteLine(job: PostProcessJob, line: String): Unit =
-    Option(logs.get(job.id)).foreach { log =>
+    runningOf(job.id).map(_.log).foreach { log =>
       log.append(line)
       val progress = log.progress
       val activity = log.activity
@@ -338,23 +374,19 @@ final private[postprocess] class PostProcessJobs(
     * cancel is read (`specs/40-pause-and-resume.md`).
     */
   def isPaused(job: PostProcessJob): Boolean =
-    Option(cancellations.get(job.id)).exists(_.paused.get())
+    runningOf(job.id).exists(_.paused.get())
 
-  /** What a running tiled job is doing, for the record a pause writes: put
-    * there when the job starts, gone when its thread ends.
-    */
-  private val work = ConcurrentHashMap[String, (PausedWork, Int)]()
-
+  /** What a running tiled job is doing, for the record a pause writes. */
   def remember(id: String, doing: PausedWork, tiles: Int): Unit =
-    work.put(id, (doing, tiles))
+    runningOf(id).foreach(_.work.set(Some((doing, tiles))))
 
   /** Asks a running job to pause after the tile in flight, and writes what it
     * takes to finish it later. False when no running tiled job has that id.
     */
   def pause(id: String, force: Boolean = false): Boolean =
-    (Option(jobs.get(id)), Option(work.get(id))) match {
+    (Option(jobs.get(id)), runningOf(id).flatMap(_.work.get())) match {
       case (Some(job), Some((doing, tiles))) if job.state.isActive =>
-        Option(cancellations.get(id)).exists { cancellation =>
+        runningOf(id).exists { cancellation =>
           cancellation.paused.set(true)
           // Forced: the tile in flight goes the way a cancel takes it — the
           // sd-cli killed, the img_gen job dropped on its server — and the
@@ -409,21 +441,25 @@ final private[postprocess] class PostProcessJobs(
     storage.delete(Collections.pausedJobs, id)
 
   def isCancelled(job: PostProcessJob): Boolean =
-    Option(cancellations.get(job.id)).exists(_.stopped.get())
+    runningOf(job.id).exists(_.stopped.get())
 
   /** The img_gen job a tile is now waiting for, so a cancel can stop it on the
     * server running it.
     */
   def waitingFor(job: PostProcessJob, port: Int, nativeJobId: String): Unit =
-    Option(cancellations.get(job.id))
+    runningOf(job.id)
       .foreach(_.nativeJob.set(Some((port, nativeJobId))))
 
   /** The server `job` runs its one job on, for a cancel to stop. */
   def runsOn(job: PostProcessJob, stop: () => Unit): Unit =
-    Option(cancellations.get(job.id)).foreach(_.server.set(Some(stop)))
+    runningOf(job.id).foreach(_.server.set(Some(stop)))
 
-  def doneWaiting(job: PostProcessJob): Unit =
-    Option(cancellations.get(job.id)).foreach(_.nativeJob.set(None))
+  def doneWaiting(job: PostProcessJob): Unit = {
+    runningOf(job.id).foreach { state =>
+      state.nativeJob.set(None)
+      state.reported.set(None)
+    }
+  }
 
   /** Cancels a running job: the `sd-cli` it waits on is killed, the img_gen job
     * a tile submitted is cancelled on its server, and a job between two tiles
@@ -446,7 +482,7 @@ final private[postprocess] class PostProcessJobs(
       recordCancelled(job)
       true
     case Some(job) if job.state.isActive =>
-      Option(cancellations.get(id)).foreach { cancellation =>
+      runningOf(id).foreach { cancellation =>
         cancellation.stopped.set(true)
         cancellation.process.get().foreach(ChildProcesses.terminate)
         cancellation.nativeJob
@@ -530,7 +566,7 @@ final private[postprocess] class PostProcessJobs(
       launch.environment,
       Some(Path.of(command.head).getParent)
     )
-    Option(cancellations.get(job.id)).foreach(_.process.set(Some(process)))
+    runningOf(job.id).foreach(_.process.set(Some(process)))
     // The output is drained here rather than redirected to the file by the OS:
     // the file is written just the same (`ProcessOutput` mirrors it verbatim),
     // and the lines pass through the job's log on the way, which is what puts
@@ -560,7 +596,7 @@ final private[postprocess] class PostProcessJobs(
         case Some(_)                 =>
           error.get().map(line => s"sd-cli reported an error: $line")
       }
-    finally Option(cancellations.get(job.id)).foreach(_.process.set(None))
+    finally runningOf(job.id).foreach(_.process.set(None))
   }
 
   /** A cancelled job ends here too — its process was killed, or its tile's job

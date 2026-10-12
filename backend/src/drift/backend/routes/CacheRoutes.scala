@@ -13,7 +13,7 @@ def cacheEndpoints(
     inventory: CacheInventory
 ): List[ServerEndpoint[Any, Identity]] = List(
   listCachedFiles.serverLogicSuccess[Identity](_ => inventory.list),
-  deleteCachedFile.serverLogicSuccess[Identity](inventory.delete),
+  deleteCachedFile.serverLogic[Identity](inventory.delete),
   listCivitaiCachedFileIds.serverLogicSuccess[Identity](
     cache.civitaiCachedFileIds
   ),

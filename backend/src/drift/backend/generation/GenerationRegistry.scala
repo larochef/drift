@@ -1,6 +1,7 @@
 package drift.backend.generation
 
 import drift.backend.session.SessionManager
+import drift.protocol.JobProgress
 import drift.shared.*
 
 import java.util.concurrent.ConcurrentHashMap
@@ -54,4 +55,9 @@ final private[backend] class GenerationRegistry(
             Left(s"the session is ${session.status.toString.toLowerCase}")
         }
     }
+
+  /** Passes on what a session's job says it is doing (`SessionManager.report`).
+    */
+  def report(sessionId: String, progress: Option[JobProgress]): Unit =
+    sessionManager.report(sessionId, progress)
 }

@@ -1,5 +1,7 @@
 package drift.runner.diffusion
 
+import drift.protocol.JobBar
+
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 
@@ -27,17 +29,14 @@ object Images {
         last = percent
         val seconds = (System.nanoTime() - started) / 1e9
         val rate = if (seconds > 0) percent / seconds else 0.0
-        val filled = percent / 2
-        println(
-          f"  |${"=" * filled}${" " * (50 - filled)}| $percent/100 - $rate%.2f%%/s"
-        )
+        ProgressReport.bar(JobBar.Decoding, percent, 100, rate, "%/s")
       }
     }
   }
 
   /** A bar over `total` things counted one a call, at so many a second in
-    * `unit` (`tiles/s`, which drift reads as the inputs being read —
-    * `LogProgress`): the empty bar at once, then a line a call.
+    * `unit` (`tiles/s`: the inputs being read): the empty bar at once, then a
+    * line a call.
     */
   def countBar(total: Int, unit: String): () => Unit = {
     val started = System.nanoTime()
@@ -45,10 +44,7 @@ object Images {
     def draw(): Unit = {
       val seconds = (System.nanoTime() - started) / 1e9
       val rate = if (seconds > 0) done / seconds else 0.0
-      val filled = if (total > 0) 50 * done / total else 50
-      println(
-        f"  |${"=" * filled}${" " * (50 - filled)}| $done/$total - $rate%.2f$unit"
-      )
+      ProgressReport.bar(JobBar.Preparing, done, total, rate, unit)
     }
     if (total > 0) draw()
     () =>

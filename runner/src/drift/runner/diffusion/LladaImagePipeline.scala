@@ -3,7 +3,7 @@ package drift.runner.diffusion
 import drift.runner.formats.ModelConfig
 import drift.runner.models.*
 import drift.runner.models.Flux2.Grid
-import drift.runner.ops.Ops
+import drift.runner.ops.{Ops, TensorScope}
 import drift.runner.tensor.*
 import drift.runner.text.{Tokenizer, TokenizerJson}
 import drift.runner.weights.WeightSource
@@ -145,22 +145,18 @@ final class LladaImagePipeline(
         "\n<role>ASSISTANT</role>\n<IMAGE1>",
       addSpecial = true
     )
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def hold(tensor: Tensor) = {
-      held += tensor
-      tensor
-    }
+    val held = new TensorScope(ops)
     try {
-      val embeds = hold(encoder.embed(ids))
-      val queries = hold(queryFormer(embeds))
+      val embeds = held.keep(encoder.embed(ids))
+      val queries = held.keep(queryFormer(embeds))
       val width = embeds.shape.last
       val (text, asking) =
         (ids.length.toLong, queries.shape.dimensions.head)
-      val all = hold(ops.allocate(DType.F32, Shape.of(text + asking, width)))
+      val all = held.allocate(DType.F32, Shape.of(text + asking, width))
       ops.copy(embeds, all.rows(0, text))
       ops.copy(queries, all.rows(text, asking))
-      projection(hold(encoder.encode(all, ids.length)))
-    } finally held.foreach(ops.release)
+      projection(held.keep(encoder.encode(all, ids.length)))
+    } finally held.close()
   }
 
   /** `picture` at `width × height` as pixels `[height, width, 3]` in [−1, 1].
@@ -186,11 +182,7 @@ final class LladaImagePipeline(
     val grid = Grid(request.height / 16, request.width / 16)
     val channels = transformer.config.latentChannels
     val guided = request.cfgScale > 1f
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def hold(tensor: Tensor) = {
-      held += tensor
-      tensor
-    }
+    val held = new TensorScope(ops)
     val conditions = mutable.ArrayBuffer.empty[LladaCondition]
     def keep(condition: LladaCondition) = {
       conditions += condition
@@ -213,8 +205,8 @@ final class LladaImagePipeline(
             )
           )
           (
-            hold(autoencoder.encode(image)),
-            hold(reader.semantic(reader.tokens(half)))
+            held.keep(autoencoder.encode(image)),
+            held.keep(reader.semantic(reader.tokens(half)))
           )
         } finally {
           ops.release(image)
@@ -239,7 +231,7 @@ final class LladaImagePipeline(
         Option.when(guided)(condition(request.negativePrompt, semantic = false))
       val random = new SplittableRandom(request.seed)
       val noise = Array.fill(grid.tokens * channels)(Noise.gaussian(random))
-      val x = hold(ops.fromFloats(Shape.of(grid.tokens, channels), noise))
+      val x = held.fromFloats(Shape.of(grid.tokens, channels), noise)
       // the flow shift: the request's or the launch's, else the released
       // scheduler's, else none; above 1 it is Turbo's scheduler, whose steps
       // are stochastic
@@ -326,7 +318,7 @@ final class LladaImagePipeline(
       finally ops.release(rgb)
     } finally {
       conditions.foreach(_.close())
-      held.foreach(ops.release)
+      held.close()
     }
   }
 

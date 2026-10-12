@@ -1,0 +1,47 @@
+/* The sidebar's sticky layout and its menu. */
+
+/* The sidebar pins itself to the viewport: on a page taller than the screen
+   the column keeps stretching, but this box — menu on top, downloads panel
+   pushed to its bottom — stays fully in view, so a running download is
+   always visible without scrolling. */
+.sidebar-layout {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* No min-height here: the menu filling the viewport on its own would push
+   the downloads panel below the sticky box's 100vh. */
+.sidebar-menu {
+  width: 160px;
+}
+
+.sidebar-menu .menu-label {
+  color: hsl(30, 95%, 52%);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding-left: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.sidebar-menu .menu-list li a {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.85rem;
+  border-radius: 4px;
+}
+
+.sidebar-menu .menu-list li a {
+  color: hsl(30, 10%, 72%);
+  background-color: hsl(25, 20%, 11%);
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.sidebar-menu .menu-list li a:hover {
+  background-color: hsl(25, 15%, 28%);
+  color: white;
+}

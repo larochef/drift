@@ -1,7 +1,7 @@
 package drift.frontend.pages.settings
 
 import drift.frontend.components.Component
-import drift.frontend.services.RuntimeService
+import drift.frontend.services.{LocationsService, RuntimeService}
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -17,6 +17,7 @@ class RuntimeRow(
     selection: RuntimeSelection,
     releases: Map[RuntimeTool, List[RuntimeRelease]],
     runtimeService: RuntimeService,
+    locationsService: LocationsService,
     /** Per-runtime TheRock picks, for a "Change ROCm" or an upgrade whose
       * release declares another ROCm. The section's, so a re-rendered list
       * keeps them.
@@ -208,7 +209,11 @@ class RuntimeRow(
               val filesNote =
                 if (runtime.adopted)
                   "The adopted files stay where they are."
-                else "Its files under ~/.cache/drift/runtimes are deleted too."
+                else
+                  locationsService.now.fold("Its files are deleted too.")(
+                    locations =>
+                      s"Its files under ${locations.runtimes} are deleted too."
+                  )
               if (window.confirm(s"Delete ${runtime.label}?\n\n$filesNote"))
                 runtimeService.push(Command.Delete(runtime.id))
             }

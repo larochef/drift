@@ -7,7 +7,6 @@ import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
-import scala.collection.mutable
 
 /** Qwen Image 2.1's transformer, read off its weights: `hidden` wide, `blocks`
   * deep, heads of `headDimension`, a SwiGLU of `intermediate`, text features of
@@ -321,13 +320,7 @@ final class QwenImage21 private (ops: Ops, source: WeightSource)
   /** Flat buffers for `tokens` rows, grown when too small; each use takes the
     * `prefix` it needs.
     */
-  final private class Buffers(val tokens: Int) {
-    private val held = mutable.ArrayBuffer.empty[Tensor]
-    private def flat(dtype: DType, elements: Long): Tensor = {
-      val tensor = ops.allocate(dtype, Shape.of(elements))
-      held += tensor
-      tensor
-    }
+  final private class Buffers(val tokens: Int) extends WorkBuffers(ops) {
     private val wide = tokens.toLong * math.max(c.hidden, c.textWidth)
     private val mlp = tokens.toLong * c.intermediate
     val x: Tensor = flat(DType.F32, wide)
@@ -341,17 +334,9 @@ final class QwenImage21 private (ops: Ops, source: WeightSource)
     val mlpGate: Tensor = flat(DType.F32, mlp)
     val mlpUp: Tensor = flat(DType.F32, mlp)
     val positions: Tensor = flat(DType.I32, 3L * tokens)
-    def release(): Unit = held.foreach(ops.release)
   }
 
-  private var buffers = Option.empty[Buffers]
-  private def buffersFor(tokens: Int): Buffers =
-    buffers.filter(_.tokens >= tokens).getOrElse {
-      buffers.foreach(_.release())
-      val created = new Buffers(tokens)
-      buffers = Some(created)
-      created
-    }
+  private val buffers = new GrownBuffers(new Buffers(_))
 
   // ---- the modulation --------------------------------------------------------------
 
@@ -382,15 +367,11 @@ final class QwenImage21 private (ops: Ops, source: WeightSource)
     ).shape.last.toInt / 2
     val sinusoid =
       TimestepSinusoid(timestep * 1000f, half, singleFrequencies = true)
-    val small = mutable.ArrayBuffer.empty[Tensor]
-    def vector(elements: Long) = {
-      val tensor = ops.allocate(DType.F32, Shape.of(1, elements))
-      small += tensor
-      tensor
-    }
+    val small = new TensorScope(ops)
+    def vector(elements: Long) =
+      small.allocate(DType.F32, Shape.of(1, elements))
     try {
-      val embedded = ops.fromFloats(Shape.of(1, 2L * half), sinusoid)
-      small += embedded
+      val embedded = small.fromFloats(Shape.of(1, 2L * half), sinusoid)
       val (inner, time) = (vector(f), vector(f))
       linear(embedded, "time_text_embed.timestep_embedder.linear_1", inner)
       ops.activation(Activation.Silu, inner, inner)
@@ -415,7 +396,7 @@ final class QwenImage21 private (ops: Ops, source: WeightSource)
         ops.fromFloats(Shape.of(f), ops.toFloats(scale)),
         ops.fromFloats(Shape.of(f), new Array[Float](c.hidden))
       )
-    } finally small.foreach(ops.release)
+    } finally small.close()
   }
 
   /** The modulation of the text (`t = 0`), which every prompt shares; remade
@@ -607,7 +588,7 @@ final class QwenImage21 private (ops: Ops, source: WeightSource)
       ops.fromInts(Shape.of(c.blocks, prefixPages + imagePages), tables)
     )
     try {
-      val w = buffersFor(math.max(math.max(length, tokens), imageTokens))
+      val w = buffers(math.max(math.max(length, tokens), imageTokens))
       val x = w.x.prefix(tokens, c.hidden)
       val normed = w.normed.prefix(length, c.textWidth)
       ops.rmsNorm(text, textNorm, epsilon, 1f, normed)
@@ -663,7 +644,7 @@ final class QwenImage21 private (ops: Ops, source: WeightSource)
       s"velocity: latents ${latents.shape}, out ${out.shape} for a $gridHeight × $gridWidth grid " +
         s"and a prefix for ${prefix.imageTokens} image tokens"
     )
-    val w = buffersFor(math.max(prefix.tokens, images))
+    val w = buffers(math.max(prefix.tokens, images))
     val m = modulation(timestep)
     try {
       val x = w.x.prefix(images, c.hidden)
@@ -700,7 +681,7 @@ final class QwenImage21 private (ops: Ops, source: WeightSource)
   def close(): Unit = {
     textModulationMade.foreach(_.release())
     updates.close()
-    buffers.foreach(_.release())
+    buffers.release()
     weights.release()
     source.close()
   }

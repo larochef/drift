@@ -1,7 +1,7 @@
 package drift.runner.models
 
 import drift.runner.formats.FormatException
-import drift.runner.ops.{Activation, Ops}
+import drift.runner.ops.*
 import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
@@ -359,10 +359,8 @@ final class MageVae private (ops: Ops, source: WeightSource, window: Int)
   // ---- running --------------------------------------------------------------------
 
   /** `y = x · weightᵀ + bias` on rows. */
-  private def linear(x: Tensor, layer: Convolution, out: Tensor): Unit = {
-    ops.linear(x, layer.weight, out)
-    ops.addRow(out, layer.bias, out)
-  }
+  private def linear(x: Tensor, layer: Convolution, out: Tensor): Unit =
+    Affine(layer.weight, layer.bias)(ops, x, out)
 
   /** A DiCo block, in place on `x`. */
   private def run(vae: VaeRun, x: Tensor, block: DiCo): Unit = {
@@ -495,13 +493,9 @@ final class MageVae private (ops: Ops, source: WeightSource, window: Int)
       (y / window * across + xx / window) * inside +
         y % window * window + xx % window
     }
-    val temporaries = mutable.ArrayBuffer.empty[Tensor]
-    def keep(tensor: Tensor) = {
-      temporaries += tensor
-      tensor
-    }
+    val temporaries = new TensorScope(ops)
     def allocate(dtype: DType, rows: Long, cols: Long) =
-      keep(ops.allocate(dtype, Shape.of(rows, cols)))
+      temporaries.allocate(dtype, Shape.of(rows, cols))
     try {
       val normed = allocate(DType.F32, count, c)
       block.norm(ops, flat, normed)
@@ -510,7 +504,7 @@ final class MageVae private (ops: Ops, source: WeightSource, window: Int)
         linear(normed, layer, all)
         all
       }
-      val rows = keep(ops.fromInts(Shape.of(padded), gather))
+      val rows = temporaries.keep(ops.fromInts(Shape.of(padded), gather))
       val Seq(q, k, v) = projected.map { all =>
         val windows = allocate(DType.F32, padded, c)
         ops.embedding(all, rows, windows)
@@ -532,13 +526,13 @@ final class MageVae private (ops: Ops, source: WeightSource, window: Int)
         ops.softmax(scores, (1 / math.sqrt(c.toDouble)).toFloat, scores)
         ops.linear(scores, values, attended.rows(first, inside))
       }
-      val back = keep(ops.fromInts(Shape.of(count), scatter))
+      val back = temporaries.keep(ops.fromInts(Shape.of(count), scatter))
       ops.embedding(attended, back, normed)
       val out = projected.head
       linear(normed, block.proj, out)
       ops.add(flat, out, flat)
       x
-    } finally temporaries.foreach(ops.release)
+    } finally temporaries.close()
   }
 
   /** Patches the per-pixel decoder runs at once. */

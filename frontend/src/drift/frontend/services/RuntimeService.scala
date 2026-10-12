@@ -221,7 +221,7 @@ class RuntimeService(statusSocket: StatusSocketService) extends ServiceErrors {
     if (!job.state.isActive) push(Command.Load)
   }
 
-  // See ModelService.effects for why writes merge instead of switching.
+  // See EntityService.effects for why writes merge instead of switching.
   val effects: Modifier[HtmlElement] = Seq(
     cmdBus.events
       .collect { case Command.Load => () }

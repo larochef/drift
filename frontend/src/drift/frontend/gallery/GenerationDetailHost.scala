@@ -324,19 +324,24 @@ class GenerationDetailHost(
       case HistoryService.Event.Imported(_) => ()
       case HistoryService.Event.Moved(_)    => ()
     },
-    // Keyed on the generation and the output clicked, so a detail is built
-    // once per opening and nothing else rebuilds it.
+    // Keyed on which generation and which output, so a detail is built once
+    // per opening: a record that changes under it — a move to a project —
+    // reaches the part that shows it, and rebuilds nothing.
     children <-- openGeneration
       .map(_.toList)
-      .split(shown => (shown.generation, shown.outputIndex))((_, shown, _) =>
-        detailFor(shown)
+      .split(shown => (shown.generation.id, shown.outputIndex))(
+        (_, shown, current) => detailFor(shown, current.map(_.generation))
       )
   )
 
-  private def detailFor(shown: GenerationDetailHost.Shown): HtmlElement = {
+  private def detailFor(
+      shown: GenerationDetailHost.Shown,
+      record: Signal[Generation]
+  ): HtmlElement = {
     val generation = shown.generation
     GenerationDetail(
       generation,
+      record,
       configurationLabel =
         labels.map(labelOf(_, generation.runConfigurationId)).distinct,
       // A derived entry offers no parameters to reuse — its original does —

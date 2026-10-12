@@ -2,6 +2,8 @@ package drift.runner.text
 
 import drift.runner.formats.*
 
+import java.nio.file.Path
+
 /** A tokenizer from a GGUF's `tokenizer.ggml.*` metadata. GGUF names its
   * pre-tokenizer instead of spelling it, so the regex of each name the runner
   * knows is written here, as the model's own `tokenizer.json` has it (Java's
@@ -54,6 +56,15 @@ object GgufTokenizer {
     */
   private val Control = 3
   private val UserDefined = 4
+
+  /** The tokenizer a GGUF file carries, the file opened for the reading only:
+    * what a pipeline needs of its text encoder's file beside the weights.
+    */
+  def of(path: Path): Tokenizer = {
+    val (file, mapped) = Gguf.open(path)
+    try read(file)
+    finally mapped.close()
+  }
 
   def read(gguf: GgufFile): Tokenizer = {
     def fail(message: String) = throw new FormatException(

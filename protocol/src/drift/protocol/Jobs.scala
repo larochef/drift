@@ -23,6 +23,38 @@ object JobRoutes {
   def cancel(id: String): String = s"$Jobs/$id/cancel"
 }
 
+/** A bar of a job's progress: how far (`done` of `total`, `done` with a
+  * fraction when the step under way tells how far it is), and how fast, `rate`
+  * in `unit` — `s/it` for sampling steps, `tiles/s` for inputs being read,
+  * `%/s` for a decode.
+  */
+case class JobBar(
+    phase: String,
+    done: Double,
+    total: Int,
+    rate: Double,
+    unit: String
+)
+object JobBar {
+  val Preparing = "preparing"
+  val Sampling = "sampling"
+  val Decoding = "decoding"
+}
+
+/** What a job is doing: the bar of what is under way, if any; which sampling
+  * pass it is of, for a model that has several (`high noise`); the image within
+  * the batch; the stage within the job, for a job of several.
+  */
+case class JobProgress(
+    bar: Option[JobBar] = None,
+    pass: Option[String] = None,
+    image: Option[Int] = None,
+    images: Option[Int] = None,
+    stage: Option[Int] = None,
+    stages: Option[Int] = None,
+    stageName: Option[String] = None
+)
+
 /** The native sdcpp job document, as `GET /sdcpp/v1/jobs/{id}` answers it.
   * Timestamps are unix seconds; drift converts to millis at the boundary.
   * `b64_json` is pinned by annotation: `enforce_snake_case` would split the
@@ -90,6 +122,10 @@ case class NativeJob(
       * unapplied).
       */
     warnings: List[String] = Nil,
+    /** What the job is doing, as drift's runner says it; sd-server says none,
+      * and its progress is read from its log.
+      */
+    progress: Option[JobProgress] = None,
     /** Where to ask for the job again, in the answer to its submission. */
     pollUrl: Option[String] = None
 )

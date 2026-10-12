@@ -1,0 +1,52 @@
+/* The LoRA picker of the generation form. */
+
+/* The picker's inline chips — nsfw, needs restart, not installed — sit inside
+   a line of small text, so they stay no taller than it. Bulma v1 has no small
+   tag: `is-small` alone changes nothing. */
+.lora-picker p .tag.is-small {
+  height: 1.5em;
+  padding-inline: 0.5em;
+  vertical-align: middle;
+}
+
+/* The list of LoRAs to add can be long: the line under the mouse lights up,
+   so its "+ Add" is plainly the one about to be clicked. The negative margin
+   keeps the names aligned with the rest of
+   the box while the highlight reaches past them. */
+/* About eight lines tall, scrolling past them. The padding gives the rows'
+   highlight, which reaches past the names, room inside the scroll box. */
+.lora-picker-choices {
+  max-height: 16rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-inline: 0.375rem;
+  margin-inline: -0.375rem;
+}
+
+.lora-picker-choice {
+  /* Less the border's width on the left, so the names do not shift. */
+  padding: 0.125rem 0.375rem 0.125rem calc(0.375rem - 3px);
+  margin-inline: -0.375rem;
+  border-radius: 4px;
+  border-left: 3px solid transparent;
+}
+
+.lora-picker-choice:hover {
+  background-color: hsl(25, 15%, 28%);
+  border-left-color: hsl(204, 71%, 53%);
+}
+
+.lora-picker-choice:hover p {
+  color: white;
+}
+
+/* The ✕ beside a strength stands exactly as tall as the strength's input.
+   Bulma sizes a button by its content — `height: auto`
+   — and the glyph comes from a fallback font with a taller line, while a small
+   input is a fixed 2.5em of the same font size. */
+.lora-picker .button.lora-picker-remove {
+  height: 2.5em;
+  width: 2.5em;
+  padding: 0;
+  line-height: 1;
+}

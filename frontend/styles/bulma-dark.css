@@ -1,0 +1,201 @@
+/* Bulma's modals, forms, tags, tabs and levels in the dark theme. */
+
+/* Dark modal overrides */
+.modal-card {
+  background-color: hsl(25, 20%, 14%);
+  color: hsl(35, 20%, 92%);
+}
+
+.modal-card-head,
+.modal-card-foot {
+  background-color: hsl(25, 20%, 11%);
+  border-color: hsl(25, 20%, 18%);
+}
+
+/* Bulma v1 lays the footer out as a flex row with no space between its
+   buttons, so two of them touch. */
+.modal-card-foot {
+  gap: 0.5rem;
+}
+
+.modal-card-title {
+  color: hsl(35, 20%, 92%);
+}
+
+.modal-card-body {
+  background-color: hsl(25, 20%, 14%);
+}
+
+.modal-card-body .input {
+  background-color: hsl(25, 20%, 11%);
+  border-color: hsl(25, 20%, 20%);
+  color: hsl(35, 20%, 92%);
+}
+
+.modal-card-body .input::placeholder {
+  color: hsl(35, 10%, 60%);
+}
+
+.modal-card-body .input:focus {
+  border-color: var(--bulma-primary);
+  box-shadow: 0 0 0 0.125em hsla(35, 90%, 48%, 0.25);
+}
+
+.breadcrumb.has-slash-separator li + li::before {
+  content: "/";
+  color: hsl(35, 10%, 60%);
+}
+
+.modal-card-foot .select select {
+  background-color: hsl(25, 20%, 14%);
+  border-color: hsl(25, 20%, 20%);
+  color: hsl(35, 20%, 92%);
+}
+
+/* Dark form/content overrides: Bulma paints these near-black for light
+   backgrounds, same class of fix as the input/button/modal overrides above. */
+.label {
+  color: hsl(30, 12%, 65%);
+}
+
+strong {
+  color: inherit;
+}
+
+/* `.content h2` (0,1,1) outranks `.text-primary` (0,1,0), so the intent
+   classes need the `.content` prefix to win. */
+.content h1.text-primary,
+.content h2.text-primary,
+.content h3.text-primary {
+  color: hsl(35, 20%, 92%);
+}
+
+.content h1.text-secondary,
+.content h2.text-secondary,
+.content h3.text-secondary {
+  color: hsl(30, 12%, 65%);
+}
+
+.radio,
+.checkbox {
+  color: hsl(35, 20%, 92%);
+}
+
+.box.bg-card {
+  color: hsl(35, 20%, 92%);
+}
+
+/* Bulma's wrapper-div pattern (div.select > select), used by the generation
+   form — same dark treatment as the bare-class selects below. */
+.select select {
+  background-color: hsl(25, 14%, 18%);
+  color: hsl(35, 20%, 92%);
+  border-color: hsl(25, 10%, 30%);
+}
+
+.select select:focus {
+  border-color: hsl(30, 95%, 52%);
+  box-shadow: 0 0 0 0.125em hsla(30, 95%, 52%, 0.25);
+}
+
+/* A disabled input (the seed field under its Random toggle) otherwise falls
+   back to Bulma's light disabled palette. */
+.input[disabled] {
+  background-color: hsl(25, 10%, 22%);
+  color: hsl(30, 8%, 55%);
+  border-color: hsl(25, 10%, 28%);
+}
+
+/* Native file inputs: the "no file chosen" text is invisible without a color,
+   and the browser-drawn button looks foreign to the dark design. */
+input[type="file"] {
+  color: hsl(35, 15%, 75%);
+}
+
+input[type="file"]::file-selector-button {
+  background-color: hsl(25, 10%, 28%);
+  color: hsl(35, 20%, 92%);
+  border: 1px solid hsl(25, 10%, 40%);
+  border-radius: 4px;
+  padding: 0.25em 0.75em;
+  margin-right: 0.75em;
+  cursor: pointer;
+}
+
+/* Selects carry the class directly rather than Bulma's wrapper-div pattern,
+   so they render as bare native controls without this. */
+select.select {
+  background-color: hsl(25, 14%, 18%);
+  color: hsl(35, 20%, 92%);
+  border: 1px solid hsl(25, 10%, 30%);
+  border-radius: 4px;
+  padding: 0.4em 0.6em;
+}
+
+select.select:focus {
+  border-color: hsl(30, 95%, 52%);
+  outline: none;
+  box-shadow: 0 0 0 0.125em hsla(30, 95%, 52%, 0.25);
+}
+
+/* Neutral tags: Bulma computes the un-modified and is-light tags as
+   light-on-light with this palette (the :root overrides set --bulma-light-l
+   but not its invert), which made the size chips vanish. Pin them to theme
+   chips — but only them: a bare `.tag` selector here would out-cascade the
+   `background-color: var(…)` Bulma's own rule carries, and the colored
+   variants (is-info, is-danger, …) only redefine those variables, so every
+   tag flattened to the same neutral chip (the session status tags found
+   this). */
+.tag:not(.is-primary):not(.is-link):not(.is-info):not(.is-success):not(.is-warning):not(.is-danger):not(.is-dark),
+.tag.is-light {
+  background-color: hsl(25, 10%, 32%);
+  color: hsl(35, 20%, 92%);
+}
+
+/* Tabs: Bulma's link and border colors are for light backgrounds. Inactive
+   tabs get the secondary tone, the active one the app's orange accent. The
+   ul's full-width rule and each inactive link's underline are the same light
+   tone, so the line reads as one unbroken stroke. */
+.tabs ul {
+  border-bottom-color: hsl(35, 20%, 92%);
+}
+
+.tabs a {
+  color: hsl(30, 12%, 65%);
+  border-bottom-color: hsl(35, 20%, 92%);
+}
+
+.tabs a:hover {
+  color: hsl(35, 20%, 92%);
+  border-bottom-color: hsl(35, 20%, 92%);
+}
+
+.tabs li.is-active a {
+  color: hsl(30, 95%, 52%);
+  border-bottom-color: hsl(30, 95%, 52%);
+}
+
+/* Long labels (GGUF filenames, deep paths) must wrap instead of pushing a
+   row's controls out of its card: Bulma's level sides refuse to shrink. */
+.level-left {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.level-left > * {
+  min-width: 0;
+}
+
+/* A process tail inside a coloured notification (a failed job, a failed
+   generation) must read in the notification's own text colour, not Bulma's
+   pre grey, which vanishes on the pale red ground in the dark scheme. */
+.notification pre {
+  color: inherit;
+}
+
+/* Bulma's `.content p:not(:last-child)` puts a 1em margin under a modal's
+   title, because the close button follows it - which inflates the head of
+   every modal opened from a `.content` page. */
+.content .modal-card-head p {
+  margin-bottom: 0;
+}

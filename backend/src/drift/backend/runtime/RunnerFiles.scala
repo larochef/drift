@@ -78,9 +78,11 @@ final private[runtime] class RunnerFiles(
     wroteJar || wroteLauncher
   }
 
-  /** Brings each installed runner runtime to the runner this drift carries,
-    * validating again the ones that changed. Never installs one: a deleted
-    * runner stays deleted.
+  /** Brings each installed runner runtime to the runner this drift carries —
+    * its files, and the ROCm its kernels were compiled with — validating again
+    * the ones that changed. Never installs one: a deleted runner stays deleted.
+    * The TheRock tree a runner runs on stays the one chosen for it: kernels
+    * compiled with another ROCm are said, not re-paired.
     */
   def refresh(): Unit =
     if (offer.available)
@@ -90,8 +92,19 @@ final private[runtime] class RunnerFiles(
         .foreach { runtime =>
           runtime.theRockPath.map(Paths.get(_)) match {
             case Some(rock) if Files.isDirectory(rock) =>
-              if (write(Paths.get(runtime.installedAt), runtime.tool, rock)) {
-                val validated = validation.validateAndSave(runtime)
+              val carried = runtime.copy(rocmVersion = rocmVersion)
+              if (
+                write(Paths.get(runtime.installedAt), runtime.tool, rock) ||
+                carried != runtime
+              ) {
+                val validated = validation.validateAndSave(carried)
+                for {
+                  kernels <- rocmVersion
+                  tree <- runtime.theRockVersion
+                  if !RuntimeManager.sameRocm(kernels, tree)
+                } logger.warn(
+                  s"the runner '${runtime.id}' carries kernels compiled with ROCm $kernels and runs on $tree; change its ROCm build to match"
+                )
                 if (validated.valid)
                   logger.info(s"updated the runner '${runtime.id}'")
                 else

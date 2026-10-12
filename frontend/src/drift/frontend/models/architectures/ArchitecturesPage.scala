@@ -195,7 +195,7 @@ class ArchitecturesPage(
       case Event.Updated(_) => editingArchId.set(None)
       case _                => ()
     },
-    modelService.events --> Observer {
+    modelService.events --> Observer[ModelService.Event] {
       // An edit can point the model at another file, which wants fetching
       // exactly like a fresh registration does.
       case ModelService.Event.Created(model) =>

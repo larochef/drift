@@ -25,16 +25,19 @@ import org.scalajs.dom
   val authTokenService = AuthTokenService()
   val promptTemplateService = PromptTemplateService()
   val sessionService = SessionService(statusSocketService)
-  val generationService = GenerationService(statusSocketService)
+  val generationStore = GenerationStore(statusSocketService)
+  val generationService =
+    GenerationService(statusSocketService, generationStore)
   val assistantService = AssistantService(promptTemplateService)
-  val projectService = ProjectService(statusSocketService)
-  val historyService = HistoryService(statusSocketService)
+  val projectService = ProjectService(statusSocketService, generationStore)
+  val historyService = HistoryService(statusSocketService, generationStore)
   val postProcessService = PostProcessService(statusSocketService)
   val loraService = LoraService(statusSocketService)
   val upscalerService = UpscalerService(statusSocketService)
   val conversionService = ConversionService(statusSocketService)
   val globalDownloadsService = GlobalDownloadsService(statusSocketService)
   val machineService = MachineService(statusSocketService)
+  val locationsService = LocationsService()
   // One instance per service: only one route is mounted at a time, so the
   // browsers and the search page never contend for the same result state.
   val browsers = BrowserServices(
@@ -58,6 +61,7 @@ import org.scalajs.dom
       authTokenService,
       promptTemplateService,
       sessionService,
+      generationStore,
       generationService,
       assistantService,
       projectService,
@@ -68,6 +72,7 @@ import org.scalajs.dom
       conversionService,
       globalDownloadsService,
       machineService,
+      locationsService,
       LogService(),
       statusSocketService,
       browsers

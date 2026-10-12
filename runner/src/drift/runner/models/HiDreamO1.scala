@@ -184,13 +184,7 @@ final class HiDreamO1 private (
     * an MLP with a SiLU.
     */
   private def timeEmbedding(t: Float, out: Tensor): Unit = {
-    val half = frequencies / 2
-    val sinusoid = new Array[Float](frequencies)
-    (0 until half).foreach { i =>
-      val angle = 1000.0 * t * math.exp(-math.log(10000.0) * i / half)
-      sinusoid(i) = math.cos(angle).toFloat
-      sinusoid(half + i) = math.sin(angle).toFloat
-    }
+    val sinusoid = TimestepSinusoid(1000.0 * t, frequencies / 2)
     val input = ops.fromFloats(Shape.of(1, frequencies), sinusoid)
     val inner = ops.allocate(DType.F32, Shape.of(1, hidden))
     try {

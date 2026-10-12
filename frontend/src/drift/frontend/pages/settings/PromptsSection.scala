@@ -284,7 +284,8 @@ class PromptsSection(service: PromptTemplateService) extends Component {
               proposalFormat = formatVar.now()
             )
             service.push(
-              if (isNew) Command.Create(saved) else Command.Update(saved)
+              if (isNew) Command.Create(saved)
+              else Command.Update(saved.id, saved)
             )
             editing.set(None)
           }

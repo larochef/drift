@@ -28,12 +28,14 @@ object ProjectService {
 }
 
 /** Projects and their versions (`specs/19-projects-and-prompt-versions.md`),
-  * plus each project's generations: loaded from the sidecars once, then kept
-  * current from the status socket — a completion tagged with a project is
-  * folded in, and one naming a version the project does not know yet reloads
-  * the projects, since the backend appended that version on submit.
+  * plus each project's generations: read from the sidecars once, and from then
+  * on a view of the generations the page knows (`GenerationStore`) — whatever
+  * is tagged with the project is in it. A generation naming a version the
+  * project does not know yet reloads the projects, since the backend appended
+  * that version on submit.
   */
-class ProjectService(statusSocket: StatusSocketService) extends ServiceErrors {
+class ProjectService(statusSocket: StatusSocketService, store: GenerationStore)
+    extends ServiceErrors {
   import ProjectService.{Command, Event}
 
   private val listFn = ApiClient.stream(listProjects)
@@ -44,7 +46,9 @@ class ProjectService(statusSocket: StatusSocketService) extends ServiceErrors {
   private val generationsFn = ApiClient.stream(listProjectGenerations)
 
   private val _projects = Var(List.empty[Project])
-  private val _generations = Var(Map.empty[String, List[Generation]])
+
+  /** The projects whose generations have been read from the sidecars. */
+  private val _loadedProjects = Var(Set.empty[String])
 
   val projects: Signal[List[Project]] = _projects.signal
 
@@ -54,14 +58,25 @@ class ProjectService(statusSocket: StatusSocketService) extends ServiceErrors {
   private val _projectsLoaded = Var(false)
   val projectsLoaded: Signal[Boolean] = _projectsLoaded.signal
 
-  /** Per project id, newest first. */
-  val generations: Signal[Map[String, List[Generation]]] = _generations.signal
+  /** Per loaded project, newest first. Free play is not project work until it
+    * is kept (`specs/22-…`).
+    */
+  val generations: Signal[Map[String, List[Generation]]] =
+    store.byId
+      .combineWith(_loadedProjects.signal)
+      .map { (all, loaded) =>
+        val tagged = all.values.toList
+          .filterNot(_.scratch)
+          .groupBy(_.projectId.getOrElse(""))
+        loaded.map(id => id -> newestFirst(tagged.getOrElse(id, Nil))).toMap
+      }
+      .distinct
 
   def project(id: String): Signal[Option[Project]] =
     _projects.signal.map(_.find(_.id == id)).distinct
 
   def generationsOf(id: String): Signal[List[Generation]] =
-    _generations.signal.map(_.getOrElse(id, Nil))
+    generations.map(_.getOrElse(id, Nil)).distinct
 
   private val cmdBus = new EventBus[Command]
   private val evtBus = new EventBus[Event]
@@ -76,53 +91,30 @@ class ProjectService(statusSocket: StatusSocketService) extends ServiceErrors {
   /** A derived entry a post-processing job just wrote — it inherits its
     * parent's project, so it belongs beside it in the results.
     */
-  def adopt(generation: Generation): Unit = fold(generation)
+  def adopt(generation: Generation): Unit = {
+    store.adopt(generation)
+    fold(generation)
+  }
 
   /** Drops a generation deleted elsewhere (the detail view, a result's delete
-    * button) from every project's list, so the results grid follows the disk.
+    * button), so the results grid follows the disk.
     */
-  def forget(generationId: String): Unit =
-    _generations.update(
-      _.view.mapValues(_.filterNot(_.id == generationId)).toMap
-    )
+  def forget(generationId: String): Unit = store.forget(List(generationId))
 
-  /** Entries that changed project: out of the list they were in, into the one
-    * they belong to now; the projects are re-read, a move may have appended a
-    * version or cleared a cover.
+  /** Entries that changed project: each is in the list it belongs to now; the
+    * projects are re-read, a move may have appended a version or cleared a
+    * cover.
     */
   def moved(generations: List[Generation]): Unit = {
-    val ids = generations.map(_.id).toSet
-    _generations.update(
-      _.view.mapValues(_.filterNot(g => ids(g.id))).toMap
-    )
-    generations.foreach(generation =>
-      generation.projectId
-        .filter(_generations.now().contains)
-        .foreach(projectId =>
-          _generations.update(lists =>
-            lists + (projectId -> newestFirst(generation :: lists(projectId)))
-          )
-        )
-    )
+    store.put(generations)
     push(Command.Load)
   }
 
-  /** Folds a pushed generation into its project's list; a new version id means
-    * the project document changed too.
+  /** A generation tagged with a project whose version the project does not know
+    * yet means the project document changed too.
     */
   private def fold(generation: Generation): Unit =
     generation.projectId.foreach { projectId =>
-      val list = _generations.now().getOrElse(projectId, Nil)
-      // Only when it actually says something new: the socket repeats a
-      // session's whole list on every push, and a list rebuilt for nothing
-      // emits, which rebuilds whatever the workspace has open on it — the
-      // detail modal included, mid-edit.
-      if (!list.contains(generation))
-        _generations.update(
-          _ + (projectId -> newestFirst(
-            generation :: list.filterNot(_.id == generation.id)
-          ))
-        )
       val known = _projects
         .now()
         .find(_.id == projectId)
@@ -179,17 +171,18 @@ class ProjectService(statusSocket: StatusSocketService) extends ServiceErrors {
           if (withGenerations) deleteGenerationsFn(id)
           else EventStream.fromValue(List.empty[String])
         images
-          .flatMapSwitch(_ => deleteFn(id))
-          .map(ok => (id, ok))
+          .flatMapSwitch(deleted => deleteFn(id).map(ok => (id, ok, deleted)))
           .recoverToTry
       }
-      --> Observer[Try[(String, Boolean)]] {
-        case Success((id, true)) =>
+      --> Observer[Try[(String, Boolean, List[String])]] {
+        case Success((id, true, deleted)) =>
           clearError()
           _projects.update(_.filterNot(_.id == id))
-          _generations.update(_ - id)
+          _loadedProjects.update(_ - id)
+          // The images deleted with it leave the gallery as well.
+          store.forget(deleted)
           evtBus.writer.onNext(Event.Deleted(id))
-        case Success((id, false)) =>
+        case Success((id, false, _)) =>
           reportFailure("Deleting the project", s"the server refused '$id'.")
         case Failure(err) => reportFailure("Deleting the project", err)
       },
@@ -199,14 +192,19 @@ class ProjectService(statusSocket: StatusSocketService) extends ServiceErrors {
       --> Observer[Try[(String, List[Generation])]] {
         case Success((id, list)) =>
           clearError()
-          _generations.update(_ + (id -> newestFirst(list)))
+          // The listing is the project as the disk has it; what is still
+          // being made has no sidecar yet, and stays.
+          store.settle(
+            g => g.projectId.contains(id) && GenerationStore.recorded(g),
+            list
+          )
+          _loadedProjects.update(_ + id)
         case Failure(err) =>
           reportFailure("Loading the project's generations", err)
       },
-    // Live updates: the socket repeats each session's whole list, so folding
-    // is idempotent.
+    // Live updates: the store takes the generations; a version it names that
+    // the project lacks is what is left to notice here.
     statusSocket.generations --> Observer[Map[String, List[Generation]]] {
-      // Free play is not project work until it is kept (`specs/22-…`).
       bySession => bySession.values.flatten.filterNot(_.scratch).foreach(fold)
     }
   )

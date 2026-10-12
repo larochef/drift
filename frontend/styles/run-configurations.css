@@ -1,0 +1,47 @@
+/* The run configurations grid and its cards. */
+
+/* The inference page's run configurations: cards side by side instead of one
+   full-width card per line, capped at three columns so they never get
+   cramped. `align-items: start` keeps a short card from being stretched to
+   its row's tallest neighbour. */
+.run-configuration-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media screen and (min-width: 1100px) {
+  .run-configuration-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media screen and (min-width: 1700px) {
+  .run-configuration-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* The card being edited: the edit form needs the full row's width. */
+.run-configuration-grid > .grid-span-all {
+  grid-column: 1 / -1;
+}
+
+/* A long label plus the status tags and edit/delete buttons can exceed a
+   grid cell's width; wrapping onto a second header line beats overflowing
+   the card. */
+.run-configuration-card .card-header {
+  flex-wrap: wrap;
+}
+
+/* The launch strip at the card's bottom: the runtime pick and the
+   Launch/Stop button, kept apart from the header's edit/delete. */
+.card-footer.run-configuration-launch {
+  border-top: 1px solid hsl(25, 10%, 32%);
+  padding: 0.75rem;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+}

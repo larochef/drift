@@ -217,13 +217,9 @@ final class Qwen35 private (
     */
   final private class Workspace(val capacity: Int, val logitRows: Int)
       extends SizedWorkspace {
-    private val buffers = scala.collection.mutable.ArrayBuffer.empty[Tensor]
-    private def allocate(dtype: DType, dimensions: Long*): Tensor = {
-      val tensor =
-        ops.allocate(dtype, Shape(capacity.toLong +: dimensions.toVector))
-      buffers += tensor
-      tensor
-    }
+    private val buffers = new TensorScope(ops)
+    private def allocate(dtype: DType, dimensions: Long*): Tensor =
+      buffers.allocate(dtype, Shape(capacity.toLong +: dimensions.toVector))
     private val h = shape.hidden.toLong
     val blocks = new BlockBuffers(ops, shape, capacity)
     val x: Tensor = allocate(DType.F32, h)
@@ -231,17 +227,13 @@ final class Qwen35 private (
     val projected: Tensor = allocate(DType.F32, h)
     val joined: Tensor = allocate(DType.F32, 2 * h)
     val tokens: Tensor = allocate(DType.I32)
-    val logits: Tensor = {
-      val tensor = ops.allocate(
-        DType.F32,
-        Shape.of(logitRows, config.vocabulary)
-      )
-      buffers += tensor
-      tensor
-    }
+    val logits: Tensor = buffers.allocate(
+      DType.F32,
+      Shape.of(logitRows, config.vocabulary)
+    )
     def release(): Unit = {
       blocks.release()
-      buffers.foreach(ops.release)
+      buffers.close()
     }
   }
 

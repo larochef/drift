@@ -3,7 +3,7 @@ package drift.runner.diffusion
 import drift.runner.decode.Prompt
 import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
-import drift.runner.ops.Ops
+import drift.runner.ops.{Ops, TensorScope}
 import drift.runner.state.Sequence
 import drift.runner.tensor.*
 import drift.runner.text.{Tokenizer, TokenizerJson}
@@ -290,8 +290,7 @@ final class HiDreamO1Pipeline(
       }
       noise
     }
-    val held = scala.collection.mutable.ArrayBuffer.empty[Tensor]
-    def hold(tensor: Tensor) = { held += tensor; tensor }
+    val held = new TensorScope(ops)
     val references = scala.collection.mutable.ArrayBuffer.empty[Reference]
     val prompts = scala.collection.mutable.ArrayBuffer.empty[Cached]
     try {
@@ -307,15 +306,12 @@ final class HiDreamO1Pipeline(
       // the references' patches as the model reads them, the same every step
       val read = Option.when(references.nonEmpty) {
         val rows = references.map(r => r.gridHeight * r.gridWidth).sum
-        val pixels = hold(
-          ops.fromFloats(
-            Shape.of(rows, model.patchValues),
-            references.toArray.flatMap(_.patches)
-          )
+        val pixels = held.fromFloats(
+          Shape.of(rows, model.patchValues),
+          references.toArray.flatMap(_.patches)
         )
-        val embedded = hold(
-          ops.allocate(DType.F32, Shape.of(rows, model.decoder.config.hidden))
-        )
+        val embedded =
+          held.allocate(DType.F32, Shape.of(rows, model.decoder.config.hidden))
         model.embed(pixels, embedded)
         embedded
       }
@@ -333,17 +329,16 @@ final class HiDreamO1Pipeline(
       // the tower's tokens are in the prompts' caches by now
       references.foreach(_.release())
       references.clear()
-      val z = hold(ops.fromFloats(shape, start))
-      val clean = hold(ops.allocate(DType.F32, shape))
-      val other = unconditional.map(_ => hold(ops.allocate(DType.F32, shape)))
+      val z = held.fromFloats(shape, start)
+      val clean = held.allocate(DType.F32, shape)
+      val other = unconditional.map(_ => held.allocate(DType.F32, shape))
       val solver =
         Option.when(sampler == UniPcSampler)(new UniPc(sigmas, first))
       // UniPC's memory: the clean images of the two steps before, the sample
       // the last step was run on, and room for a weighted sum
       var (latest, earlier) = (z, z)
-      val scratch = solver.toSeq.flatMap(_ =>
-        Seq.fill(5)(hold(ops.allocate(DType.F32, shape)))
-      )
+      val scratch =
+        solver.toSeq.flatMap(_ => Seq.fill(5)(held.allocate(DType.F32, shape)))
       solver.foreach { _ =>
         latest = scratch(0)
         earlier = scratch(1)
@@ -442,7 +437,7 @@ final class HiDreamO1Pipeline(
       )
     } finally {
       references.foreach(_.release())
-      held.foreach(ops.release)
+      held.close()
       prompts.foreach(_.close())
     }
   }

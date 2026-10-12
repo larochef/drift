@@ -1,6 +1,6 @@
 package drift.runner.models
 
-import drift.runner.ops.{Activation, Ops}
+import drift.runner.ops.*
 import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
@@ -13,12 +13,9 @@ import scala.collection.mutable
   */
 final class VaeWeights(ops: Ops, source: WeightSource) {
 
-  private val made = mutable.ArrayBuffer.empty[Tensor]
+  private val made = new TensorScope(ops)
 
-  def keep(tensor: Tensor): Tensor = {
-    made += tensor
-    tensor
-  }
+  def keep(tensor: Tensor): Tensor = made.keep(tensor)
 
   def has(name: String): Boolean = source.has(name)
 
@@ -40,16 +37,8 @@ final class VaeWeights(ops: Ops, source: WeightSource) {
   }
 
   /** Floats as BF16 (round to nearest even), uploaded. */
-  def bf16(shape: Shape, floats: Array[Float]): Tensor = {
-    val bytes = new Array[Byte](2 * floats.length)
-    floats.indices.foreach { i =>
-      val bits = java.lang.Float.floatToRawIntBits(floats(i))
-      val rounded = (bits + 0x7fff + ((bits >>> 16) & 1)) >>> 16
-      bytes(2 * i) = rounded.toByte
-      bytes(2 * i + 1) = (rounded >>> 8).toByte
-    }
-    keep(ops.fromBytes(DType.BF16, shape, bytes))
-  }
+  def bf16(shape: Shape, floats: Array[Float]): Tensor =
+    keep(ops.fromBytes(DType.BF16, shape, Bf16.bytes(floats)))
 
   /** Floats as F16 (round to nearest even), uploaded. */
   def f16(shape: Shape, floats: Array[Float]): Tensor = {
@@ -168,7 +157,7 @@ final class VaeWeights(ops: Ops, source: WeightSource) {
     )
   }
 
-  def release(): Unit = made.foreach(ops.release)
+  def release(): Unit = made.close()
 }
 
 /** A convolution's BF16 weight and F32 bias. */
@@ -180,18 +169,23 @@ final case class Convolution(weight: Tensor, bias: Tensor) {
     Convolution(weight.rows(0, count), bias.rows(0, count))
 }
 
-/** A norm over each pixel's channels: Wan's RMS (`F.normalize × √C × γ`), or a
-  * group norm of 32 groups (the LDM VAEs').
+/** A norm over each pixel's channels: Wan's RMS (`F.normalize × √C × γ`), a
+  * group norm of 32 groups (the LDM VAEs') unless told otherwise, or LTX's
+  * pixel norm (RMS over the channels, ε 10⁻⁸, no weights: `ones` gives the unit
+  * weights of a channel count, made when first asked).
   */
 enum ChannelNorm {
   case Rms(gamma: Tensor)
-  case Group(weight: Tensor, bias: Tensor)
+  case Group(weight: Tensor, bias: Tensor, groups: Int = 32)
+  case Pixel(ones: Long => Tensor)
 
   /** `out = norm(x)`, both `[pixels, C]`. */
   def apply(ops: Ops, x: Tensor, out: Tensor): Unit = this match {
     // F.normalize's 1e-12 on the norm is ~0 here
-    case Rms(gamma)          => ops.rmsNorm(x, gamma, 1e-24f, 0f, out)
-    case Group(weight, bias) => ops.groupNorm(x, 32, weight, bias, 1e-6f, out)
+    case Rms(gamma)                  => ops.rmsNorm(x, gamma, 1e-24f, 0f, out)
+    case Group(weight, bias, groups) =>
+      ops.groupNorm(x, groups, weight, bias, 1e-6f, out)
+    case Pixel(ones) => ops.rmsNorm(x, ones(x.shape.last), 1e-8f, 0f, out)
   }
 }
 
@@ -361,12 +355,9 @@ final class VaeRun(ops: Ops) {
     val (height, width, c) = dimensions(x)
     val count = height * width
     val flat = x.view(count, c)
-    val temporaries = mutable.ArrayBuffer.empty[Tensor]
-    def allocate(dtype: DType, rows: Long, cols: Long) = {
-      val tensor = ops.allocate(dtype, Shape.of(rows, cols))
-      temporaries += tensor
-      tensor
-    }
+    val temporaries = new TensorScope(ops)
+    def allocate(dtype: DType, rows: Long, cols: Long) =
+      temporaries.allocate(dtype, Shape.of(rows, cols))
     try {
       val normed = allocate(DType.F32, count, c)
       block.norm(ops, flat, normed)
@@ -403,7 +394,7 @@ final class VaeRun(ops: Ops) {
       ops.addRow(q, block.proj.bias, q)
       ops.add(flat, q, flat)
       x
-    } finally temporaries.foreach(ops.release)
+    } finally temporaries.close()
   }
 
   def release(): Unit = {
@@ -414,7 +405,8 @@ final class VaeRun(ops: Ops) {
 
 /** The layers a video VAE runs one frame at a time, a frame being
   * `[height, width, channels]`: what the causal VAEs share whatever their
-  * convolutions over time are.
+  * convolutions over time are. The encoders that hold a whole clip run them on
+  * every frame of it, layer by layer.
   */
 final class FrameLayers(ops: Ops) {
 
@@ -430,6 +422,14 @@ final class FrameLayers(ops: Ops) {
   def sizes(x: Tensor): (Long, Long, Long) = {
     val Seq(h, w, c) = x.shape.dimensions
     (h, w, c)
+  }
+
+  /** `x` in a new frame. */
+  def copy(x: Tensor): Tensor = {
+    val (h, w, c) = sizes(x)
+    val out = frame(h, w, c)
+    ops.copy(x, out)
+    out
   }
 
   def normSilu(x: Tensor, norm: ChannelNorm): Tensor = {
@@ -472,5 +472,94 @@ final class FrameLayers(ops: Ops) {
     }
     ops.release(x)
     second
+  }
+
+  /** A convolution over time for one output frame: each of `terms` is a frame
+    * and the 3×3 slice it goes through, the first into the output, the others
+    * added to it in the order given. The frames stay the caller's.
+    */
+  def summed(
+      terms: Seq[(Tensor, Convolution)],
+      stride: Int = 1,
+      reflect: Boolean = false
+  ): Tensor = {
+    val (first, slice) = terms.head
+    val (h, w, _) = sizes(first)
+    val out = frame(h / stride, w / stride, slice.outChannels)
+    ops.conv3x3(first, slice.weight, slice.bias, out, stride, reflect = reflect)
+    terms.tail.foreach { (input, slice) =>
+      val part = frame(h / stride, w / stride, slice.outChannels)
+      try {
+        ops.conv3x3(
+          input,
+          slice.weight,
+          slice.bias,
+          part,
+          stride,
+          reflect = reflect
+        )
+        ops.add(out, part, out)
+      } finally ops.release(part)
+    }
+    out
+  }
+
+  /** `frames` through `stage`, released. */
+  def through(
+      frames: Seq[Tensor],
+      stage: Seq[Tensor] => Seq[Tensor]
+  ): Seq[Tensor] =
+    try stage(frames)
+    finally frames.foreach(ops.release)
+
+  /** A residual block on a clip's frames at once, each layer over all of them
+    * before the next: its two convolutions over time are run by `causal`, which
+    * reads the frames it is given and leaves them. `frames` stay the caller's.
+    */
+  def residual[C](
+      frames: Seq[Tensor],
+      norm1: ChannelNorm,
+      conv1: C,
+      norm2: ChannelNorm,
+      conv2: C,
+      shortcut: Option[Convolution]
+  )(causal: (Seq[Tensor], C) => Seq[Tensor]): Seq[Tensor] = {
+    val first = through(frames.map(normSilu(_, norm1)), causal(_, conv1))
+    val second = through(
+      through(first, _.map(normSilu(_, norm2))),
+      causal(_, conv2)
+    )
+    second.zip(frames).foreach { (y, x) =>
+      shortcut match {
+        case Some(conv) =>
+          val across = linear(x, conv)
+          ops.add(y, across, y)
+          ops.release(across)
+        case None => ops.add(y, x, y)
+      }
+    }
+    second
+  }
+}
+
+/** The last frames a convolution over time was given, newest first, `depth` of
+  * them at most: what lets the next chunk continue where the previous stopped.
+  * The frames it holds are its own to release.
+  */
+final class FrameHistory(ops: Ops, depth: Int) {
+
+  private var held: List[Tensor] = Nil
+
+  def frames: List[Tensor] = held
+
+  /** `x` becomes the newest; the frame that falls out is released. */
+  def push(x: Tensor): Unit = {
+    held.drop(depth - 1).foreach(ops.release)
+    held = x :: held.take(depth - 1)
+  }
+
+  def reset(): Unit = {
+    held.foreach(ops.release)
+    held = Nil
   }
 }

@@ -3,7 +3,7 @@ package drift.runner.diffusion
 import drift.runner.decode.{Prompt, PromptImage}
 import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
-import drift.runner.ops.Ops
+import drift.runner.ops.{Ops, TensorScope}
 import drift.runner.tensor.*
 import drift.runner.text.{Tokenizer, TokenizerJson}
 import drift.runner.vision.ImageSizing
@@ -450,8 +450,7 @@ final class MiniMaxH3Pipeline(
         s"[WARN] MiniMax H3 runs no negative prompt with references: CFG ${request.cfgScale} taken as 1"
       )
     val guided = request.cfgScale != 1f && referenced.isEmpty
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def keep(tensor: Tensor) = { held += tensor; tensor }
+    val held = new TensorScope(ops)
     try {
       stage("reading the prompt")
       val (conditional, visionRows) =
@@ -468,9 +467,9 @@ final class MiniMaxH3Pipeline(
               )
           })(_.pieces)
         )
-      keep(conditional)
+      held.keep(conditional)
       val unconditional =
-        Option.when(guided)(keep(text(request.negativePrompt, Nil)._1))
+        Option.when(guided)(held.keep(text(request.negativePrompt, Nil)._1))
       if (readsInputs(request)) stage("reading the inputs")
       val keyframeLatents = keyframeImages.map { (image, _) =>
         MiniMaxH3Conditions.Latents(
@@ -505,19 +504,15 @@ final class MiniMaxH3Pipeline(
       def uploaded(video: Option[Array[Float]], audio: Option[Array[Float]]) =
         MiniMaxH3ConditionRows(
           video.map(rows =>
-            keep(
-              ops.fromFloats(
-                Shape.of(rows.length / c.videoWidth, c.videoWidth),
-                rows
-              )
+            held.fromFloats(
+              Shape.of(rows.length / c.videoWidth, c.videoWidth),
+              rows
             )
           ),
           audio.map(rows =>
-            keep(
-              ops.fromFloats(
-                Shape.of(rows.length / c.audioWidth, c.audioWidth),
-                rows
-              )
+            held.fromFloats(
+              Shape.of(rows.length / c.audioWidth, c.audioWidth),
+              rows
             )
           )
         )
@@ -562,16 +557,14 @@ final class MiniMaxH3Pipeline(
           (
             requested,
             MiniMaxH3ControlRows(
-              keep(
-                ops.fromFloats(
-                  Shape.of(layout.videoRows, controlWidth),
-                  MiniMaxH3Conditions.patchify(
-                    latents,
-                    latentFrames,
-                    latentHeight,
-                    latentWidth,
-                    controlWidth / 4
-                  )
+              held.fromFloats(
+                Shape.of(layout.videoRows, controlWidth),
+                MiniMaxH3Conditions.patchify(
+                  latents,
+                  latentFrames,
+                  latentHeight,
+                  latentWidth,
+                  controlWidth / 4
                 )
               ),
               requested.strength
@@ -583,20 +576,18 @@ final class MiniMaxH3Pipeline(
           textTokens = prompt.shape.dimensions.head.toInt,
           visionRows = vision
         )
-      val video = keep(
-        ops.fromFloats(Shape.of(layout.videoRows, c.videoWidth), videoNoise)
-      )
-      val audio = keep(
-        ops.fromFloats(Shape.of(layout.audioRows, c.audioWidth), audioNoise)
-      )
+      val video =
+        held.fromFloats(Shape.of(layout.videoRows, c.videoWidth), videoNoise)
+      val audio =
+        held.fromFloats(Shape.of(layout.audioRows, c.audioWidth), audioNoise)
       val (videoVelocity, audioVelocity) = (
-        keep(ops.allocate(DType.F32, video.shape)),
-        keep(ops.allocate(DType.F32, audio.shape))
+        held.allocate(DType.F32, video.shape),
+        held.allocate(DType.F32, audio.shape)
       )
       val others = unconditional.map(_ =>
         (
-          keep(ops.allocate(DType.F32, video.shape)),
-          keep(ops.allocate(DType.F32, audio.shape))
+          held.allocate(DType.F32, video.shape),
+          held.allocate(DType.F32, audio.shape)
         )
       )
       val (videoSigmas, audioSigmas) =
@@ -736,7 +727,7 @@ final class MiniMaxH3Pipeline(
       )
     } finally {
       transformer.onBlock = (_, _) => ()
-      held.foreach(ops.release)
+      held.close()
     }
   }
 

@@ -35,6 +35,23 @@ object HipOpsTests extends TestSuite {
       )
       assert(total > 0)
     }
+    test("more ints than one staged copy carries are all written") {
+      val hip = new HipOps(Gpu.hip, MatVecInputs.Int8)
+      try {
+        // a 2048² picture with one reference of its size has this many
+        // positions
+        val values = Array.tabulate(83968 * 3)(i => i * 7 - 11)
+        val tensor = hip.allocate(DType.I32, Shape.of(values.length.toLong))
+        hip.writeInts(tensor, values)
+        assert(hip.toInts(tensor).sameElements(values))
+        // a shorter write leaves what lies past it
+        hip.writeInts(tensor, Array(5, 6, 7))
+        val after = hip.toInts(tensor)
+        assert(after.take(3).sameElements(Array(5, 6, 7)))
+        assert(after.drop(3).sameElements(values.drop(3)))
+        hip.release(tensor)
+      } finally hip.close()
+    }
     test("values survive a round trip through device memory") {
       val hip = new HipOps(Gpu.hip, MatVecInputs.Int8)
       try {

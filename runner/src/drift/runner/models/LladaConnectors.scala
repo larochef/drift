@@ -4,8 +4,6 @@ import drift.runner.ops.*
 import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
-import scala.collection.mutable
-
 /** What LLaDA-Image's small models share: their weights under a prefix of a
   * file (a connectors file names them `queryformer.`, `text_projection.` and
   * `sigvq.`; the released folders hold each alone), linear layers with a bias,
@@ -30,25 +28,12 @@ abstract private[models] class LladaPart(
   protected def hostFloats(name: String): Array[Float] =
     weights.hostFloats(prefix + name)
 
-  final protected case class Affine(weight: Tensor, bias: Tensor)
   protected def affineLayer(name: String): Affine =
     Affine(matrix(s"$name.weight"), floats(s"$name.bias"))
-  protected def affine(x: Tensor, layer: Affine, out: Tensor): Unit = {
-    ops.linear(x, layer.weight, out)
-    ops.addRow(out, layer.bias, out)
-  }
 
   /** Floats as BF16 (round to nearest even), uploaded. */
-  protected def bf16(shape: Shape, values: Array[Float]): Tensor = {
-    val bytes = new Array[Byte](2 * values.length)
-    values.indices.foreach { i =>
-      val bits = java.lang.Float.floatToRawIntBits(values(i))
-      val rounded = (bits + 0x7fff + ((bits >>> 16) & 1)) >>> 16
-      bytes(2 * i) = rounded.toByte
-      bytes(2 * i + 1) = (rounded >>> 8).toByte
-    }
-    weights.upload(DType.BF16, shape, bytes)
-  }
+  protected def bf16(shape: Shape, values: Array[Float]): Tensor =
+    weights.upload(DType.BF16, shape, Bf16.bytes(values))
 
   protected def constant(count: Long, value: Float): Tensor =
     weights.keep(
@@ -57,17 +42,11 @@ abstract private[models] class LladaPart(
 
   /** Tensors of one call, released together. */
   final protected class Scratch {
-    private val held = mutable.ArrayBuffer.empty[Tensor]
-    def rows(count: Long, columns: Long): Tensor = {
-      val tensor = ops.allocate(DType.F32, Shape.of(count, columns))
-      held += tensor
-      tensor
-    }
-    def keep(tensor: Tensor): Tensor = {
-      held += tensor
-      tensor
-    }
-    def release(): Unit = held.foreach(ops.release)
+    private val held = new TensorScope(ops)
+    def rows(count: Long, columns: Long): Tensor =
+      held.allocate(DType.F32, Shape.of(count, columns))
+    def keep(tensor: Tensor): Tensor = held.keep(tensor)
+    def release(): Unit = held.close()
   }
 
   def close(): Unit = weights.release()
@@ -129,17 +108,17 @@ final class LladaQueryFormer(ops: Ops, source: WeightSource, prefix: String)
       blocks.foreach { block =>
         ops.layerNorm(x, None, None, Epsilon, x)
         ops.layerNorm(embeds, None, None, Epsilon, read)
-        affine(x, block.query, q)
-        affine(read, block.key, k)
-        affine(read, block.value, v)
+        block.query(ops, x, q)
+        block.key(ops, read, k)
+        block.value(ops, read, v)
         attention(q, k, v, attended)
-        affine(attended, block.output, projected)
+        block.output(ops, attended, projected)
         ops.add(x, projected, x)
         ops.layerNorm(x, None, None, Epsilon, x)
         val inner = scratch.rows(queries, block.up.bias.shape.elementCount)
-        affine(x, block.up, inner)
+        block.up(ops, x, inner)
         ops.activation(Activation.GeluTanh, inner, inner)
-        affine(inner, block.down, projected)
+        block.down(ops, inner, projected)
         ops.add(x, projected, x)
       }
       x
@@ -203,9 +182,9 @@ final class LladaTextProjection(ops: Ops, source: WeightSource, prefix: String)
         Seq.fill(6)(scratch.rows(tokens, width))
       blocks.foreach { block =>
         ops.rmsNorm(x, ones, Epsilon, 0f, normed)
-        affine(normed, block.query, q)
-        affine(normed, block.key, k)
-        affine(normed, block.value, v)
+        block.query(ops, normed, q)
+        block.key(ops, normed, k)
+        block.value(ops, normed, v)
         Seq(q, k).foreach(t =>
           ops.rmsNorm(
             t.view(tokens * heads, head),
@@ -216,17 +195,17 @@ final class LladaTextProjection(ops: Ops, source: WeightSource, prefix: String)
           )
         )
         attention(q, k, v, attended)
-        affine(attended, block.output, projected)
+        block.output(ops, attended, projected)
         ops.add(x, projected, x)
         ops.rmsNorm(x, ones, Epsilon, 0f, normed)
         val inner = scratch.rows(tokens, block.up.bias.shape.elementCount)
-        affine(normed, block.up, inner)
+        block.up(ops, normed, inner)
         ops.activation(Activation.GeluTanh, inner, inner)
-        affine(inner, block.down, projected)
+        block.down(ops, inner, projected)
         ops.add(x, projected, x)
       }
       val out = ops.allocate(DType.F32, Shape.of(tokens, outputs))
-      affine(x, projector, out)
+      projector(ops, x, out)
       out
     } finally scratch.release()
   }
@@ -411,7 +390,7 @@ final class LladaSigVq(ops: Ops, source: WeightSource, prefix: String)
       val packed = scratch.rows(count, 3L * patch * patch)
       ops.packPatches(image, patch, packed)
       val x = scratch.rows(count, width)
-      affine(packed, patchEmbed, x)
+      patchEmbed(ops, packed, x)
       val placed = scratch.keep(
         ops.fromFloats(Shape.of(count, width), positions(gridHeight, gridWidth))
       )
@@ -427,11 +406,11 @@ final class LladaSigVq(ops: Ops, source: WeightSource, prefix: String)
           Epsilon,
           normed
         )
-        affine(normed, block.query, q)
-        affine(normed, block.key, k)
-        affine(normed, block.value, v)
+        block.query(ops, normed, q)
+        block.key(ops, normed, k)
+        block.value(ops, normed, v)
         attention(q, k, v, attended)
-        affine(attended, block.output, projected)
+        block.output(ops, attended, projected)
         ops.add(x, projected, x)
         ops.layerNorm(
           x,
@@ -441,13 +420,13 @@ final class LladaSigVq(ops: Ops, source: WeightSource, prefix: String)
           normed
         )
         val inner = scratch.rows(count, block.up.bias.shape.elementCount)
-        affine(normed, block.up, inner)
+        block.up(ops, normed, inner)
         ops.activation(Activation.GeluErf, inner, inner)
-        affine(inner, block.down, projected)
+        block.down(ops, inner, projected)
         ops.add(x, projected, x)
       }
       val code = scratch.rows(count, codeWidth)
-      affine(x, toCode, code)
+      toCode(ops, x, code)
       val products = scratch.rows(count, codes)
       ops.linear(code, codebook, products)
       val values = ops.toFloats(products)
@@ -472,10 +451,10 @@ final class LladaSigVq(ops: Ops, source: WeightSource, prefix: String)
       ops.embedding(semanticTable, ids, embedded)
       val inner =
         scratch.rows(codes.length, semanticIn.bias.shape.elementCount)
-      affine(embedded, semanticIn, inner)
+      semanticIn(ops, embedded, inner)
       ops.activation(Activation.Silu, inner, inner)
       val out = ops.allocate(DType.F32, Shape.of(codes.length, outputs))
-      affine(inner, semanticOut, out)
+      semanticOut(ops, inner, out)
       out
     } finally scratch.release()
   }

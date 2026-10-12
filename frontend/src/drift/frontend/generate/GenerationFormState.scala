@@ -18,41 +18,37 @@ class GenerationFormState {
   val negativePromptVar = Var("")
   val widthVar = Var("")
   val heightVar = Var("")
-  val stepsVar = Var("")
+
+  /** The sampling fields, each in layers (`LayeredField`): what a selected LoRA
+    * or the session gives is a default under what the user wrote.
+    */
+  val sampling: Map[String, LayeredField] =
+    SamplingField.names.map(_ -> LayeredField()).toMap
+
+  val stepsVar: Var[String] = sampling("steps").value
 
   /** wan 2.2 and its kind run two experts, and the high-noise pass takes its
     * own step count and CFG (`--high-noise-steps`, `--high-noise-cfg-scale`).
     * Shown only when the session reports high-noise defaults, which is how a
     * two-expert model announces itself.
     */
-  val highNoiseStepsVar = Var("")
-  val highNoiseCfgVar = Var("")
-  val cfgVar = Var("")
-  val samplerVar = Var("")
-  val schedulerVar = Var("")
-
-  /** The sampling fields the user has changed since the form was seeded
-    * (`specs/49-lora-sampling-settings.md`): a selected LoRA's settings are
-    * defaults, and only replace what is still one. A plain set, not a Var: it
-    * is read by the observer that writes the fields, in the transaction that
-    * may just have changed it.
-    */
-  private var touchedFields = Set.empty[String]
-  def touch(field: String): Unit = touchedFields += field
-  def touched(field: String): Boolean = touchedFields.contains(field)
-  def untouch(fields: Set[String]): Unit = touchedFields --= fields
+  val highNoiseStepsVar: Var[String] = sampling("highNoiseSteps").value
+  val highNoiseCfgVar: Var[String] = sampling("highNoiseCfg").value
+  val cfgVar: Var[String] = sampling("cfg").value
+  val samplerVar: Var[String] = sampling("sampler").value
+  val schedulerVar: Var[String] = sampling("scheduler").value
 
   /** Every sampling field holds a value of the user's: a recipe was laid down.
     */
-  def touchSampling(): Unit = touchedFields = GenerationFormState.SamplingFields
+  def holdSampling(): Unit = sampling.values.foreach(_.hold())
 
   /** Every sampling field holds a default: the form was seeded. */
-  def untouchSampling(): Unit = touchedFields = Set.empty
+  def settleSampling(): Unit = sampling.values.foreach(_.settle())
 
-  /** The mode whose defaults the fields were last seeded from. Plain, like the
-    * touched fields: `mode` is a Var, and in the transaction that seeds a form
-    * it still reads the mode from before — a video form's "img_gen" — to the
-    * observer laying the LoRAs' settings, which must not write for that one.
+  /** The mode whose defaults the fields were last seeded from. Plain, not a
+    * Var: `mode` is one, and in the transaction that seeds a form it still
+    * reads the mode from before — a video form's "img_gen" — to the observer
+    * laying the LoRAs' settings, which must not write for that one.
     */
   private var seededMode = Option.empty[String]
   def seedFor(seeded: String): Unit = seededMode = Some(seeded)
@@ -62,12 +58,12 @@ class GenerationFormState {
     * toward the noisy end. Empty is the model's own — which for some is a
     * function of the image's size, not a number the session could report.
     */
-  val flowShiftVar = Var("")
+  val flowShiftVar: Var[String] = sampling("flowShift").value
 
   /** Noise levels in place of the scheduler's (sd-cpp's `--sigmas`), as typed:
     * what a turbo LoRA was distilled on. Empty is the model's own schedule.
     */
-  val sigmasVar = Var("")
+  val sigmasVar: Var[String] = sampling("sigmas").value
   val seedVar = Var("")
   val randomSeedVar = Var(true)
   val videoFramesVar = Var("")
@@ -142,7 +138,7 @@ class GenerationFormState {
   // sends exactly what the base already carried. A blank image CFG means the
   // model's own; SLG layers are typed as a comma-separated list.
   val imgCfgVar = Var("")
-  val distilledGuidanceVar = Var("")
+  val distilledGuidanceVar: Var[String] = sampling("distilledGuidance").value
   val slgLayersVar = Var("")
   val slgLayerStartVar = Var("")
   val slgLayerEndVar = Var("")
@@ -192,18 +188,6 @@ object GenerationFormState {
     */
   /** The fields a LoRA's sampling settings write, by the names `touch` takes.
     */
-  val SamplingFields: Set[String] = Set(
-    "steps",
-    "cfg",
-    "highNoiseSteps",
-    "highNoiseCfg",
-    "flowShift",
-    "sigmas",
-    "sampler",
-    "scheduler",
-    "distilledGuidance"
-  )
-
   def sigmasOf(text: String): Option[List[Double]] =
     SampleParameters.sigmasOf(text)
 

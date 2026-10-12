@@ -1,0 +1,86 @@
+/* Model cards and descriptions rendered from foreign HTML. */
+
+/* Model cards and Civitai descriptions (specs/24): strangers' HTML laid out
+   by Bulma's `.content`, in the app's dark tones — Bulma's heading, table and
+   code colours are for light backgrounds. `.content.rich-text` outranks
+   Bulma's `.content h1` and `.content table thead th`. Wide tables and code
+   scroll inside the text instead of widening the modal. */
+.content.rich-text {
+  color: hsl(35, 20%, 92%);
+  overflow-wrap: anywhere;
+}
+
+.content.rich-text h1,
+.content.rich-text h2,
+.content.rich-text h3,
+.content.rich-text h4,
+.content.rich-text h5,
+.content.rich-text h6,
+.content.rich-text table th,
+.content.rich-text table thead th {
+  color: inherit;
+}
+
+.content.rich-text img,
+.content.rich-text video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* A card's <Gallery />, rendered from its widget (specs/36): the figures side
+   by side, each prompt clamped under its image. */
+.content.rich-text figure,
+.content.rich-text figure:not(:first-child) {
+  display: inline-block;
+  vertical-align: top;
+  width: 14rem;
+  margin: 0 0.75rem 0.75rem 0;
+  text-align: left;
+}
+
+.content.rich-text figure img,
+.content.rich-text figure video {
+  width: 100%;
+  border-radius: 6px;
+}
+
+.content.rich-text figcaption {
+  font-size: 0.75rem;
+  color: hsl(30, 12%, 65%);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.content.rich-text table {
+  display: block;
+  overflow-x: auto;
+  background-color: transparent;
+  color: inherit;
+}
+
+.content.rich-text table td,
+.content.rich-text table th {
+  border-color: hsl(25, 10%, 32%);
+}
+
+.content.rich-text pre {
+  overflow-x: auto;
+  background-color: hsl(25, 20%, 11%);
+  color: inherit;
+}
+
+.content.rich-text code {
+  background-color: hsl(25, 20%, 11%);
+  color: hsl(30, 95%, 70%);
+}
+
+.content.rich-text pre code {
+  color: inherit;
+}
+
+.content.rich-text blockquote {
+  background-color: hsl(25, 14%, 18%);
+  border-inline-start-color: hsl(30, 95%, 52%);
+}

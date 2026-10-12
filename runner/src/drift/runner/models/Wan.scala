@@ -7,7 +7,6 @@ import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
-import scala.collection.mutable
 
 /** A Wan transformer's sizes, read off its weights: `hidden` wide (heads of
   * 128, the width every Wan has, which the files do not record), `blocks` deep,
@@ -106,9 +105,8 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
     weights.floats(name, name, Shape.of(count))
 
   /** A linear layer and its bias, by its original name (its LoRA site). */
-  final private case class Affine(name: String, weight: Tensor, bias: Tensor)
   private def affineLayer(prefix: String, outputs: Long): Affine =
-    Affine(prefix, source(s"$prefix.weight"), floats(s"$prefix.bias", outputs))
+    Affine(source(s"$prefix.weight"), floats(s"$prefix.bias", outputs), prefix)
 
   final private class Attention(prefix: String) {
     val q: Affine = affineLayer(s"$prefix.q", c.hidden)
@@ -142,9 +140,9 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
       System.arraycopy(stored, row * width, matrix, row * padded, width)
     )
     Affine(
-      "patch_embedding",
       weights.keep(ops.fromFloats(Shape.of(c.hidden, padded), matrix)),
-      floats("patch_embedding.bias", c.hidden)
+      floats("patch_embedding.bias", c.hidden),
+      "patch_embedding"
     )
   }
   private val textIn = affineLayer("text_embedding.0", c.hidden)
@@ -168,7 +166,6 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
     val bias = weights.hostFloats("head.head.bias")
     def from(row: Int) = headRow(row)
     Affine(
-      "head.head",
       weights.keep(
         ops.fromFloats(
           Shape.of(out, c.hidden),
@@ -179,7 +176,8 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
       ),
       weights.keep(
         ops.fromFloats(Shape.of(out), Array.tabulate(out)(i => bias(from(i))))
-      )
+      ),
+      "head.head"
     )
   }
 
@@ -190,13 +188,6 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
     None,
     None
   )
-
-  /** `out = x · weightᵀ + bias`, and the active LoRAs' updates. */
-  private def affine(x: Tensor, layer: Affine, out: Tensor): Unit = {
-    ops.linear(x, layer.weight, out)
-    updates(x, layer.name, out)
-    ops.addRow(out, layer.bias, out)
-  }
 
   // ---- LoRAs ---------------------------------------------------------------------
 
@@ -271,24 +262,19 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
       prompt.shape == Shape.of(tokens, c.textWidth),
       s"text: ${prompt.shape}"
     )
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def allocate() = {
-      val tensor = ops.allocate(DType.F32, Shape.of(tokens, c.hidden.toLong))
-      held += tensor
-      tensor
-    }
+    val held = new TensorScope(ops)
+    def allocate() = held.allocate(DType.F32, Shape.of(tokens, c.hidden.toLong))
     try {
       val (inner, projected, k, v) =
         (allocate(), allocate(), allocate(), allocate())
-      affine(prompt, textIn, inner)
+      textIn(ops, prompt, inner, updates)
       ops.activation(Activation.GeluTanh, inner, inner)
-      affine(inner, textOut, projected)
-      val pageTable = ops.fromInts(Shape.of(1), Array(0))
-      held += pageTable
+      textOut(ops, inner, projected, updates)
+      val pageTable = held.keep(ops.fromInts(Shape.of(1), Array(0)))
       val caches = blocks.map { b =>
-        affine(projected, b.cross.k, k)
+        b.cross.k(ops, projected, k, updates)
         ops.rmsNorm(k, b.cross.normK, Epsilon, 0f, k)
-        affine(projected, b.cross.v, v)
+        b.cross.v(ops, projected, v, updates)
         val cache = ops.allocateCache(
           1,
           (tokens.toInt + 15) / 16 * 16,
@@ -305,54 +291,32 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
         cache
       }
       new WanText(tokens.toInt, caches, ops)
-    } finally held.foreach(ops.release)
+    } finally held.close()
   }
 
   /** Buffers for `tokens` rows, grown when too small. */
-  final private class Buffers(val tokens: Int) {
-    private val held = mutable.ArrayBuffer.empty[Tensor]
-    private def flat(elements: Long): Tensor = {
-      val tensor = ops.allocate(DType.F32, Shape.of(elements))
-      held += tensor
-      tensor
-    }
-    private val rows = tokens.toLong
-    val input: Tensor = flat(rows * c.paddedPatchWidth)
-    val x: Tensor = flat(rows * c.hidden)
-    val normed: Tensor = flat(rows * c.hidden)
-    val q: Tensor = flat(rows * c.hidden)
-    val k: Tensor = flat(rows * c.hidden)
-    val v: Tensor = flat(rows * c.hidden)
-    val rotatedQueries: Tensor = flat(rows * c.hidden)
-    val rotatedKeys: Tensor = flat(rows * c.hidden)
-    val attended: Tensor = flat(rows * c.hidden)
-    val projected: Tensor = flat(rows * c.hidden)
-    val up: Tensor = flat(rows * c.intermediate)
-    val cosines: Tensor = flat(rows * c.headDimension / 2)
-    val sines: Tensor = flat(rows * c.headDimension / 2)
-    val cache: KvCache =
-      ops.allocateCache(1, (tokens + 15) / 16 * 16, c.heads, c.headDimension)
-    val pageTable: Tensor = {
-      val tensor = ops.fromInts(Shape.of(1), Array(0))
-      held += tensor
-      tensor
-    }
+  final private class Buffers(val tokens: Int) extends WorkBuffers(ops) {
+    private def flat(elements: Long): Tensor = flat(DType.F32, elements)
+    private val length = tokens.toLong
+    val input: Tensor = flat(length * c.paddedPatchWidth)
+    val x: Tensor = flat(length * c.hidden)
+    val normed: Tensor = flat(length * c.hidden)
+    val q: Tensor = flat(length * c.hidden)
+    val k: Tensor = flat(length * c.hidden)
+    val v: Tensor = flat(length * c.hidden)
+    val rotatedQueries: Tensor = flat(length * c.hidden)
+    val rotatedKeys: Tensor = flat(length * c.hidden)
+    val attended: Tensor = flat(length * c.hidden)
+    val projected: Tensor = flat(length * c.hidden)
+    val up: Tensor = flat(length * c.intermediate)
+    val cosines: Tensor = flat(length * c.headDimension / 2)
+    val sines: Tensor = flat(length * c.headDimension / 2)
+    val cache: KvCache = page(tokens, c.heads, c.headDimension)
+    val pageTable: Tensor = onePage()
     var grid: (Int, Int, Int) = (-1, -1, -1)
-    def release(): Unit = {
-      held.foreach(ops.release)
-      ops.release(cache.keys)
-      ops.release(cache.values)
-    }
   }
 
-  private var buffers = Option.empty[Buffers]
-  private def buffersFor(tokens: Int): Buffers =
-    buffers.filter(_.tokens >= tokens).getOrElse {
-      buffers.foreach(_.release())
-      val created = new Buffers(tokens)
-      buffers = Some(created)
-      created
-    }
+  private val buffers = new GrownBuffers(new Buffers(_))
 
   /** The rotary angles of a `frames × rows × columns` grid, into the buffers'
     * tables (kept while the grid is the same).
@@ -423,38 +387,33 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
         condition.isDefined == (c.inChannels != c.outChannels),
       s"velocity: latents ${latents.shape}, condition ${condition.map(_.shape)} for $c"
     )
-    val w = buffersFor(tokens)
-    val small = mutable.ArrayBuffer.empty[Tensor]
-    def vector(elements: Long) = {
-      val tensor = ops.allocate(DType.F32, Shape.of(1, elements))
-      small += tensor
-      tensor
-    }
+    val w = buffers(tokens)
+    val small = new TensorScope(ops)
+    def vector(elements: Long) =
+      small.allocate(DType.F32, Shape.of(1, elements))
     try {
       // the patch rows, padded, embedded
       val input = w.input.prefix(tokens, c.paddedPatchWidth)
       val padding = c.paddedPatchWidth - c.patchWidth
       val zeros = Option.when(padding > 0) {
-        val tensor = ops.allocate(DType.F32, Shape.of(tokens, padding))
-        small += tensor
+        val tensor = small.allocate(DType.F32, Shape.of(tokens, padding))
         ops.zero(tensor)
         tensor
       }
       ops.concatColumns(Seq(latents) ++ condition ++ zeros, input)
       val x = w.x.prefix(tokens, f)
-      affine(input, patchIn, x)
+      patchIn(ops, input, x, updates)
       // the timestep: a sinusoid (cosines first) through the time MLP
       val half = c.frequencies / 2
       val sinusoid = TimestepSinusoid(timestep, half)
-      val embedded = ops.fromFloats(Shape.of(1, 2L * half), sinusoid)
-      small += embedded
+      val embedded = small.fromFloats(Shape.of(1, 2L * half), sinusoid)
       val (inner, time, activated) = (vector(f), vector(f), vector(f))
       val projection = vector(6 * f)
-      affine(embedded, timeIn, inner)
+      timeIn(ops, embedded, inner, updates)
       ops.activation(Activation.Silu, inner, inner)
-      affine(inner, timeOut, time)
+      timeOut(ops, inner, time, updates)
       ops.activation(Activation.Silu, time, activated)
-      affine(activated, timeProjection, projection)
+      timeProjection(ops, activated, projection, updates)
       angles(w, frames, rows, columns)
       val (heads, d) = (c.heads.toLong, c.headDimension.toLong)
       val (cosines, sines) =
@@ -471,9 +430,9 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
         // self-attention
         ops.layerNorm(x, None, None, Epsilon, normed)
         ops.modulate(normed, chunk(1), chunk(0), normed)
-        affine(normed, b.self.q, q)
-        affine(normed, b.self.k, k)
-        affine(normed, b.self.v, v)
+        b.self.q(ops, normed, q, updates)
+        b.self.k(ops, normed, k, updates)
+        b.self.v(ops, normed, v, updates)
         ops.rmsNorm(q, b.self.normQ, Epsilon, 0f, q)
         ops.rmsNorm(k, b.self.normK, Epsilon, 0f, k)
         val (rq, rk) = (
@@ -484,7 +443,7 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
         ops.ropeTable(k.view(tokens, heads, d), cosines, sines, rk)
         ops.cacheWrite(rk, v.view(tokens, heads, d), w.cache, w.pageTable, 0)
         ops.attention(rq, w.cache, w.pageTable, 0, tokens, attention, attended)
-        affine(attended.view(tokens, f), b.self.o, projected)
+        b.self.o(ops, attended.view(tokens, f), projected, updates)
         ops.gatedAdd(x, projected, chunk(2))
         // cross-attention
         ops.layerNorm(
@@ -494,7 +453,7 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
           Epsilon,
           normed
         )
-        affine(normed, b.cross.q, q)
+        b.cross.q(ops, normed, q, updates)
         ops.rmsNorm(q, b.cross.normQ, Epsilon, 0f, q)
         ops.attention(
           q.view(tokens, heads, d),
@@ -505,15 +464,15 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
           attention,
           attended
         )
-        affine(attended.view(tokens, f), b.cross.o, projected)
+        b.cross.o(ops, attended.view(tokens, f), projected, updates)
         ops.add(x, projected, x)
         // MLP
         ops.layerNorm(x, None, None, Epsilon, normed)
         ops.modulate(normed, chunk(4), chunk(3), normed)
         val up = w.up.prefix(tokens, c.intermediate)
-        affine(normed, b.up, up)
+        b.up(ops, normed, up, updates)
         ops.activation(Activation.GeluTanh, up, up)
-        affine(up, b.down, projected)
+        b.down(ops, up, projected, updates)
         ops.gatedAdd(x, projected, chunk(5))
       }
       // the head: shift and scale from the time embedding and the table
@@ -527,12 +486,12 @@ final class Wan private (ops: Ops, source: WeightSource) extends AutoCloseable {
         both.rows(0, 1).view(f),
         normed
       )
-      affine(normed, head, out)
-    } finally small.foreach(ops.release)
+      head(ops, normed, out, updates)
+    } finally small.close()
   }
 
   def close(): Unit = {
-    buffers.foreach(_.release())
+    buffers.release()
     updates.close()
     headUpdates.foreach(ops.release)
     weights.release()

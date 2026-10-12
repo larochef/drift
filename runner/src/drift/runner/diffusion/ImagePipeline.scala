@@ -1,8 +1,7 @@
 package drift.runner.diffusion
 
+import drift.runner.diffusion.Pipeline.Family
 import drift.runner.models.*
-import drift.runner.ops.Ops
-import drift.runner.weights.WeightSource
 
 import java.awt.image.BufferedImage
 import java.nio.file.Path
@@ -49,11 +48,13 @@ final case class ImageRequest(
     sampler: Option[String]
 )
 
-/** A model family end to end, from a prompt to an image. */
-trait ImagePipeline extends AutoCloseable {
+/** An image family end to end, from a prompt to an image. */
+trait ImagePipeline extends Pipeline {
 
-  /** The family's name, as messages give it. */
-  def family: String
+  def mode: String = "img_gen"
+
+  /** 4: the turbo image models the runner draws. */
+  def defaultSteps: Int = 4
 
   /** Whether requests may carry an init image (img2img). */
   def takesInitImage: Boolean
@@ -104,48 +105,14 @@ trait ImagePipeline extends AutoCloseable {
 
 object ImagePipeline {
 
-  /** The files a launch gives an image model, by what each is. */
-  final case class ModelFiles(
-      diffusionModel: Path,
-      vae: Option[Path],
-      textEncoder: Option[Path],
-      tokenizer: Option[Path],
-      textEncoderVision: Option[Path],
-      connectors: Option[Path],
-      lladaParts: Map[String, Path]
-  ) {
-
-    /** A file the family cannot do without, or the launch's error naming the
-      * flag it comes by.
-      */
-    def needed(file: Option[Path], flag: String, what: String): Path =
-      file.getOrElse(
-        throw new IllegalArgumentException(
-          s"${diffusionModel.getFileName} needs $what: pass $flag <file>"
-        )
-      )
-
-    def neededVae: Path = needed(vae, "--vae", "a VAE")
-    def neededTextEncoder: Path = needed(textEncoder, "--llm", "a text encoder")
-  }
-
-  /** A family of image models: how its diffusion model is recognised by its
-    * weights, and how its pipeline is opened from the launch's files.
-    */
-  final case class Family(
-      name: String,
-      holds: WeightSource => Boolean,
-      open: (Ops, ModelFiles) => ImagePipeline
-  )
-
-  /** Every family the runner draws with, in the order they are tried: the first
-    * whose weights the file holds is the file's. All but HiDream O1 take a VAE
-    * and a text encoder.
+  /** The image families, in the order they are tried. All but HiDream O1 take a
+    * VAE and a text encoder.
     */
   val Families: Seq[Family] = Seq(
     // one file; reads references with Qwen3-VL-8B's vision tower
     Family(
       "HiDream O1",
+      Seq("hidream-o1"),
       HiDreamO1.holds,
       (ops, files) =>
         new HiDreamO1Pipeline(
@@ -162,6 +129,7 @@ object ImagePipeline {
     ),
     Family(
       "FLUX.2",
+      Seq("flux2-klein", "flux2-dev"),
       Flux2Config.holds,
       (ops, files) =>
         new Flux2Pipeline(
@@ -174,6 +142,7 @@ object ImagePipeline {
     // edits with the text encoder's vision tower
     Family(
       "Qwen Image 2.1",
+      Seq("qwen-image-2.1"),
       QwenImage21Config.holds,
       (ops, files) =>
         new QwenImage21Pipeline(
@@ -186,6 +155,7 @@ object ImagePipeline {
     ),
     Family(
       "PiD",
+      Seq("pid-flux2", "pid-flux1", "pid-qwen-image"),
       _.has("lq_proj.pit_head.weight"),
       (ops, files) =>
         new PidPipeline(
@@ -199,6 +169,7 @@ object ImagePipeline {
     ),
     Family(
       "Nucleus-Image",
+      Seq("nucleus-image"),
       NucleusConfig.holds,
       (ops, files) =>
         new NucleusPipeline(
@@ -210,6 +181,7 @@ object ImagePipeline {
     ),
     Family(
       "GRN",
+      Seq("grn"),
       GrnConfig.holds,
       (ops, files) =>
         new GrnPipeline(
@@ -224,6 +196,7 @@ object ImagePipeline {
     // the released folders
     Family(
       "LLaDA-Image",
+      Seq("llada-image"),
       LladaImageConfig.holds,
       (ops, files) =>
         new LladaImagePipeline(
@@ -241,6 +214,7 @@ object ImagePipeline {
     // vision tower too.
     Family(
       "Mage-Flow",
+      Seq("mage-flow"),
       source =>
         MageFlowConfig.holds(source) && source("img_in.weight").shape.last ==
           MageFlowConfig.LatentChannels,
@@ -255,6 +229,7 @@ object ImagePipeline {
     ),
     Family(
       "Krea 2",
+      Seq("krea2"),
       Krea2Config.holds,
       (ops, files) =>
         new Krea2Pipeline(
@@ -265,45 +240,4 @@ object ImagePipeline {
         )
     )
   )
-
-  /** The pipeline of the family the diffusion model is of. A file no family
-    * recognises is refused, with the families the runner does draw with.
-    */
-  def open(ops: Ops, files: ModelFiles): ImagePipeline = {
-    val source = WeightSource.open(ops, files.diffusionModel)
-    val family =
-      try Families.find(_.holds(source))
-      finally source.close()
-    family
-      .getOrElse(
-        throw new IllegalArgumentException(
-          s"${files.diffusionModel.getFileName} is none of the image models " +
-            s"the runner draws with (${Families.map(_.name).mkString(", ")})"
-        )
-      )
-      .open(ops, files)
-  }
-
-  def open(
-      ops: Ops,
-      diffusionModel: Path,
-      vaeFile: Option[Path],
-      textEncoderFile: Option[Path],
-      tokenizer: Option[Path],
-      textEncoderVision: Option[Path],
-      connectors: Option[Path] = None,
-      lladaParts: Map[String, Path] = Map.empty
-  ): ImagePipeline =
-    open(
-      ops,
-      ModelFiles(
-        diffusionModel,
-        vaeFile,
-        textEncoderFile,
-        tokenizer,
-        textEncoderVision,
-        connectors,
-        lladaParts
-      )
-    )
 }

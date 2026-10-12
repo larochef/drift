@@ -12,6 +12,7 @@ import com.raquo.laminar.api.L.*
 class SettingsPage(
     runtimeService: RuntimeService,
     authTokenService: AuthTokenService,
+    locationsService: LocationsService,
     promptTemplateService: PromptTemplateService
 ) extends Component {
   import RuntimeService.Command
@@ -29,8 +30,8 @@ class SettingsPage(
     h1(cls := "title text-primary", "Settings"),
     ErrorBanner(runtimeService),
     ErrorBanner(authTokenService),
-    RuntimesSection(runtimeService).element,
-    AuthenticationSection(authTokenService).element,
+    RuntimesSection(runtimeService, locationsService).element,
+    AuthenticationSection(authTokenService, locationsService).element,
     PromptsSection(promptTemplateService).element
   )
 }

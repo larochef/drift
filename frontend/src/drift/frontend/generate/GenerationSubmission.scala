@@ -31,6 +31,15 @@ class GenerationSubmission(
   private def chosen(v: Var[String]): Option[String] =
     Some(v.now().trim).filter(_.nonEmpty)
 
+  /** `base` with what the form holds in `fields` (`SamplingField`). */
+  private def written(
+      fields: List[SamplingField],
+      base: SampleParameters
+  ): SampleParameters =
+    fields.foldLeft(base)((sample, field) =>
+      field.write(sample, state.sampling(field.name).value.now())
+    )
+
   /** The VAE-tiling block to send, or None when the feature is off or the box
     * is unchecked — None means the server's own default, same convention as
     * hires. Applies to both modes, so it is built once.
@@ -55,9 +64,9 @@ class GenerationSubmission(
         )
       )
 
-  /** The form's guidance over a base: txt CFG always, the rest as typed —
-    * which, untouched, is exactly what the base carried, so a recipe that never
-    * opened the section round-trips unchanged (`specs/14`).
+  /** The guidance the form shows beyond the sampling fields over a base, as
+    * typed — which, untouched, is exactly what the base carried, so a recipe
+    * that never opened the section round-trips unchanged (`specs/14`).
     */
   private def guidanceOver(base: GuidanceParameters): GuidanceParameters = {
     val baseSlg = base.slg.getOrElse(SlgParameters())
@@ -74,13 +83,10 @@ class GenerationSubmission(
       scale = doubleOf(slgScaleVar, baseSlg.scale)
     )
     base.copy(
-      txtCfg = doubleOf(cfgVar, base.txtCfg),
       imgCfg = imgCfgVar.now().trim match {
         case ""    => None
         case typed => typed.toDoubleOption.orElse(base.imgCfg)
       },
-      distilledGuidance =
-        doubleOf(distilledGuidanceVar, base.distilledGuidance),
       // No SLG block unless there is something in it: a base that carried
       // none and a form nobody touched must send none, or the recipe changes
       // and a version is appended for nothing (`specs/19`).
@@ -123,32 +129,16 @@ class GenerationSubmission(
     // are their own step count; a list that does not read keeps the base's.
     def sampleOver(base: SampleParameters): SampleParameters = {
       val cleansed = cleanse(base)
-      val sigmas = GenerationFormState
-        .sigmasOf(sigmasVar.now())
-        .getOrElse(cleansed.customSigmas)
-      cleansed.copy(
-        sampleSteps =
-          if (sigmas.isEmpty) intOf(stepsVar, cleansed.sampleSteps)
-          else GenerationFormState.sigmaSteps(sigmas),
-        customSigmas = sigmas,
-        flowShift = flowShiftVar.now().trim.toDoubleOption,
-        guidance = guidanceOver(cleansed.guidance),
-        sampleMethod = chosen(samplerVar),
-        scheduler = chosen(schedulerVar)
+      written(
+        SamplingField.Main,
+        cleansed.copy(guidance = guidanceOver(cleansed.guidance))
       )
     }
 
     // The high-noise expert keeps its own steps and CFG; the sampler and
     // scheduler are the model's business, so they ride along unchanged.
-    def highNoiseOver(base: SampleParameters): SampleParameters = {
-      val cleansed = cleanse(base)
-      cleansed.copy(
-        sampleSteps = intOf(highNoiseStepsVar, cleansed.sampleSteps),
-        guidance = cleansed.guidance.copy(
-          txtCfg = doubleOf(highNoiseCfgVar, cleansed.guidance.txtCfg)
-        )
-      )
-    }
+    def highNoiseOver(base: SampleParameters): SampleParameters =
+      written(SamplingField.HighNoise, cleanse(base))
 
     // Each selected LoRA contributes all its files: a wan 2.2 pair becomes
     // two entries at the same multiplier, the high-noise one flagged.

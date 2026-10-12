@@ -6,7 +6,6 @@ import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
-import scala.collection.mutable
 
 /** The LLaDA2 text model's sizes, off its weights and the `config.json` beside
   * them when there is one (released: 2048 wide, 20 layers, 16 query heads over
@@ -167,12 +166,9 @@ final class Llada2 private (ops: Ops, source: WeightSource)
     val tokens = embeds.shape.dimensions.head.toInt
     val (heads, kvHeads, d) =
       (c.heads.toLong, c.kvHeads.toLong, c.headDimension.toLong)
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def rows(count: Long, columns: Long, dtype: DType = DType.F32) = {
-      val tensor = ops.allocate(dtype, Shape.of(count, columns))
-      held += tensor
-      tensor
-    }
+    val held = new TensorScope(ops)
+    def rows(count: Long, columns: Long, dtype: DType = DType.F32) =
+      held.allocate(dtype, Shape.of(count, columns))
     val widest = layers.map(_.mlp.fold(_.inner, _.shared.inner)).max
     val slots = tokens.toLong * c.expertsChosen
     val expertInner =
@@ -195,12 +191,9 @@ final class Llada2 private (ops: Ops, source: WeightSource)
       val (gathered, slotOut) = (rows(slots, width), rows(slots, width))
       val (slotGate, slotUp) =
         (rows(slots, expertInner), rows(slots, expertInner))
-      val positions = {
-        val tensor =
-          ops.fromInts(Shape.of(tokens), Array.tabulate(tokens)(identity))
-        held += tensor
-        tensor
-      }
+      val positions = held.keep(
+        ops.fromInts(Shape.of(tokens), Array.tabulate(tokens)(identity))
+      )
       val sight =
         if (text >= tokens) Nil
         else Seq((0, text, text), (text, tokens - text, tokens))
@@ -294,7 +287,7 @@ final class Llada2 private (ops: Ops, source: WeightSource)
       case error: Throwable =>
         ops.release(x)
         throw error
-    } finally held.foreach(ops.release)
+    } finally held.close()
   }
 
   def close(): Unit = {

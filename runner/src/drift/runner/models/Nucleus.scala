@@ -7,7 +7,6 @@ import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
 import java.util.stream.IntStream
-import scala.collection.mutable
 
 /** Nucleus-Image's transformer, read off its weights (released: 2048 wide, 32
   * blocks, 16 query heads over 4 key-value heads of 128, text features of 4096,
@@ -168,7 +167,6 @@ final class Nucleus private (ops: Ops, source: WeightSource)
   private def matrix(name: String): Tensor = source(s"$name.weight")
 
   /** A linear layer with a bias. */
-  final private case class Affine(weight: Tensor, bias: Tensor)
   private def affineLayer(name: String, outputs: Long): Affine =
     Affine(matrix(name), floats(s"$name.bias", outputs))
 
@@ -184,16 +182,8 @@ final class Nucleus private (ops: Ops, source: WeightSource)
   }
 
   /** Floats as BF16 (round to nearest even), uploaded. */
-  private def bf16(shape: Shape, values: Array[Float]): Tensor = {
-    val bytes = new Array[Byte](2 * values.length)
-    values.indices.foreach { i =>
-      val bits = java.lang.Float.floatToRawIntBits(values(i))
-      val rounded = (bits + 0x7fff + ((bits >>> 16) & 1)) >>> 16
-      bytes(2 * i) = rounded.toByte
-      bytes(2 * i + 1) = (rounded >>> 8).toByte
-    }
-    weights.upload(DType.BF16, shape, bytes)
-  }
+  private def bf16(shape: Shape, values: Array[Float]): Tensor =
+    weights.upload(DType.BF16, shape, Bf16.bytes(values))
 
   /** A mixture of experts: the router's halves (the timestep's columns, the
     * token's), the experts' weights transposed (`[experts, 2 × inner, hidden]`
@@ -290,11 +280,6 @@ final class Nucleus private (ops: Ops, source: WeightSource)
     ops.fromFloats(Shape.of(width), new Array[Float](c.hidden))
   )
 
-  private def affine(x: Tensor, layer: Affine, out: Tensor): Unit = {
-    ops.linear(x, layer.weight, out)
-    ops.addRow(out, layer.bias, out)
-  }
-
   private def headNorm(x: Tensor, heads: Long, weight: Tensor): Unit = {
     val rows = x.shape.dimensions.head * heads
     val d = c.headDimension.toLong
@@ -338,7 +323,7 @@ final class Nucleus private (ops: Ops, source: WeightSource)
     try {
       ops.rmsNorm(features, textNorm, epsilon, 0f, normed)
       val made = blocks.map { block =>
-        affine(normed, block.textIn, context)
+        block.textIn(ops, normed, context)
         val keys = ops.allocate(DType.F32, Shape.of(length, kvWidth))
         val values = ops.allocate(DType.F32, Shape.of(length, kvWidth))
         ops.linears(
@@ -369,13 +354,8 @@ final class Nucleus private (ops: Ops, source: WeightSource)
   /** Buffers for `tokens` image tokens after `length` text ones, remade when
     * either grows.
     */
-  final private class Buffers(val tokens: Int, val length: Int) {
-    private val held = mutable.ArrayBuffer.empty[Tensor]
-    private def rows(dtype: DType, count: Long, columns: Long): Tensor = {
-      val tensor = ops.allocate(dtype, Shape.of(count, columns))
-      held += tensor
-      tensor
-    }
+  final private class Buffers(val tokens: Int, val length: Int)
+      extends WorkBuffers(ops) {
     private val widestMlp = blocks.map(_.mlp.fold(_.inner, _.shared.inner)).max
     private val mixtures = blocks.flatMap(_.mlp.toOption)
     val slots: Long = mixtures
@@ -405,22 +385,8 @@ final class Nucleus private (ops: Ops, source: WeightSource)
     val slotUp: Tensor =
       rows(DType.F32, math.max(1, slots), math.max(1, expertInner))
     val positions: Tensor = rows(DType.I32, 3, tokens)
-    val cache: KvCache = ops.allocateCache(
-      1,
-      (length + tokens + 15) / 16 * 16,
-      c.kvHeads,
-      c.headDimension
-    )
-    val pageTable: Tensor = {
-      val tensor = ops.fromInts(Shape.of(1), Array(0))
-      held += tensor
-      tensor
-    }
-    def release(): Unit = {
-      held.foreach(ops.release)
-      ops.release(cache.keys)
-      ops.release(cache.values)
-    }
+    val cache: KvCache = page(length + tokens, c.kvHeads, c.headDimension)
+    val pageTable: Tensor = onePage()
   }
 
   private def capacity(mixture: Mixture, tokens: Int): Int =
@@ -438,12 +404,9 @@ final class Nucleus private (ops: Ops, source: WeightSource)
       created
     }
 
-  private val small = mutable.ArrayBuffer.empty[Tensor]
-  private def vector(rows: Long, elements: Long): Tensor = {
-    val tensor = ops.allocate(DType.F32, Shape.of(rows, elements))
-    small += tensor
-    tensor
-  }
+  private val small = new TensorScope(ops)
+  private def vector(rows: Long, elements: Long): Tensor =
+    small.allocate(DType.F32, Shape.of(rows, elements))
   private val timeInner = vector(1, timeIn.bias.shape.elementCount)
   private val time = vector(1, width)
   private val timeSilu = vector(1, width)
@@ -479,29 +442,29 @@ final class Nucleus private (ops: Ops, source: WeightSource)
       Shape.of(1, width),
       Nucleus.sinusoid(timestep, c.hidden)
     )
-    try affine(sinusoid, timeIn, timeInner)
+    try timeIn(ops, sinusoid, timeInner)
     finally ops.release(sinusoid)
     ops.activation(Activation.Silu, timeInner, timeInner)
-    affine(timeInner, timeOut, time)
+    timeOut(ops, timeInner, time)
     ops.rmsNorm(time, timeNorm, epsilon, 0f, time)
     ops.activation(Activation.Silu, time, timeSilu)
     blocks.zipWithIndex.foreach((block, i) =>
-      affine(timeSilu, block.modulation, rawModulations.rows(i, 1))
+      block.modulation(ops, timeSilu, rawModulations.rows(i, 1))
     )
-    affine(timeSilu, finalModulation, finalParts)
+    finalModulation(ops, timeSilu, finalParts)
     // (scale, gate, scale, gate) per block: the gates held to ±2, through tanh
     val parts = ops.toFloats(rawModulations)
     parts.indices.foreach { i =>
       if (i / c.hidden % 2 == 1)
         parts(i) = math.tanh(math.max(-2f, math.min(2f, parts(i)))).toFloat
     }
-    val modulations = ops.fromFloats(Shape.of(4L * c.blocks, width), parts)
-    val perStep = mutable.ArrayBuffer(modulations)
+    val perStep = new TensorScope(ops)
+    val modulations = perStep.fromFloats(Shape.of(4L * c.blocks, width), parts)
     def part(block: Int, i: Int) =
       modulations.rows(4L * block + i, 1).view(width)
 
     try {
-      affine(latents, imageIn, w.x)
+      imageIn(ops, latents, w.x)
       val (top, left) =
         (gridHeight - gridHeight / 2, gridWidth - gridWidth / 2)
       ops.writeInts(
@@ -601,7 +564,8 @@ final class Nucleus private (ops: Ops, source: WeightSource)
             val slots = c.experts.toLong * each
             val ids = ops.fromInts(Shape.of(slots), chosen)
             val gates = ops.fromFloats(Shape.of(slots), shares)
-            perStep ++= Seq(ids, gates)
+            perStep.keep(ids)
+            perStep.keep(gates)
             def slotRows(t: Tensor, columns: Long) =
               t.view(t.shape.elementCount).prefix(slots, columns)
             val gathered = slotRows(w.gathered, width)
@@ -645,11 +609,11 @@ final class Nucleus private (ops: Ops, source: WeightSource)
       )
       ops.linear(w.normed, finalOut, out)
       ops.scale(out, -1f, out)
-    } finally perStep.foreach(ops.release)
+    } finally perStep.close()
   }
 
   def close(): Unit = {
-    small.foreach(ops.release)
+    small.close()
     buffers.foreach(_.release())
     weights.release()
     source.close()
@@ -658,27 +622,19 @@ final class Nucleus private (ops: Ops, source: WeightSource)
 
 object Nucleus {
 
-  private def bf16(value: Float): Float = {
-    val bits = java.lang.Float.floatToRawIntBits(value)
-    java.lang.Float.intBitsToFloat(
-      ((bits + 0x7fff + ((bits >>> 16) & 1)) >>> 16) << 16
-    )
-  }
-
   /** The timestep's sinusoid as the released pipeline computes it in BF16: the
     * scheduler's timestep (`1000 σ`) and its thousandth each rounded, the
     * product with each frequency times 1000 in F32, its cosine (first half) and
     * sine (second) rounded.
     */
-  def sinusoid(timestep: Float, channels: Int): Array[Float] = {
-    val half = channels / 2
-    val level = bf16(bf16(timestep * 1000f) / 1000f)
-    Array.tabulate(2 * half) { i =>
-      val frequency = math.exp(-math.log(10000) * (i % half) / half).toFloat
-      val angle = (level * frequency * 1000f).toDouble
-      bf16((if (i < half) math.cos(angle) else math.sin(angle)).toFloat)
-    }
-  }
+  def sinusoid(timestep: Float, channels: Int): Array[Float] =
+    TimestepSinusoid(
+      Bf16.round(Bf16.round(timestep * 1000f) / 1000f),
+      channels / 2,
+      singleFrequencies = true,
+      after = 1000f,
+      bf16 = true
+    )
 
   /** Expert-choice routing: from the router's `logits` (`[tokens, experts]`),
     * each expert's `capacity` best tokens by its share of the token's softmax,

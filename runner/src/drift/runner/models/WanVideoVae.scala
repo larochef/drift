@@ -31,18 +31,18 @@ final class WanVideoVae private (ops: Ops, source: WeightSource)
   /** A causal 3×3×3 convolution and its two frames of history. */
   final private class Causal(prefix: String) {
     val slices: Seq[Convolution] = weights.conv3x3x3(prefix)
-    var history: List[Tensor] = Nil // newest first
-    def outChannels: Long = slices.last.outChannels
-    def reset(): Unit = { history.foreach(ops.release); history = Nil }
+    val history = new FrameHistory(ops, 2)
+    def reset(): Unit = history.reset()
   }
 
-  /** A causal temporal (3×1×1) convolution and its history. */
-  final private class Temporal(prefix: String) {
+  /** A causal temporal (3×1×1) convolution and its history, of `depth` frames.
+    */
+  final private class Temporal(prefix: String, depth: Int) {
     val slices: Seq[Convolution] = weights.conv3x1x1(prefix)
-    var history: List[Tensor] = Nil
+    val history = new FrameHistory(ops, depth)
     var started = false
     def reset(): Unit = {
-      history.foreach(ops.release); history = Nil; started = false
+      history.reset(); started = false
     }
   }
 
@@ -77,8 +77,9 @@ final class WanVideoVae private (ops: Ops, source: WeightSource)
         if (source.has(s"$p.residual.0.gamma")) Stage.Block(new Residual(p))
         else {
           val conv = weights.conv3x3(s"$p.resample.1")
+          // doubling reads the two frames before, halving the one before
           val time = Option.when(source.has(s"$p.time_conv.weight"))(
-            new Temporal(s"$p.time_conv")
+            new Temporal(s"$p.time_conv", depth = if (up) 2 else 1)
           )
           if (up) Stage.Up(conv, time) else Stage.Down(conv, time)
         }
@@ -131,25 +132,15 @@ final class WanVideoVae private (ops: Ops, source: WeightSource)
   // ---- frames ----------------------------------------------------------------------
 
   private val perFrame = new FrameLayers(ops)
-  import perFrame.{frame, linear, normSilu, pixels, sizes}
+  import perFrame.{copy, frame, linear, normSilu, pixels, sizes}
 
   /** `x` through `conv` (stride 1), its history updated; `x` becomes history
     * (the caller must not release it).
     */
   private def causal(x: Tensor, conv: Causal): Tensor = {
-    val (h, w, _) = sizes(x)
-    val out = frame(h, w, conv.outChannels)
-    ops.conv3x3(x, conv.slices(2).weight, conv.slices(2).bias, out)
-    val older = conv.history.zip(Seq(conv.slices(1), conv.slices(0)))
-    older.foreach { (previous, slice) =>
-      val part = frame(h, w, conv.outChannels)
-      try {
-        ops.conv3x3(previous, slice.weight, slice.bias, part)
-        ops.add(out, part, out)
-      } finally ops.release(part)
-    }
-    conv.history.drop(1).foreach(ops.release)
-    conv.history = x :: conv.history.take(1)
+    val older = conv.history.frames.zip(Seq(conv.slices(1), conv.slices(0)))
+    val out = perFrame.summed((x, conv.slices(2)) +: older)
+    conv.history.push(x)
     out
   }
 
@@ -210,12 +201,15 @@ final class WanVideoVae private (ops: Ops, source: WeightSource)
       frames
     } else
       frames.flatMap { x =>
-        val window = Seq(time.history.lift(1), time.history.headOption, Some(x))
+        val window = Seq(
+          time.history.frames.lift(1),
+          time.history.frames.headOption,
+          Some(x)
+        )
         val channels = time.slices.last.outChannels / 2
         val pair = Seq(0L, channels)
           .map(from => temporal(window, part(time.slices, from, channels)))
-        time.history.drop(1).foreach(ops.release)
-        time.history = x :: time.history.take(1)
+        time.history.push(x)
         pair
       }
 
@@ -225,11 +219,11 @@ final class WanVideoVae private (ops: Ops, source: WeightSource)
   private def halved(frames: Seq[Tensor], time: Temporal): Seq[Tensor] =
     if (!time.started) {
       time.started = true
-      time.history = List(copy(frames.last))
+      time.history.push(copy(frames.last))
       frames
     } else {
       require(frames.size % 2 == 0, s"downsample3d over ${frames.size} frames")
-      val stream = time.history.head +: frames
+      val stream = time.history.frames.head +: frames
       val out = (0 until frames.size / 2).map(j =>
         temporal(
           Seq(
@@ -240,18 +234,11 @@ final class WanVideoVae private (ops: Ops, source: WeightSource)
           time.slices
         )
       )
-      time.history.foreach(ops.release)
-      time.history = List(copy(frames.last))
+      time.history.reset()
+      time.history.push(copy(frames.last))
       frames.foreach(ops.release)
       out
     }
-
-  private def copy(x: Tensor): Tensor = {
-    val (h, w, c) = sizes(x)
-    val out = frame(h, w, c)
-    ops.copy(x, out)
-    out
-  }
 
   /** A 2-D resampling convolution on one frame (after nearest ×2 when `up`,
     * else stride 2); `x` is released.

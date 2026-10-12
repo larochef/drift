@@ -1,0 +1,22 @@
+/* The session's log tail. */
+
+/* The session's output (specs/13-log-streaming.md): a fixed-height tail that
+   scrolls on its own rather than growing the page, monospaced because sd-cpp
+   aligns its own columns. */
+.content pre.session-log-body {
+  max-height: 22rem;
+  overflow: auto;
+  /* Qualified for the same reason `.assistant-text` is: Bulma's
+     `.content pre { white-space: pre; word-wrap: normal }` out-specifies a bare
+     class, and sd-cpp prints paths long enough to stretch the whole page and
+     carry the header's buttons off the side of it. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: transparent;
+  /* Bulma's own pre colour is nearly the background on this dark design. */
+  color: inherit;
+  padding: 0;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.35;
+}

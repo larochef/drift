@@ -1,0 +1,30 @@
+/* A generation's batch outputs and step preview. */
+
+/* A batch is one generation with several outputs (specs/14): its images sit
+   side by side so the variations can be compared, rather than stacked in a
+   column to scroll through. */
+.batch-outputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.5rem;
+}
+
+/* The picture being sampled (specs/54): a small estimate enlarged beside the
+   progress bar, so it is soft by nature; smooth scaling rather than pixels. */
+.step-preview img,
+.step-preview canvas {
+  display: block;
+  width: min(100%, 24rem);
+  max-height: 60vh;
+  object-fit: contain;
+  object-position: left top;
+  border-radius: 4px;
+}
+
+/* A video's preview is coarser than a picture's: shown at the size it is
+   made at, not enlarged again. */
+.step-preview.is-clip img,
+.step-preview.is-clip canvas {
+  width: min(100%, 16rem);
+  max-height: 16rem;
+}

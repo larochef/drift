@@ -77,18 +77,8 @@ final private[session] class JobServers(
         port <- freePort(current).toRight(
           s"no free port between ${current.portRangeStart} and ${current.portRangeEnd}"
         )
-        (argv, _) <- arguments
-          .argumentsFor(
-            configuration,
-            storage.list(Collections.architectures),
-            storage.list(Collections.models),
-            launchRuntime,
-            Some(port)
-          )
-          .left
-          .map(problems =>
-            "cannot run: " + problems.map(_.message).mkString("; ")
-          )
+        launch <- arguments.launch(configuration, launchRuntime, Some(port))
+        argv = launch.arguments
       } yield {
         Files.createDirectories(lorasRoot.resolve(configuration.architectureId))
         Files.writeString(

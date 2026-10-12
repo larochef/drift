@@ -2,7 +2,7 @@ package drift.runner.diffusion
 
 import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
-import drift.runner.ops.Ops
+import drift.runner.ops.{Ops, TensorScope}
 import drift.runner.tensor.*
 import drift.runner.text.{Tokenizer, TokenizerJson}
 import drift.runner.weights.WeightSource
@@ -154,8 +154,7 @@ final class LtxPipeline(
     val frames = alignedFrames(request.frames)
     val rate = request.fps.getOrElse(defaultFps)
     val c = transformer.config
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def keep(tensor: Tensor) = { held += tensor; tensor }
+    val held = new TensorScope(ops)
     try {
       val (opened, problems) =
         loraFiles.open(request.loras.map(lora => lora.path -> lora.multiplier))
@@ -168,7 +167,7 @@ final class LtxPipeline(
         fps = rate
       )
       val conditions = conditionsOf(request, width, height, frames, base)
-      conditions.foreach(condition => held ++= condition.latents)
+      conditions.foreach(condition => condition.latents.foreach(held.keep))
       val layout =
         base.copy(appended =
           conditions.flatMap(_.positions.toSeq.flatten).toVector
@@ -192,23 +191,23 @@ final class LtxPipeline(
           }
       }
       val (videoText, audioText) = text(request.prompt)
-      held ++= Seq(videoText, audioText)
+      held.keep(videoText)
+      held.keep(audioText)
       val audioCfgScale = request.audioCfgScale.getOrElse(request.cfgScale)
       val guided = request.cfgScale != 1f || audioCfgScale != 1f
       val (modalityScale, audioModalityScale) =
         (request.modalityScale, request.audioModalityScale)
       val negative = Option.when(guided) {
         val (v, a) = text(request.negativePrompt)
-        held ++= Seq(v, a)
+        held.keep(v)
+        held.keep(a)
         (v, a)
       }
       val random = new SplittableRandom(request.seed)
-      val video = keep(
-        ops.fromFloats(
-          Shape.of(layout.videoTokens, c.videoChannels),
-          Array.fill(layout.videoTokens * c.videoChannels)(
-            Noise.gaussian(random)
-          )
+      val video = held.fromFloats(
+        Shape.of(layout.videoTokens, c.videoChannels),
+        Array.fill(layout.videoTokens * c.videoChannels)(
+          Noise.gaussian(random)
         )
       )
       // the conditions' clean latents in their tokens, again after each step
@@ -222,30 +221,28 @@ final class LtxPipeline(
           }
         }
       restore()
-      val audio = keep(
-        ops.fromFloats(
-          Shape.of(layout.audioFrames, c.audioChannels),
-          Array.fill(layout.audioFrames * c.audioChannels)(
-            Noise.gaussian(random)
-          )
+      val audio = held.fromFloats(
+        Shape.of(layout.audioFrames, c.audioChannels),
+        Array.fill(layout.audioFrames * c.audioChannels)(
+          Noise.gaussian(random)
         )
       )
       val (videoVelocity, audioVelocity) =
         (
-          keep(ops.allocate(DType.F32, video.shape)),
-          keep(ops.allocate(DType.F32, audio.shape))
+          held.allocate(DType.F32, video.shape),
+          held.allocate(DType.F32, audio.shape)
         )
       val others = negative.map(_ =>
         (
-          keep(ops.allocate(DType.F32, video.shape)),
-          keep(ops.allocate(DType.F32, audio.shape))
+          held.allocate(DType.F32, video.shape),
+          held.allocate(DType.F32, audio.shape)
         )
       )
       val isolatedOut =
         Option.when(modalityScale != 1f || audioModalityScale != 1f)(
           (
-            keep(ops.allocate(DType.F32, video.shape)),
-            keep(ops.allocate(DType.F32, audio.shape))
+            held.allocate(DType.F32, video.shape),
+            held.allocate(DType.F32, audio.shape)
           )
         )
       val schedule = sigmas(request.steps, layout.videoTokens)
@@ -411,7 +408,7 @@ final class LtxPipeline(
         )
       }
       Video(images.toSeq, rate, soundtrack)
-    } finally held.foreach(ops.release)
+    } finally held.close()
   }
 
   /** A condition: its normalized latents (`[h, w, channels]` per latent frame,

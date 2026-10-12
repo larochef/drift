@@ -277,8 +277,6 @@ final class QwenVision private (
     f32(out, heads * paddedHead)
   }
 
-  final private case class Affine(weight: Tensor, bias: Tensor)
-
   private def affine(g: String, h: String, outputs: Int): Affine =
     Affine(
       weights(g + ".weight", h + ".weight"),
@@ -430,12 +428,9 @@ final class QwenVision private (
   def encode(image: PreparedImage): VisionOutput = {
     val patches = image.gridHeight * image.gridWidth
     val p = patches.toLong
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def allocate(dimensions: Long*): Tensor = {
-      val tensor = ops.allocate(DType.F32, Shape(dimensions.toVector))
-      held += tensor
-      tensor
-    }
+    val held = new TensorScope(ops)
+    def allocate(dimensions: Long*): Tensor =
+      held.allocate(DType.F32, Shape(dimensions.toVector))
     val cache: KvCache =
       ops.allocateCache(1, (patches + 15) / 16 * 16, heads, paddedHead)
     val results = mutable.ArrayBuffer.empty[Tensor]
@@ -444,18 +439,17 @@ final class QwenVision private (
         image.frames == 1 || image.frames == 2,
         s"a patch of ${image.frames} frames for a tower of two-frame patches"
       )
-      val pixels = ops.fromFloats(
+      val pixels = held.fromFloats(
         Shape.of(p, 3L * image.frames * config.patch * config.patch),
         image.patches
       )
-      held += pixels
-      val pageTable = ops.fromInts(Shape.of(1), Array(0))
-      held += pageTable
-      val positions = ops.fromInts(
-        Shape.of(2, p),
-        rotaryPositions(image.gridHeight, image.gridWidth)
+      val pageTable = held.keep(ops.fromInts(Shape.of(1), Array(0)))
+      val positions = held.keep(
+        ops.fromInts(
+          Shape.of(2, p),
+          rotaryPositions(image.gridHeight, image.gridWidth)
+        )
       )
-      held += positions
       val x = allocate(p, hidden)
       val normed = allocate(p, hidden)
       val projected = allocate(p, hidden)
@@ -471,11 +465,10 @@ final class QwenVision private (
         x
       )
       ops.addRow(x, patchBias, x)
-      val table = ops.fromFloats(
+      val table = held.fromFloats(
         Shape.of(p, hidden),
         positionRows(image.gridHeight, image.gridWidth)
       )
-      held += table
       ops.add(x, table, x)
       def headed(t: Tensor) = t.view(p, heads, paddedHead)
       blocks.zipWithIndex.foreach { (b, i) =>
@@ -512,11 +505,9 @@ final class QwenVision private (
           config.epsilon,
           normed
         )
-        ops.linear(normed, b.up.weight, inner)
-        ops.addRow(inner, b.up.bias, inner)
+        b.up(ops, normed, inner)
         ops.activation(Activation.GeluTanh, inner, inner)
-        ops.linear(inner, b.down.weight, projected)
-        ops.addRow(projected, b.down.bias, projected)
+        b.down(ops, inner, projected)
         ops.add(x, projected, x)
         deepstackMergers.get(i).foreach(m => results += merge(m, x, patches))
       }
@@ -527,7 +518,7 @@ final class QwenVision private (
         results.foreach(ops.release)
         throw error
     } finally {
-      held.foreach(ops.release)
+      held.close()
       ops.release(cache.keys)
       ops.release(cache.values)
     }
@@ -556,11 +547,9 @@ final class QwenVision private (
           config.epsilon,
           normed
         )
-      ops.linear(normed.view(tokens, joined), m.first.weight, inner)
-      ops.addRow(inner, m.first.bias, inner)
+      m.first(ops, normed.view(tokens, joined), inner)
       ops.activation(Activation.GeluErf, inner, inner)
-      ops.linear(inner, m.second.weight, out)
-      ops.addRow(out, m.second.bias, out)
+      m.second(ops, inner, out)
       out
     } catch {
       case error: Throwable =>

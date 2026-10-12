@@ -66,6 +66,10 @@ case class ConfigurationOption(
   */
 class GenerationDetail(
     generation: Generation,
+    /** The generation as it now is: what can change while the detail is open —
+      * the project it is filed in — is read here.
+      */
+    record: Signal[Generation],
     configurationLabel: Signal[String],
     offer: Signal[ReuseOffer],
     upscalers: Signal[List[Upscaler]],
@@ -389,7 +393,7 @@ class GenerationDetail(
           span(cls := "text-secondary is-size-7 mr-1", "Project"),
           ProjectMover(
             projects,
-            targets = Val(List(generation)),
+            targets = record.map(List(_)),
             state = moveState,
             onMove = (_, projectId) => onMove(projectId),
             label = _ => "Move"

@@ -28,13 +28,15 @@ final class CacheInventory(cache: ModelCache, storage: StorageService) {
       listHuggingFace(referencedBy) ++ listModelScope(referencedBy)
   }
 
-  /** Deletes one listed file. Refuses anything outside the two roots.
+  /** Deletes one listed file, or says why not: anything outside the two roots
+    * is refused, a file that is no longer there is said gone, and what the disk
+    * refuses is passed on.
     *
     * A drift entry takes its whole version directory with it — weights, sidecar
     * and previews are one unit — pruning emptied parents. A HuggingFace blob
     * also removes the snapshot symlinks pointing at it, so nothing dangles.
     */
-  def delete(rawPath: String): Boolean =
+  def delete(rawPath: String): Either[String, Unit] =
     try {
       val path = Path.of(rawPath).toAbsolutePath.normalize
       val underDrift = path.startsWith(cache.driftRoot.toAbsolutePath.normalize)
@@ -42,14 +44,21 @@ final class CacheInventory(cache: ModelCache, storage: StorageService) {
         path.startsWith(cache.huggingFaceRoot.toAbsolutePath.normalize)
       if (!underDrift && !underHuggingFace) {
         logger.warn(s"Refusing to delete outside the cache roots: $path")
-        false
-      } else if (!Files.exists(path)) false
-      else if (underDrift) deleteDriftEntry(path)
-      else deleteHuggingFaceEntry(path)
+        Left(
+          s"'$path' is outside the caches drift manages; it was not deleted."
+        )
+      } else if (!Files.exists(path))
+        Left(s"'$path' is no longer there.")
+      else {
+        val deleted =
+          if (underDrift) deleteDriftEntry(path)
+          else deleteHuggingFaceEntry(path)
+        Either.cond(deleted, (), s"'$path' was not deleted.")
+      }
     } catch {
       case NonFatal(err) =>
         logger.warn(s"Cache delete failed for $rawPath", err)
-        false
+        Left(s"'$rawPath' was not deleted: ${err.getMessage}")
     }
 
   // ---------------------------------------------------------------- listing

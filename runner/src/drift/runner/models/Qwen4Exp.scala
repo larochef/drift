@@ -7,7 +7,6 @@ import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
-import scala.collection.mutable
 
 /** Qwen 3.8 Flash Next (GGUF `qwen4exp`, transformers `qwen4_exp`): Qwen
   * 3.5/3.6's hybrid blocks (with sigmoid-gated DeltaNet norms) over a residual
@@ -372,13 +371,9 @@ final class Qwen4Exp private (
     */
   final private class Workspace(val capacity: Int, val logitRows: Int)
       extends SizedWorkspace {
-    private val buffers = mutable.ArrayBuffer.empty[Tensor]
-    private def allocate(dtype: DType, dimensions: Long*): Tensor = {
-      val tensor =
-        ops.allocate(dtype, Shape(capacity.toLong +: dimensions.toVector))
-      buffers += tensor
-      tensor
-    }
+    private val buffers = new TensorScope(ops)
+    private def allocate(dtype: DType, dimensions: Long*): Tensor =
+      buffers.allocate(dtype, Shape(capacity.toLong +: dimensions.toVector))
     private def f32(dimensions: Long*) = allocate(DType.F32, dimensions*)
     private val hidden = shape.hidden.toLong
     val blocks = new BlockBuffers(ops, shape, capacity)
@@ -407,15 +402,11 @@ final class Qwen4Exp private (
     val convolved: Tensor = f32(wide)
     // the MTP head: each stream's embedding and hidden halves side by side
     val joined: Tensor = f32(2 * wide)
-    val logits: Tensor = {
-      val tensor =
-        ops.allocate(DType.F32, Shape.of(logitRows, config.vocabulary))
-      buffers += tensor
-      tensor
-    }
+    val logits: Tensor =
+      buffers.allocate(DType.F32, Shape.of(logitRows, config.vocabulary))
     def release(): Unit = {
       blocks.release()
-      buffers.foreach(ops.release)
+      buffers.close()
     }
   }
 

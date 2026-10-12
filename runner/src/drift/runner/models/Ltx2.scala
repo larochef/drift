@@ -170,18 +170,17 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
     weights.floats(name, name, Shape.of(rows, width))
 
   /** A linear layer at `site` (its name in the file, a LoRA's target). */
-  final private case class Affine(site: String, weight: Tensor, bias: Tensor)
   private def linearLayer(prefix: String, outputs: Long) = {
     val weight = source(s"$prefix.weight")
     siteWeights(prefix) = weight
     Affine(
-      prefix,
       weight,
       if (source.has(s"$prefix.bias")) floats(s"$prefix.bias", outputs)
       else
         weights.keep(
           ops.fromFloats(Shape.of(outputs), new Array[Float](outputs.toInt))
-        )
+        ),
+      prefix
     )
   }
   private def affineLayer(prefix: String, outputs: Long) =
@@ -300,12 +299,6 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
       )
     )
 
-  private def affine(x: Tensor, layer: Affine, out: Tensor): Unit = {
-    ops.linear(x, layer.weight, out)
-    updates(x, layer.site, out)
-    ops.addRow(out, layer.bias, out)
-  }
-
   // ---- LoRAs ---------------------------------------------------------------------
 
   private def allSites: Map[String, Tensor] =
@@ -379,14 +372,8 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
   }
 
   /** The timestep's sinusoid (cosines first, 256 wide). */
-  private def sinusoid(timestep: Float): Array[Float] = {
-    val half = 128
-    Array.tabulate(2 * half) { i =>
-      val frequency = math.exp(-math.log(10000) * (i % half) / half)
-      val angle = timestep * frequency
-      (if (i < half) math.cos(angle) else math.sin(angle)).toFloat
-    }
-  }
+  private def sinusoid(timestep: Float): Array[Float] =
+    TimestepSinusoid(timestep, 128)
 
   /** Velocities of one step: `video` (`[frames × h × w + appended, channels]`)
     * and `audio` (`[audioFrames, channels]`) at `timestep` (σ × 1000), given
@@ -471,12 +458,12 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
       ): (Tensor, Tensor) = {
         val inner = allocate(1, width)
         val emb = allocate(1, width)
-        affine(embedded, layer.first, inner)
+        layer.first(ops, embedded, inner, updates)
         ops.activation(Activation.Silu, inner, inner)
-        affine(inner, layer.second, emb)
+        layer.second(ops, inner, emb, updates)
         ops.activation(Activation.Silu, emb, inner)
         val out = allocate(1, layer.size)
-        affine(inner, layer.out, out)
+        layer.out(ops, inner, out, updates)
         (out, emb)
       }
       // the video's own, per timestep
@@ -519,8 +506,8 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
       // the streams
       val x = allocate(nv, c.hidden)
       val a = allocate(na, c.audioHidden)
-      affine(video, videoIn, x)
-      affine(audio, audioIn, a)
+      videoIn(ops, video, x, updates)
+      audioIn(ops, audio, a, updates)
       // scratch
       val widest = math.max(c.hidden, c.audioHidden).toLong
       val rows = math.max(math.max(nv, na), nt)
@@ -564,9 +551,9 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
         val inner = heads.toLong * head
         val (qs, ks, vs) =
           (q.prefix(nq, inner), k.prefix(nk, inner), v.prefix(nk, inner))
-        affine(queryIn, layer.q, qs)
-        affine(keyIn, layer.k, ks)
-        affine(keyIn, layer.v, vs)
+        layer.q(ops, queryIn, qs, updates)
+        layer.k(ops, keyIn, ks, updates)
+        layer.v(ops, keyIn, vs, updates)
         ops.rmsNorm(qs, layer.qNorm, Epsilon, 0f, qs)
         ops.rmsNorm(ks, layer.kNorm, Epsilon, 0f, ks)
         val queries = queryRope.fold(qs.view(nq, heads, head)) { (cos, sin) =>
@@ -610,7 +597,7 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
           result
         )
         val gates = logits.prefix(nq, heads.toLong)
-        affine(queryIn, layer.gate, gates)
+        layer.gate(ops, queryIn, gates, updates)
         ops.activation(Activation.Sigmoid, gates, gates)
         ops.scale(gates, 2f, gates)
         val weighted = gated.prefix(nq, inner)
@@ -620,7 +607,7 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
           result.view(nq * heads, head),
           gates.view(nq * heads)
         )
-        affine(weighted, layer.o, out)
+        layer.o(ops, weighted, out, updates)
       }
 
       def mlp(
@@ -631,9 +618,9 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
       ): Unit = {
         val n = input.shape.dimensions.head
         val inner = up.prefix(n, upLayer.bias.shape.elementCount)
-        affine(input, upLayer, inner)
+        upLayer(ops, input, inner, updates)
         ops.activation(Activation.GeluTanh, inner, inner)
-        affine(inner, downLayer, out)
+        downLayer(ops, inner, out, updates)
       }
 
       val videoRope = Some((videoCos, videoSin))
@@ -865,7 +852,7 @@ final class Ltx2 private (ops: Ops, source: WeightSource)
           val part = norm.rows(start, count)
           ops.modulate(part, row(vectors(k), 1), row(vectors(k), 0), part)
         }
-        affine(norm, layer, target)
+        layer(ops, norm, target, updates)
       }
       finish(
         x,

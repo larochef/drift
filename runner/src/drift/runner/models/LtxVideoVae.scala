@@ -1,7 +1,7 @@
 package drift.runner.models
 
 import drift.runner.formats.FormatException
-import drift.runner.ops.{Activation, Ops}
+import drift.runner.ops.Ops
 import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
@@ -120,15 +120,8 @@ final class LtxVideoVae private (ops: Ops, source: WeightSource)
     r => (r / 16) * 16 + (r % 4) * 4 + (r / 4) % 4
   )
 
-  private def sizes(x: Tensor) = {
-    val Seq(h, w, c) = x.shape.dimensions
-    (h, w, c)
-  }
-
-  private def pixels(x: Tensor) = {
-    val (h, w, c) = sizes(x)
-    x.view(h * w, c)
-  }
+  private val perFrame = new FrameLayers(ops)
+  import perFrame.{pixels, sizes}
 
   private val onesFor = scala.collection.mutable.Map.empty[Long, Tensor]
   private def ones(channels: Long) =
@@ -137,14 +130,10 @@ final class LtxVideoVae private (ops: Ops, source: WeightSource)
       weights.floats(Array.fill(channels.toInt)(1f))
     )
 
+  private val pixelNorm = ChannelNorm.Pixel(ones)
+
   /** Pixel norm (RMS over the channels, ε 10⁻⁸) then SiLU, into a new frame. */
-  private def normSilu(x: Tensor): Tensor = {
-    val (h, w, c) = sizes(x)
-    val out = ops.allocate(DType.F32, Shape.of(h, w, c))
-    ops.rmsNorm(pixels(x), ones(c), 1e-8f, 0f, pixels(out))
-    ops.activation(Activation.Silu, out, out)
-    out
-  }
+  private def normSilu(x: Tensor): Tensor = perFrame.normSilu(x, pixelNorm)
 
   /** A 3×3×3 convolution over `frames`: non-causal (the ends repeated), or
     * `causal` (the first frame repeated twice before it).
@@ -222,14 +211,10 @@ final class LtxVideoVae private (ops: Ops, source: WeightSource)
       causal: Boolean
   ): Seq[Tensor] =
     blocks.foldLeft(frames) { case (current, (first, second)) =>
-      val normed = current.map(normSilu)
-      val inner = conv(normed, first, causal)
-      release(normed)
-      val normedInner = inner.map(normSilu)
-      release(inner)
-      val out = conv(normedInner, second, causal)
-      release(normedInner)
-      out.zip(current).foreach((o, x) => ops.add(o, x, o))
+      val out =
+        perFrame.residual(current, pixelNorm, first, pixelNorm, second, None)(
+          conv(_, _, causal)
+        )
       if (current ne frames) release(current)
       out
     }

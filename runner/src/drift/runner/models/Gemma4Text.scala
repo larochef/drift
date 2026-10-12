@@ -85,12 +85,9 @@ final class Gemma4Text private (ops: Ops, source: WeightSource, prefix: String)
   private val embedScale: Float = {
     val scale = math.sqrt(hidden.toDouble).toFloat
     // a rotated table holds BF16
-    if (embedding.dtype == DType.BF16 || ConvRot.stored(embedding.dtype)) {
-      val bits = java.lang.Float.floatToRawIntBits(scale)
-      java.lang.Float.intBitsToFloat(
-        ((bits + 0x7fff + ((bits >>> 16) & 1)) >>> 16) << 16
-      )
-    } else scale
+    if (embedding.dtype == DType.BF16 || ConvRot.stored(embedding.dtype))
+      Bf16.round(scale)
+    else scale
   }
 
   /** RoPE's cosines and sines (`[L, head / 2]`) of a layer's kind: the sliding
@@ -128,13 +125,10 @@ final class Gemma4Text private (ops: Ops, source: WeightSource, prefix: String)
     val tokens = ids.length
     val l = tokens.toLong
     val out = ops.allocate(DType.F32, Shape.of((layers + 1) * l, hidden.toLong))
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def keep(tensor: Tensor) = { held += tensor; tensor }
-    def allocate(columns: Long) = keep(
-      ops.allocate(DType.F32, Shape.of(l, columns))
-    )
+    val held = new TensorScope(ops)
+    def allocate(columns: Long) = held.allocate(DType.F32, Shape.of(l, columns))
     try {
-      val idTensor = keep(ops.fromInts(Shape.of(l), ids))
+      val idTensor = held.keep(ops.fromInts(Shape.of(l), ids))
       val x = allocate(hidden)
       ops.embedding(embedding, idTensor, x)
       ops.scale(x, embedScale, x)
@@ -155,14 +149,12 @@ final class Gemma4Text private (ops: Ops, source: WeightSource, prefix: String)
       val masks = mutable.Map.empty[Int, Tensor]
       def mask(heads: Int) = masks.getOrElseUpdate(
         heads,
-        keep(
-          ops.fromFloats(
-            Shape.of(heads, l, l),
-            Array.tabulate(heads * tokens * tokens) { i =>
-              val pair = i % (tokens * tokens)
-              if (pair % tokens > pair / tokens) -1e30f else 0f
-            }
-          )
+        held.fromFloats(
+          Shape.of(heads, l, l),
+          Array.tabulate(heads * tokens * tokens) { i =>
+            val pair = i % (tokens * tokens)
+            if (pair % tokens > pair / tokens) -1e30f else 0f
+          }
         )
       )
       val tables = mutable.Map.empty[Boolean, (Tensor, Tensor)]
@@ -171,8 +163,8 @@ final class Gemma4Text private (ops: Ops, source: WeightSource, prefix: String)
         val (cos, sin) = tables.getOrElseUpdate(
           global, {
             val (c, s) = rope(tokens, layer.head, global)
-            keep(c)
-            keep(s)
+            held.keep(c)
+            held.keep(s)
             (c, s)
           }
         )
@@ -239,7 +231,7 @@ final class Gemma4Text private (ops: Ops, source: WeightSource, prefix: String)
       case error: Throwable =>
         ops.release(out)
         throw error
-    } finally held.foreach(ops.release)
+    } finally held.close()
   }
 
   private val onesByWidth = mutable.Map.empty[Int, Tensor]

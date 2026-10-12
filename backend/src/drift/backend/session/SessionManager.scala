@@ -5,9 +5,11 @@ import drift.backend.cache.ModelCache
 import drift.backend.process.ChildProcesses
 import drift.backend.runtime.{LaunchRuntime, RuntimeManager}
 import drift.backend.storage.{Collections, StorageService}
+import drift.protocol.{JobBar, JobProgress}
 import drift.shared.*
 
 import java.nio.file.*
+import java.util.Locale
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.concurrent.duration.DurationInt
@@ -88,12 +90,30 @@ final class SessionManager(
       .map(_.session)
       .map { session =>
         val log = Option(logs.get(session.id))
-        session.copy(
-          progress = log.flatMap(_.progress),
-          activity = log.flatMap(_.activity),
-          batch = log.flatMap(_.batch),
-          stage = log.flatMap(_.stage)
-        )
+        // A job that says what it is doing is believed (drift's runner);
+        // otherwise its progress is what the log's bars say (sd-server).
+        Option(reported.get(session.id)) match {
+          case Some(told) =>
+            session.copy(
+              progress = SessionManager.barOf(told),
+              activity = log.flatMap(_.activity),
+              batch = for {
+                image <- told.image
+                images <- told.images
+              } yield BatchProgress(image, images),
+              stage = for {
+                stage <- told.stage
+                stages <- told.stages
+              } yield StageProgress(stage, stages, told.stageName.getOrElse(""))
+            )
+          case None =>
+            session.copy(
+              progress = log.flatMap(_.progress),
+              activity = log.flatMap(_.activity),
+              batch = log.flatMap(_.batch),
+              stage = log.flatMap(_.stage)
+            )
+        }
       }
       .toList
       .sortBy(_.startedAt)
@@ -176,15 +196,11 @@ final class SessionManager(
           s"run configuration '$runConfigurationId' does not exist"
         )
       case Some(configuration) =>
-        val architectures = storage.list(Collections.architectures)
-        val models = storage.list(Collections.models)
+        val architecture = arguments.architectureOf(configuration)
         // The tool decides the cap, the runtime and the readiness probe. A
         // missing architecture is named by the blockers below; it reads as
         // sd-cpp until then.
-        val tool = architectures
-          .find(_.id == configuration.architectureId)
-          .map(_.tool)
-          .getOrElse(RuntimeTool.SdCpp)
+        val tool = architecture.map(_.tool).getOrElse(RuntimeTool.SdCpp)
         val (cap, capName) = tool match {
           case RuntimeTool.SdCpp =>
             (current.maximumConcurrentSessions, "maximumConcurrentSessions")
@@ -206,13 +222,7 @@ final class SessionManager(
               s"stop it first, or raise $capName in settings/sessions.json"
           )
 
-        val problems =
-          CommandLine.blockers(
-            configuration,
-            architectures,
-            models,
-            arguments.cacheStatuses(configuration, models)
-          )
+        val problems = arguments.blockers(configuration)
         if (problems.nonEmpty)
           return refusal(
             runConfigurationId,
@@ -220,9 +230,7 @@ final class SessionManager(
             "cannot launch: " + problems.map(_.message).mkString("; ")
           )
 
-        val runs = architectures
-          .find(_.id == configuration.architectureId)
-          .fold(List(configuration.runner))(_.runners)
+        val runs = architecture.fold(List(configuration.runner))(_.runners)
         runtimeManager
           .resolveForLaunch(tool, configuration.runner, runtimeId)
           .flatMap(launch =>
@@ -242,28 +250,22 @@ final class SessionManager(
                   s"no free port between ${current.portRangeStart} and ${current.portRangeEnd}"
                 )
               case Some(port) =>
-                arguments.argumentsFor(
+                arguments.launch(
                   configuration,
-                  architectures,
-                  models,
                   launchRuntime,
                   Some(port)
                 ) match {
-                  case Left(problems) =>
-                    refusal(
-                      runConfigurationId,
-                      tool,
-                      "cannot launch: " + problems.map(_.message).mkString("; ")
-                    )
-                  case Right((argv, notes)) =>
+                  case Left(reason) =>
+                    refusal(runConfigurationId, tool, reason)
+                  case Right(launch) =>
                     spawn(
                       configuration,
                       tool,
                       launchRuntime,
                       port,
-                      argv,
+                      launch.arguments,
                       current,
-                      notes.map(_.message),
+                      launch.notes.map(_.message),
                       projectId
                     )
                 }
@@ -274,6 +276,18 @@ final class SessionManager(
 
   /** One session's captured output, for the log view. */
   def logOf(sessionId: String): Option[SessionLog] = Option(logs.get(sessionId))
+
+  /** What the job running on each session says it is doing, for the jobs that
+    * say (`drift.protocol.JobProgress`).
+    */
+  private val reported = ConcurrentHashMap[String, JobProgress]()
+
+  /** The job of a session says what it is doing; `None` once it has ended. */
+  def report(sessionId: String, progress: Option[JobProgress]): Unit =
+    progress match {
+      case Some(told) => reported.put(sessionId, told).discard
+      case None       => reported.remove(sessionId).discard
+    }
 
   /** The architecture and runtime a session runs, while both still resolve —
     * what a generation sent to it needs to know to hand sd-server its reference
@@ -626,6 +640,26 @@ final class SessionManager(
 }
 
 object SessionManager {
+
+  /** A job's bar as the page shows a session's: its kind, the steps done and
+    * how far into the next, and the rate the time left is worked out from.
+    */
+  def barOf(told: JobProgress): Option[SessionProgress] =
+    told.bar.filter(_.total > 0).map { bar =>
+      val whole = bar.done.toInt
+      SessionProgress(
+        kind = bar.phase match {
+          case JobBar.Preparing => ProgressKind.Preparing
+          case JobBar.Decoding  => ProgressKind.Decoding
+          case _                => ProgressKind.Sampling
+        },
+        done = whole,
+        total = bar.total,
+        detail = String.format(Locale.ROOT, "%.2f%s", bar.rate, bar.unit),
+        within = bar.done - whole,
+        note = told.pass
+      )
+    }
 
   /** How long SIGTERM gets before SIGKILL. */
 }

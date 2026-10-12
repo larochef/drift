@@ -3,7 +3,7 @@ package drift.runner
 import java.nio.file.Paths
 import javax.imageio.ImageIO
 
-import drift.runner.diffusion.{ImagePipeline, ImageRequest, Images}
+import drift.runner.diffusion.{ImagePipeline, ImageRequest, Images, Pipeline}
 import drift.runner.ops.{HipOps, MatVecInputs}
 
 /** One image (the family by the checkpoint), timed, saved as a PNG; after the
@@ -52,15 +52,28 @@ object ImageDemo {
     }
     val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
     val loading = System.nanoTime()
-    val pipeline = ImagePipeline.open(
+    val pipeline = Pipeline.open(
       ops,
-      Paths.get(diffusion),
-      Option.when(vae != "-")(Paths.get(vae)),
-      Option.when(llm != "-")(Paths.get(llm)),
-      options.collectFirst { case ("--tokenizer", path) => Paths.get(path) },
-      options.collectFirst { case ("--llm-vision", path) => Paths.get(path) },
-      options.collectFirst { case ("--connectors", path) => Paths.get(path) }
-    )
+      Pipeline.ModelFiles
+        .of(Paths.get(diffusion))
+        .copy(
+          vae = Option.when(vae != "-")(Paths.get(vae)),
+          textEncoder = Option.when(llm != "-")(Paths.get(llm)),
+          tokenizer = options.collectFirst { case ("--tokenizer", path) =>
+            Paths.get(path)
+          },
+          textEncoderVision = options.collectFirst {
+            case ("--llm-vision", path) => Paths.get(path)
+          },
+          connectors = options.collectFirst { case ("--connectors", path) =>
+            Paths.get(path)
+          }
+        )
+    ) match {
+      case image: ImagePipeline => image
+      case other                =>
+        throw new IllegalArgumentException(s"${other.family} draws no image")
+    }
     println(
       f"${pipeline.family} loaded in ${(System.nanoTime() - loading) / 1e9}%.1f s"
     )

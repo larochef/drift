@@ -99,13 +99,8 @@ final class Grn private (ops: Ops, source: WeightSource) extends AutoCloseable {
 
   private def floats(name: String): Tensor =
     weights.floats(name, name, Shape.of(source(name).shape.elementCount))
-  final private case class Affine(weight: Tensor, bias: Tensor)
   private def affineLayer(name: String) =
     Affine(source(s"$name.weight"), floats(s"$name.bias"))
-  private def affine(x: Tensor, layer: Affine, out: Tensor): Unit = {
-    ops.linear(x, layer.weight, out)
-    ops.addRow(out, layer.bias, out)
-  }
 
   final private class Block(at: String) {
     val query: Tensor = source(s"$at.attn.q_proj.weight")
@@ -140,6 +135,8 @@ final class Grn private (ops: Ops, source: WeightSource) extends AutoCloseable {
   }
   private val attention =
     new PlainAttention(ops, c.heads, c.kvHeads, c.headDimension)
+  private val rotary =
+    new RotaryAttention(ops, c.heads, c.kvHeads, c.headDimension, rope)
 
   /** The prompt for every pass: umT5's features (`[L, textWidth]`) as tokens
     * (`[L, hidden]`).
@@ -147,17 +144,11 @@ final class Grn private (ops: Ops, source: WeightSource) extends AutoCloseable {
   def text(features: Tensor): Tensor = {
     val out =
       ops.allocate(DType.F32, Shape.of(features.shape.dimensions.head, width))
-    affine(features, textIn, out)
+    textIn(ops, features, out)
     out
   }
 
-  final private class Buffers(val tokens: Int) {
-    private val held = mutable.ArrayBuffer.empty[Tensor]
-    private def rows(dtype: DType, count: Long, columns: Long): Tensor = {
-      val tensor = ops.allocate(dtype, Shape.of(count, columns))
-      held += tensor
-      tensor
-    }
+  final private class Buffers(val tokens: Int) extends WorkBuffers(ops) {
     val x: Tensor = rows(DType.F32, tokens, width)
     val normed: Tensor = rows(DType.F32, tokens, width)
     val q: Tensor = rows(DType.F32, tokens, queryWidth)
@@ -171,7 +162,6 @@ final class Grn private (ops: Ops, source: WeightSource) extends AutoCloseable {
     val mlpUp: Tensor = rows(DType.F32, tokens, c.intermediate)
     val positions: Tensor = rows(DType.I32, 3, tokens)
     val time: Tensor = rows(DType.F32, 1, timeIn.bias.shape.elementCount)
-    def release(): Unit = held.foreach(ops.release)
   }
   // one set per sequence length: the prompt's and the negative prompt's
   // sequences alternate at every step
@@ -210,21 +200,19 @@ final class Grn private (ops: Ops, source: WeightSource) extends AutoCloseable {
       s"logits: bits ${oneHot.shape}, out ${out.shape} for a $gridHeight × $gridWidth grid"
     )
     val w = buffersFor(tokens)
-    val (heads, kvHeads, d) =
-      (c.heads.toLong, c.kvHeads.toLong, c.headDimension.toLong)
 
     // [latents ; text ; progress]
-    affine(oneHot, bitsIn, w.x.rows(0, latents))
+    bitsIn(ops, oneHot, w.x.rows(0, latents))
     ops.copy(text, w.x.rows(latents, length))
     val half = c.timeWidth / 2
     val sinusoid = ops.fromFloats(
       Shape.of(1, c.timeWidth),
       TimestepSinusoid(progress, half)
     )
-    try affine(sinusoid, timeIn, w.time)
+    try timeIn(ops, sinusoid, w.time)
     finally ops.release(sinusoid)
     ops.activation(Activation.Silu, w.time, w.time)
-    affine(w.time, timeOut, w.x.rows(tokens - 1, 1))
+    timeOut(ops, w.time, w.x.rows(tokens - 1, 1))
     val (rows, columns) = Grn.stretched(gridHeight, gridWidth)
     ops.writeInts(
       w.positions.view(3L * tokens),
@@ -244,39 +232,25 @@ final class Grn private (ops: Ops, source: WeightSource) extends AutoCloseable {
 
     blocks.foreach { block =>
       ops.rmsNorm(w.x, block.inputNorm, GrnConfig.Epsilon, 0f, w.normed)
-      ops.linears(
+      rotary.projected(
         w.normed,
-        Seq(block.query, block.key, block.value),
-        Seq(w.q, w.k, w.v)
-      )
-      ops.rmsNorm(
-        w.q.view(tokens * heads, d),
+        block.query,
+        block.key,
+        block.value,
         block.queryNorm,
-        GrnConfig.Epsilon,
-        0f,
-        w.q.view(tokens * heads, d)
-      )
-      ops.rmsNorm(
-        w.k.view(tokens * kvHeads, d),
         block.keyNorm,
         GrnConfig.Epsilon,
-        0f,
-        w.k.view(tokens * kvHeads, d)
-      )
-      ops.rope(
-        w.q.view(tokens, heads, d),
         w.positions,
-        rope,
-        w.rotatedQueries.view(tokens, heads, d)
+        attention,
+        block.output,
+        w.q,
+        w.k,
+        w.v,
+        w.rotatedQueries,
+        w.rotatedKeys,
+        w.attended,
+        w.projected
       )
-      ops.rope(
-        w.k.view(tokens, kvHeads, d),
-        w.positions,
-        rope,
-        w.rotatedKeys.view(tokens, kvHeads, d)
-      )
-      attention(w.rotatedQueries, w.rotatedKeys, w.v, w.attended)
-      ops.linear(w.attended, block.output, w.projected)
       ops.add(w.x, w.projected, w.x)
       ops.rmsNorm(w.x, block.mlpNorm, GrnConfig.Epsilon, 0f, w.normed)
       ops.linears(w.normed, Seq(block.gate, block.up), Seq(w.mlpGate, w.mlpUp))
@@ -286,7 +260,7 @@ final class Grn private (ops: Ops, source: WeightSource) extends AutoCloseable {
     }
     val normed = w.normed.rows(0, latents)
     ops.rmsNorm(w.x.rows(0, latents), headNorm, GrnConfig.Epsilon, 0f, normed)
-    affine(normed, head, out)
+    head(ops, normed, out)
   }
 
   def close(): Unit = {

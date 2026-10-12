@@ -1,7 +1,7 @@
 package drift.runner.models
 
 import drift.runner.formats.FormatException
-import drift.runner.ops.{Activation, Ops}
+import drift.runner.ops.Ops
 import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
@@ -48,7 +48,6 @@ final class MiniMaxH3VideoEncoder private (
 ) extends AutoCloseable {
 
   private val weights = new VaeWeights(ops, source)
-  private val Epsilon = 1e-6f
   private val ClipLength = 17
   private val TokenDrop = 3
 
@@ -72,15 +71,17 @@ final class MiniMaxH3VideoEncoder private (
     )
   }
 
-  final private class Norm(prefix: String) {
-    val weight: Tensor = weights.floats(s"$prefix.weight")
-    val bias: Tensor = weights.floats(s"$prefix.bias")
-  }
+  private def norm(prefix: String): ChannelNorm =
+    ChannelNorm.Group(
+      weights.floats(s"$prefix.weight"),
+      weights.floats(s"$prefix.bias"),
+      groups
+    )
 
   final private class Residual(prefix: String) {
-    val norm1 = new Norm(s"$prefix.norm1")
+    val norm1: ChannelNorm = norm(s"$prefix.norm1")
     val conv1: Seq[Convolution] = causal(s"$prefix.conv1")
-    val norm2 = new Norm(s"$prefix.norm2")
+    val norm2: ChannelNorm = norm(s"$prefix.norm2")
     val conv2: Seq[Convolution] = causal(s"$prefix.conv2")
     val shortcut: Option[Convolution] =
       Option.when(weights.has(s"$prefix.nin_shortcut.weight"))(
@@ -110,7 +111,7 @@ final class MiniMaxH3VideoEncoder private (
     .takeWhile(i => weights.has(s"encoder.down.$i.block.0.conv1.weight"))
     .map(new Level(_))
     .toSeq
-  private val normOut = new Norm("encoder.norm_out")
+  private val normOut = norm("encoder.norm_out")
   private val convOut = causal("encoder.conv_out")
   // quant_conv on the host, in F32: the moments take no rounding
   private val quantWeight = weights.values("quant_conv.weight")
@@ -133,10 +134,8 @@ final class MiniMaxH3VideoEncoder private (
 
   // ---- the network, on frames [h, w, C] ------------------------------------------
 
-  private def sizes(x: Tensor): (Long, Long, Long) = {
-    val Seq(h, w, c) = x.shape.dimensions
-    (h, w, c)
-  }
+  private val perFrame = new FrameLayers(ops)
+  import perFrame.{normSilu, through}
 
   /** The causal convolution over `frames` (they stay the caller's), `time` and
     * `space` its strides.
@@ -147,94 +146,30 @@ final class MiniMaxH3VideoEncoder private (
       time: Int,
       space: Int
   ): Seq[Tensor] = {
-    val (h, w, _) = sizes(frames.head)
-    val outChannels = slices.last.outChannels
     val count = (frames.size - 1) / time + 1
     (0 until count).map { o =>
-      val out =
-        ops.allocate(DType.F32, Shape.of(h / space, w / space, outChannels))
-      val newest = slices(2)
-      ops.conv3x3(
-        frames(time * o),
-        newest.weight,
-        newest.bias,
-        out,
+      val older = Seq(0, 1).filter(j => time * o - 2 + j >= 0)
+      perFrame.summed(
+        (frames(time * o), slices(2)) +: older.map(j =>
+          (frames(time * o - 2 + j), slices(j))
+        ),
         space,
         reflect = true
       )
-      Seq(0, 1).filter(j => time * o - 2 + j >= 0).foreach { j =>
-        val part = ops.allocate(DType.F32, out.shape)
-        try {
-          ops.conv3x3(
-            frames(time * o - 2 + j),
-            slices(j).weight,
-            slices(j).bias,
-            part,
-            space,
-            reflect = true
-          )
-          ops.add(out, part, out)
-        } finally ops.release(part)
-      }
-      out
     }
   }
-
-  private def normSilu(x: Tensor, norm: Norm): Tensor = {
-    val (h, w, c) = sizes(x)
-    val out = ops.allocate(DType.F32, x.shape)
-    ops.groupNorm(
-      x.view(h * w, c),
-      groups,
-      norm.weight,
-      norm.bias,
-      Epsilon,
-      out.view(h * w, c)
-    )
-    ops.activation(Activation.Silu, out, out)
-    out
-  }
-
-  private def linear(x: Tensor, conv: Convolution): Tensor = {
-    val (h, w, c) = sizes(x)
-    val out = ops.allocate(DType.F32, Shape.of(h, w, conv.outChannels))
-    ops.linear(x.view(h * w, c), conv.weight, out.view(h * w, conv.outChannels))
-    ops.addRow(
-      out.view(h * w, conv.outChannels),
-      conv.bias,
-      out.view(h * w, conv.outChannels)
-    )
-    out
-  }
-
-  /** `frames` through `stage`, released. */
-  private def through(
-      frames: Seq[Tensor],
-      stage: Seq[Tensor] => Seq[Tensor]
-  ): Seq[Tensor] =
-    try stage(frames)
-    finally frames.foreach(ops.release)
 
   private def residual(frames: Seq[Tensor], block: Residual): Seq[Tensor] = {
-    val first = through(
-      frames.map(normSilu(_, block.norm1)),
-      causal(_, block.conv1, 1, 1)
-    )
-    val second = through(
-      through(first, _.map(normSilu(_, block.norm2))),
-      causal(_, block.conv2, 1, 1)
-    )
-    second.zip(frames).foreach { (y, x) =>
-      block.shortcut match {
-        case Some(conv) =>
-          val shortcut = linear(x, conv)
-          ops.add(y, shortcut, y)
-          ops.release(shortcut)
-        case None => ops.add(y, x, y)
-      }
-    }
+    val out = perFrame.residual(
+      frames,
+      block.norm1,
+      block.conv1,
+      block.norm2,
+      block.conv2,
+      block.shortcut
+    )(causal(_, _, 1, 1))
     frames.foreach(ops.release)
-    second
+    out
   }
 
   /** One tile of one clip: frames `[h, w, 3]` normalized (released) → moments

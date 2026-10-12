@@ -1,0 +1,80 @@
+/* Links, cards, card headers and the wrapping and padding helpers. */
+
+a {
+  color: hsl(220, 65%, 60%);
+}
+
+.card {
+  border: 1px solid hsl(25, 10%, 32%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.plus-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2em;
+  font-weight: 700;
+  line-height: 0;
+  height: 0;
+  min-height: 0;
+  width: 1em;
+  margin-right: 0.1em;
+  overflow: visible;
+}
+
+.add-row-button {
+  min-width: 9.5rem;
+}
+
+.card-header {
+  border-bottom: 1px solid hsl(25, 10%, 32%);
+}
+
+@media screen and (min-width: 1200px) {
+  .column.is-half-medium {
+    flex: none;
+    width: 50%;
+  }
+}
+
+.text-break {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.table-cell-break {
+  overflow-wrap: anywhere;
+}
+
+.table-code {
+  word-break: break-all;
+}
+
+.p-0 {
+  padding: 0 !important;
+}
+
+.p-2 {
+  padding: 0.75rem;
+}
+
+.card-header-action {
+  align-self: center;
+  margin-right: 0.5rem;
+}
+
+/* Tags and selects sit in card headers next to the action buttons; without
+   this they keep the header's stretch alignment and hug its top edge while
+   the buttons centre (`align-self` above), lining up with nothing. */
+.card-header > .tag,
+.card-header > select {
+  align-self: center;
+}
+
+/* A header chip — ready, incomplete, starting, failed, stopped — stands as
+   tall as the small buttons beside it: Bulma sizes a
+   tag at 2em and a small button at 2.5em of the same font size. */
+.card-header > .tag {
+  height: 2.5em;
+}

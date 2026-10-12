@@ -69,7 +69,7 @@ class AuthTokenService extends ServiceErrors {
     case AuthProvider.ModelScope  => selection.modelScopeTokenId
   }
 
-  // See ModelService.effects for why writes merge instead of switching.
+  // See EntityService.effects for why writes merge instead of switching.
   val effects: Modifier[HtmlElement] = Seq(
     cmdBus.events
       .collect { case Command.Load => () }

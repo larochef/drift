@@ -29,10 +29,14 @@ class GalleryPicker(
   // Mirror, to open on an NSFW project with its entries shown.
   private val projectsNow = Var(List.empty[Project])
 
-  private val projectFilter = Var("")
-  private val configurationFilter = Var("")
-  private val searchVar = Var("")
-  private val showNsfw = Var(false)
+  private val filters = GalleryFilterState(projectService)
+  import filters.{
+    configurationFilter,
+    filter,
+    projectFilter,
+    searchVar,
+    showNsfw
+  }
 
   /** The days asked for since the picker opened, each once: a day that fails to
     * load is not asked for again on every change.
@@ -44,10 +48,10 @@ class GalleryPicker(
 
   def open(asked: Request): Unit = {
     val project = asked.projectId.getOrElse("")
-    projectFilter.set(project)
-    configurationFilter.set("")
-    searchVar.set("")
-    showNsfw.set(projectsNow.now().exists(p => p.id == project && p.nsfw))
+    filters.reset(
+      project,
+      nsfw = projectsNow.now().exists(p => p.id == project && p.nsfw)
+    )
     ticked.set(List.empty)
     readRequested = Set.empty
     request.set(Some(asked))
@@ -70,20 +74,7 @@ class GalleryPicker(
   private val projectLabels: Signal[Map[String, String]] =
     projectService.projects.map(_.map(p => p.id -> p.label).toMap)
 
-  private val filter: Signal[Generation => Boolean] = Signal
-    .combine(
-      configurationFilter.signal,
-      searchVar.signal,
-      projectFilter.signal,
-      showNsfw.signal,
-      projectService.projects.map(_.filter(_.nsfw).map(_.id).toSet).distinct
-    )
-    .map((configuration, search, project, nsfwShown, nsfwProjects) =>
-      GalleryFilter
-        .matches(configuration, "", search, project, nsfwShown, nsfwProjects)
-    )
-
-  private def filters: HtmlElement = div(
+  private def filterBar: HtmlElement = div(
     cls := "is-flex is-flex-wrap-wrap is-align-items-flex-end mb-3",
     styleAttr := "gap: 0.75rem;",
     div(
@@ -238,7 +229,7 @@ class GalleryPicker(
     BrowserModal(
       title = Val(s"Pick ${asked.title} from the gallery"),
       body = Seq(
-        filters,
+        filterBar,
         grid(asked)
       ),
       onCancel = () => close(),

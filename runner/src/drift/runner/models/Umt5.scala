@@ -6,7 +6,6 @@ import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
 import java.nio.file.Path
-import scala.collection.mutable
 
 /** UMT5's encoder (transformers' `UMT5EncoderModel`; Wan's text encoder,
   * `umt5-xxl`), from transformers' names: pre-norm blocks of attention (no
@@ -112,16 +111,12 @@ final class Umt5 private (ops: Ops, source: WeightSource)
       "a token past UMT5's vocabulary"
     )
     val tokens = ids.length.toLong
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def allocate(columns: Long) = {
-      val tensor = ops.allocate(DType.F32, Shape.of(tokens, columns))
-      held += tensor
-      tensor
-    }
+    val held = new TensorScope(ops)
+    def allocate(columns: Long) =
+      held.allocate(DType.F32, Shape.of(tokens, columns))
     val x = ops.allocate(DType.F32, Shape.of(tokens, hidden.toLong))
     try {
-      val idTensor = ops.fromInts(Shape.of(tokens), ids)
-      held += idTensor
+      val idTensor = held.keep(ops.fromInts(Shape.of(tokens), ids))
       ops.embedding(embedding, idTensor, x)
       val (normed, q, k, v, attended) =
         (
@@ -172,7 +167,7 @@ final class Umt5 private (ops: Ops, source: WeightSource)
       case error: Throwable =>
         ops.release(x)
         throw error
-    } finally held.foreach(ops.release)
+    } finally held.close()
   }
 
   def close(): Unit = {

@@ -21,6 +21,53 @@ final private[session] class LaunchArguments(
     lorasRoot: Path
 ) {
 
+  /** What stops `configuration` from launching, each by name: a missing
+    * architecture, an unassigned or absent model.
+    */
+  def blockers(configuration: RunConfiguration): List[LaunchBlocker] = {
+    val models = storage.list(Collections.models)
+    CommandLine.blockers(
+      configuration,
+      storage.list(Collections.architectures),
+      models,
+      cacheStatuses(configuration, models)
+    )
+  }
+
+  def architectureOf(configuration: RunConfiguration): Option[Architecture] =
+    storage.get(Collections.architectures, configuration.architectureId)
+
+  /** `configuration` resolved for a launch on `launchRuntime`: its architecture
+    * and its argv, or what stops it in one sentence. With a `port` a server's —
+    * a session's and a job server's alike; without, a one-shot `sd-cli` run's.
+    */
+  def launch(
+      configuration: RunConfiguration,
+      launchRuntime: LaunchRuntime,
+      port: Option[Int]
+  ): Either[String, LaunchArguments.Launch] = {
+    val architectures = storage.list(Collections.architectures)
+    argumentsFor(
+      configuration,
+      architectures,
+      storage.list(Collections.models),
+      launchRuntime,
+      port
+    ).left
+      .map(problems =>
+        "cannot launch: " + problems.map(_.message).mkString("; ")
+      )
+      .map((arguments, notes) =>
+        LaunchArguments.Launch(
+          configuration,
+          // there: a missing architecture is a blocker
+          architectures.find(_.id == configuration.architectureId).get,
+          arguments,
+          notes
+        )
+      )
+  }
+
   /** The configuration, its architecture and the argv of a one-shot `sd-cli`
     * run of it on `launchRuntime` — resolved as a launch would, blockers
     * refused by name — for the PiD upscale's tiles (`specs/26-tiled-pid.md`)
@@ -30,35 +77,19 @@ final private[session] class LaunchArguments(
       runConfigurationId: String,
       launchRuntime: LaunchRuntime
   ): Either[String, (RunConfiguration, Architecture, List[String])] =
-    storage.get(Collections.runConfigurations, runConfigurationId) match {
-      case None =>
-        Left(s"run configuration '$runConfigurationId' does not exist")
-      case Some(configuration) =>
-        val architectures = storage.list(Collections.architectures)
-        argumentsFor(
-          configuration,
-          architectures,
-          storage.list(Collections.models),
-          launchRuntime,
-          None
-        ).left
-          .map(problems =>
-            "cannot run: " + problems.map(_.message).mkString("; ")
-          )
-          .map((arguments, _) =>
-            (
-              configuration,
-              architectures.find(_.id == configuration.architectureId).get,
-              arguments
-            )
-          )
-    }
+    storage
+      .get(Collections.runConfigurations, runConfigurationId)
+      .toRight(s"run configuration '$runConfigurationId' does not exist")
+      .flatMap(launch(_, launchRuntime, None))
+      .map(launch =>
+        (launch.configuration, launch.architecture, launch.arguments)
+      )
 
   /** Whether each assigned model's weights are on disk, in the shape
     * `CommandLine.blockers` wants — and, for the ones present, the local path
     * the argv needs.
     */
-  def cacheStatuses(
+  private def cacheStatuses(
       configuration: RunConfiguration,
       models: List[Model]
   ): Map[String, ModelCacheStatus] =
@@ -86,7 +117,7 @@ final private[session] class LaunchArguments(
     * session and a job server launch the same way. Without, a one-shot `sd-cli`
     * run's, which scans none.
     */
-  def argumentsFor(
+  private def argumentsFor(
       configuration: RunConfiguration,
       architectures: List[Architecture],
       models: List[Model],
@@ -130,4 +161,17 @@ final private[session] class LaunchArguments(
         )
       )
   }
+}
+
+private[session] object LaunchArguments {
+
+  /** A run configuration resolved for a launch: its architecture, the argv, and
+    * what the resolution has to say (`ResolutionNote`).
+    */
+  final case class Launch(
+      configuration: RunConfiguration,
+      architecture: Architecture,
+      arguments: List[String],
+      notes: List[ResolutionNote]
+  )
 }

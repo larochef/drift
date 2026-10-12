@@ -1,0 +1,12 @@
+/* The width of a site browser's modal. */
+
+/* The three site browsers (specs/24): a grid of tiles wants the window, not a
+   dialog's width. */
+/* The same width whatever is browsed: pinned, not a
+   range, so a short file listing does not draw a narrower modal than a grid of
+   tiles and the head keeps the room its source row needs. */
+.browser-modal .modal-card {
+  width: 80vw;
+  min-width: 80vw;
+  max-width: 80vw;
+}

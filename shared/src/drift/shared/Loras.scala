@@ -422,7 +422,7 @@ case class LoraDownloadJob(
     downloadedBytes: Long = 0L,
     totalBytes: Option[Long] = None,
     error: Option[String] = None
-)
+) extends TransferJob
 object LoraDownloadJob {
   given JsonValueCodec[List[LoraDownloadJob]] =
     JsonCodecMaker.make(CodecMakerConfig.withDiscriminatorFieldName(None))

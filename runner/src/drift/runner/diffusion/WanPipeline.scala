@@ -2,7 +2,7 @@ package drift.runner.diffusion
 
 import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
-import drift.runner.ops.Ops
+import drift.runner.ops.{Ops, TensorScope}
 import drift.runner.tensor.*
 import drift.runner.text.Unigram
 
@@ -152,9 +152,8 @@ final class WanPipeline(
       ((frames - 1) / 4 + 1, height / 16, width / 16)
     val tokens = latentFrames * gridHeight * gridWidth
     val c = low.config
-    val held = mutable.ArrayBuffer.empty[Tensor]
+    val held = new TensorScope(ops)
     val texts = mutable.ArrayBuffer.empty[WanText]
-    def keep(tensor: Tensor) = { held += tensor; tensor }
     try {
       val highSteps = high.fold(0)(_ => request.highNoiseSteps.getOrElse(-1))
       val total = request.steps + math.max(highSteps, 0)
@@ -188,11 +187,12 @@ final class WanPipeline(
         )
       )
       if (request.initImage.isDefined || request.endImage.isDefined)
-        condition.foreach(keep)
+        condition.foreach(held.keep)
       useLoras(request.loras)
       val (prompt, negative) =
         (encoded(request.prompt), encoded(request.negativePrompt))
-      held ++= Seq(prompt, negative)
+      held.keep(prompt)
+      held.keep(negative)
       def textsOf(model: Wan, guided: Boolean) = {
         val conditional = model.text(prompt)
         texts += conditional
@@ -208,16 +208,14 @@ final class WanPipeline(
       val lowTexts =
         Option.when(switch < total)(textsOf(low, request.cfgScale != 1f))
       val random = new SplittableRandom(request.seed)
-      val latents = keep(
-        ops.fromFloats(
-          Shape.of(tokens, 4L * c.outChannels),
-          Array.fill(tokens * 4 * c.outChannels)(Noise.gaussian(random))
-        )
+      val latents = held.fromFloats(
+        Shape.of(tokens, 4L * c.outChannels),
+        Array.fill(tokens * 4 * c.outChannels)(Noise.gaussian(random))
       )
       val (velocity, other) =
         (
-          keep(ops.allocate(DType.F32, latents.shape)),
-          keep(ops.allocate(DType.F32, latents.shape))
+          held.allocate(DType.F32, latents.shape),
+          held.allocate(DType.F32, latents.shape)
         )
       (0 until total).foreach { i =>
         val highNoise = i < switch
@@ -231,7 +229,7 @@ final class WanPipeline(
         } else if (i == 0 || i == switch) {
           val pass = if (highNoise) "high" else "low"
           stage(s"sampling ($pass noise)")
-          println(s"sampling($pass noise) using Euler method")
+          ProgressReport.pass(Some(s"$pass noise"))
           progress(0, if (highNoise) switch else total - switch)
         }
         val model = if (highNoise) high.get else low
@@ -296,11 +294,9 @@ final class WanPipeline(
       // patch rows → latent frames [h, w, 16], then the VAE
       val perFrame = gridHeight * gridWidth
       val latentImages = (0 until latentFrames).map { t =>
-        val image = keep(
-          ops.allocate(
-            DType.F32,
-            Shape.of(2L * gridHeight, 2L * gridWidth, c.outChannels)
-          )
+        val image = held.allocate(
+          DType.F32,
+          Shape.of(2L * gridHeight, 2L * gridWidth, c.outChannels)
         )
         ops.unpackPatches(
           latents.rows(t.toLong * perFrame, perFrame),
@@ -330,7 +326,7 @@ final class WanPipeline(
       Video(images.toSeq, fps, None)
     } finally {
       texts.foreach(_.release())
-      held.foreach(ops.release)
+      held.close()
     }
   }
 

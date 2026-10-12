@@ -1,12 +1,12 @@
 # 44 — Generation progress: batches and the runner's own progress
 
-**Status:** done, except the runner's own progress report: its bars are still read from its log, as sd-cpp's are (`specs/55`)
+**Status:** done
 **Depends on:** 15 (post-processing jobs and their progress), 22 (free play), 42 (the drift runner), 43 (a runner per configuration)
 
 A generation's progress shows what the job is doing and how far it has
 got, as the tiled post-processing does. A batch has a bar for the whole batch
-and a bar for the image being made. Both engines' progress is read from their
-log: the drift runner prints sd-cpp's bar format for drift to parse.
+and a bar for the image being made. sd-cpp's progress is read from its log;
+the drift runner reports its own on the job drift polls.
 
 ## What it does
 
@@ -23,34 +23,28 @@ log: the drift runner prints sd-cpp's bar format for drift to parse.
   pass, for two-pass models), decoding.
 - **Time left.** Each bar says the time left once one step (or one image) has
   run: from the step rate for the image, from the images done for the batch.
-- **On the drift runner** the bars are read from its log too: it prints
-  sd-cpp's `|====| i/n - Xs/it` line (`ImageServer`'s sampling line, the
-  decode and tile bars) and drift parses it with the same patterns. Not
-  built: a report of its own — phase, step and total, the image within the
-  batch, the tile within the job, elapsed time — which would need no pattern
-  kept in step on both sides (Shape, below; `specs/55`).
+- **On the drift runner** a generation's job says where it is: the
+  document `GET /sdcpp/v1/jobs/{id}` answers carries `progress` while the job
+  runs (`JobProgress`, `protocol/.../Jobs.scala`) — the bar (`JobBar`: its
+  phase `preparing`, `sampling` or `decoding`, what is done of what, the
+  rate), the sampling pass of a two-pass model, the image within the batch,
+  the stage within a video. The runner writes it and its log line in one
+  place (`diffusion/ProgressReport`), so the two never disagree; drift shows
+  the report as it polls (`GenerationMonitor` → `SessionManager.report`) and
+  drops it when the job ends. A post-processing job shows the report of the
+  server job it waits for the same way (`NativeJobs`' `onProgress` →
+  `PostProcessJobs.report`), tile after tile. The log's bars remain what
+  drift reads where no job is polled: a launch's loading.
 - **On sd-cpp** the log bar is the source
   (`LogProgress`). The batch bar counts sd-cpp's sampling bars, a new one
   starting at step 1 for each image.
 
-## Shape of the runner's own report (not built, to be settled)
+## Left open
 
-- The runner's report: a line format of its own in the log (for example one
-  JSON object per line with a fixed prefix), or a progress field on
-  `GET /sdcpp/v1/jobs/{id}`, which drift already polls. The job endpoint is
-  preferred: it needs no log parsing, and it is per job, so progress can't be
-  read off the wrong job. Check first whether upstream sd-server's job
-  endpoint already reports progress (its docs), and match its field names if
-  it does.
-- `SessionProgress` (`shared/.../Logs.scala`) grows the image index and count
-  and a phase that isn't limited to sd-cpp's two bars (`ProgressKind`
-  Loading/Sampling).
 - One progress component for sessions and post-processing jobs, instead of
   `LogProgressView` and `PostProcessJobList`'s own bar.
-  `PostProcessProgress(completed, total)` becomes the outer bar of the same
-  shape.
-- Where the batch count is known: the request's `batchCount`
-  (`shared/.../Generation.scala`).
+- The runner still prints sd-cpp's bar format beside its report, and drift
+  still parses it for the runner's sessions when no job reports.
 
 ## Notes
 

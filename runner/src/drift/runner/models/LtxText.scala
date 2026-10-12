@@ -192,14 +192,14 @@ final class LtxConnector(
   private def floats(name: String, count: Long) =
     weights.floats(s"$prefix.$name", s"$prefix.$name", Shape.of(count))
 
-  /** A linear layer and its site: its name in the file, a LoRA's target. */
-  final private case class Affine(site: String, weight: Tensor, bias: Tensor)
   private val affines = mutable.ArrayBuffer.empty[Affine]
+
+  /** A linear layer and its site: its name in the file, a LoRA's target. */
   private def affine(name: String, outputs: Long) = {
     val made = Affine(
-      s"$prefix.$name",
       source(s"$prefix.$name.weight"),
-      floats(s"$name.bias", outputs)
+      floats(s"$name.bias", outputs),
+      s"$prefix.$name"
     )
     affines += made
     made
@@ -239,12 +239,6 @@ final class LtxConnector(
   def sites: Map[String, Tensor] =
     affines.map(layer => layer.site -> layer.weight).toMap
 
-  private def run(x: Tensor, layer: Affine, out: Tensor): Unit = {
-    ops.linear(x, layer.weight, out)
-    updates.foreach(_(x, layer.site, out))
-    ops.addRow(out, layer.bias, out)
-  }
-
   /** The split 1-D RoPE's per-head tables over `rows` positions. */
   private def tables(rows: Int): (Tensor, Tensor) = {
     val pairs = width / 2
@@ -275,12 +269,8 @@ final class LtxConnector(
       s"$tokens tokens over $rows rows"
     )
     val n = rows.toLong
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def allocate(columns: Long) = {
-      val tensor = ops.allocate(DType.F32, Shape.of(n, columns))
-      held += tensor
-      tensor
-    }
+    val held = new TensorScope(ops)
+    def allocate(columns: Long) = held.allocate(DType.F32, Shape.of(n, columns))
     val x = ops.allocate(DType.F32, Shape.of(n, width.toLong))
     try {
       ops.copy(features, x.rows(0, tokens))
@@ -288,7 +278,8 @@ final class LtxConnector(
         ops.copy(registers.rows(p % registerCount, 1), x.rows(p, 1))
       )
       val (cos, sin) = tables(rows)
-      held ++= Seq(cos, sin)
+      held.keep(cos)
+      held.keep(sin)
       val (normed, q, k, v, rq, rk, attended, gated, projected) = (
         allocate(width),
         allocate(width),
@@ -301,18 +292,18 @@ final class LtxConnector(
         allocate(width)
       )
       val (logits, up) = (allocate(heads), allocate(intermediate))
-      val pageTable = ops.fromInts(Shape.of(1), Array(0))
-      held += pageTable
+      val pageTable = held.keep(ops.fromInts(Shape.of(1), Array(0)))
       val cache: KvCache =
         ops.allocateCache(1, (rows + 15) / 16 * 16, heads, head)
-      held ++= Seq(cache.keys, cache.values)
+      held.keep(cache.keys)
+      held.keep(cache.values)
       val (h, d) = (heads.toLong, head.toLong)
       blocks.foreach { b =>
         ops.rmsNorm(x, ones, Epsilon, 0f, normed)
-        run(normed, b.gate, logits)
-        run(normed, b.q, q)
-        run(normed, b.k, k)
-        run(normed, b.v, v)
+        b.gate(ops, normed, logits, updates)
+        b.q(ops, normed, q, updates)
+        b.k(ops, normed, k, updates)
+        b.v(ops, normed, v, updates)
         ops.rmsNorm(q, b.qNorm, Epsilon, 0f, q)
         ops.rmsNorm(k, b.kNorm, Epsilon, 0f, k)
         ops.ropeTable(
@@ -348,12 +339,12 @@ final class LtxConnector(
           attended.view(n * h, d),
           logits.view(n * h)
         )
-        run(gated, b.o, projected)
+        b.o(ops, gated, projected, updates)
         ops.add(x, projected, x)
         ops.rmsNorm(x, ones, Epsilon, 0f, normed)
-        run(normed, b.up, up)
+        b.up(ops, normed, up, updates)
         ops.activation(Activation.GeluTanh, up, up)
-        run(up, b.down, projected)
+        b.down(ops, up, projected, updates)
         ops.add(x, projected, x)
       }
       ops.rmsNorm(x, ones, Epsilon, 0f, x)
@@ -362,7 +353,7 @@ final class LtxConnector(
       case error: Throwable =>
         ops.release(x)
         throw error
-    } finally held.foreach(ops.release)
+    } finally held.close()
   }
 
   def release(): Unit = weights.release()

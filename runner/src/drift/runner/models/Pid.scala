@@ -125,15 +125,8 @@ final class Pid private (ops: Ops, source: WeightSource, ropeReference: Int)
   private def scalar(name: String): Float = weights.values(name).head
 
   /** A linear layer and its bias. */
-  final private case class Affine(weight: Tensor, bias: Tensor)
   private def affine(name: String) =
     Affine(matrix(s"$name.weight"), vector(s"$name.bias"))
-
-  /** `out = x · weight + bias`. */
-  private def project(x: Tensor, layer: Affine, out: Tensor): Unit = {
-    ops.linear(x, layer.weight, out)
-    ops.addRow(out, layer.bias, out)
-  }
 
   // ---- weights ---------------------------------------------------------------------
 
@@ -345,7 +338,7 @@ final class Pid private (ops: Ops, source: WeightSource, ropeReference: Int)
       s"conditionOn: text ${textFeatures.shape}"
     )
     val text = allocate(Shape.of(length, h))
-    project(textFeatures, textIn, text)
+    textIn(ops, textFeatures, text)
     ops.rmsNorm(text, textNorm, Epsilon, 0f, text)
     ops.add(text, textPositions.rows(0, length), text)
     // the latent: unpacked, upsampled to the grid, the convolution stack
@@ -408,11 +401,11 @@ final class Pid private (ops: Ops, source: WeightSource, ropeReference: Int)
         val rows = run.pixels(x)
         val heads = outputHeads.map { head =>
           val out = allocate(Shape.of(tokens, h))
-          project(rows, head, out)
+          head(ops, rows, out)
           out
         }
         val pixel = allocate(Shape.of(tokens, h))
-        project(rows, pixelHead, pixel)
+        pixelHead(ops, rows, pixel)
         (heads, pixel)
       } finally run.release()
     // RoPE tables: the image grid for both attentions, the text
@@ -567,24 +560,20 @@ final class Pid private (ops: Ops, source: WeightSource, ropeReference: Int)
     )
     val Seq((imageCos, imageSin), (pixelCos, pixelSin), (textCos, textSin)) =
       conditioning.ropes
-    val live = mutable.ArrayBuffer.empty[Tensor]
-    def allocate(rows: Long, cols: Long) = {
-      val tensor = ops.allocate(DType.F32, Shape.of(rows, cols))
-      live += tensor
-      tensor
-    }
+    val live = new TensorScope(ops)
+    def allocate(rows: Long, cols: Long) =
+      live.allocate(DType.F32, Shape.of(rows, cols))
     try {
       // the timestep: σ × 1000, a sinusoid of max period 10 (cosines first)
       val half = c.timeChannels / 2
       val t = sigma * 1000f
       val sinusoid = TimestepSinusoid(t, half, maxPeriod = 10)
-      val embedded = ops.fromFloats(Shape.of(1, 2L * half), sinusoid)
-      live += embedded
+      val embedded = live.fromFloats(Shape.of(1, 2L * half), sinusoid)
       val (inner, time, condition) =
         (allocate(1, h), allocate(1, h), allocate(1, h))
-      project(embedded, timeIn, inner)
+      timeIn(ops, embedded, inner)
       ops.activation(Activation.Silu, inner, inner)
-      project(inner, timeOut, time)
+      timeOut(ops, inner, time)
       ops.activation(Activation.Silu, time, condition)
       inspect("time", time)
 
@@ -592,7 +581,7 @@ final class Pid private (ops: Ops, source: WeightSource, ropeReference: Int)
       val patches = allocate(tokens, 3 * area)
       ops.packPatches(x, c.patch, patches)
       val s = allocate(tokens, h)
-      project(patches, patchEmbedder, s)
+      patchEmbedder(ops, patches, s)
       inspect("patches", s)
       val length = conditioning.text.shape.dimensions.head
       val y = allocate(length, h)
@@ -617,17 +606,14 @@ final class Pid private (ops: Ops, source: WeightSource, ropeReference: Int)
 
       def inject(target: Tensor, feature: Tensor, g: Gate): Unit = {
         ops.concatColumns(Seq(target, feature), joined)
-        project(joined, g.content, gateValue)
+        g.content(ops, joined, gateValue)
         if (conditioning.degradeSigma != 0f)
           ops.addRow(
-            gateValue, {
-              val shift = ops.fromFloats(
-                Shape.of(1),
-                Array(-g.alpha * conditioning.degradeSigma)
-              )
-              live += shift
-              shift
-            },
+            gateValue,
+            live.fromFloats(
+              Shape.of(1),
+              Array(-g.alpha * conditioning.degradeSigma)
+            ),
             gateValue
           )
         ops.activation(Activation.Sigmoid, gateValue, gateValue)
@@ -653,7 +639,7 @@ final class Pid private (ops: Ops, source: WeightSource, ropeReference: Int)
         val streams = Seq((text, y, 0L, length), (image, s, length, tokens))
         streams.foreach { (stream, z, first, n) =>
           def rows(t: Tensor) = t.rows(first, n)
-          project(condition, stream.modulation, modulation)
+          stream.modulation(ops, condition, modulation)
           val zn = normed.rows(0, n)
           ops.rmsNorm(z, stream.norm1, Epsilon, 0f, zn)
           ops.modulate(zn, chunk(1), chunk(0), zn)
@@ -711,9 +697,9 @@ final class Pid private (ops: Ops, source: WeightSource, ropeReference: Int)
         // the text's last outputs are never read
         streams.foreach { (stream, z, first, n) =>
           if (!(last && (z eq y))) {
-            project(condition, stream.modulation, modulation)
+            stream.modulation(ops, condition, modulation)
             val out = projected.rows(0, n)
-            project(attended.rows(first, n), stream.proj, out)
+            stream.proj(ops, attended.rows(first, n), out)
             ops.gatedAdd(z, out, chunk(2))
             val zn = normed.rows(0, n)
             ops.rmsNorm(z, stream.norm2, Epsilon, 0f, zn)
@@ -739,7 +725,7 @@ final class Pid private (ops: Ops, source: WeightSource, ropeReference: Int)
       val rgb = allocate(pixels, 3)
       ops.pixelsToPatches(x, c.patch, rgb)
       val stream = allocate(pixels, channels)
-      project(rgb, pixelEmbedder, stream)
+      pixelEmbedder(ops, rgb, stream)
       ops.add(stream, positionsFor(gridHeight, gridWidth), stream)
       inspect("pixels", stream)
 
@@ -764,12 +750,12 @@ final class Pid private (ops: Ops, source: WeightSource, ropeReference: Int)
       val pixelCache = conditioning.caches(1)
       val rows = table.view(pixels, 6 * channels)
       pixelBlocks.foreach { block =>
-        project(s, block.modulation, table)
+        block.modulation(ops, s, table)
         ops.rmsNorm(stream, block.norm1, Epsilon, 0f, pixelNormed)
         ops.modulateChunks(pixelNormed, rows, 0, 1, pixelNormed)
-        project(
+        block.compress(
+          ops,
           pixelNormed.view(tokens, area * channels),
-          block.compress,
           compressed
         )
         ops.linears(compressed, Seq(block.q, block.k, block.v), Seq(pq, pk, pv))
@@ -818,21 +804,21 @@ final class Pid private (ops: Ops, source: WeightSource, ropeReference: Int)
           pAttended.view(tokens, pixelHeads, padded)
         )
         if (valueScale != 1f) ops.scale(pAttended, valueScale, pAttended)
-        project(pAttended, block.proj, compressed)
-        project(compressed, block.expand, expanded)
+        block.proj(ops, pAttended, compressed)
+        block.expand(ops, compressed, expanded)
         ops.gatedAddChunk(stream, expanded.view(pixels, channels), rows, 2)
         ops.rmsNorm(stream, block.norm2, Epsilon, 0f, pixelNormed)
         ops.modulateChunks(pixelNormed, rows, 3, 4, pixelNormed)
-        project(pixelNormed, block.fc1, hidden)
+        block.fc1(ops, pixelNormed, hidden)
         ops.activation(Activation.GeluErf, hidden, hidden)
-        project(hidden, block.fc2, pixelNormed)
+        block.fc2(ops, hidden, pixelNormed)
         ops.gatedAddChunk(stream, pixelNormed, rows, 5)
         inspect("pixel block", stream)
       }
       ops.rmsNorm(stream, finalNorm, Epsilon, 0f, pixelNormed)
-      project(pixelNormed, finalOut, rgb)
+      finalOut(ops, pixelNormed, rgb)
       ops.patchesToPixels(rgb, c.patch, out)
-    } finally live.foreach(ops.release)
+    } finally live.close()
   }
 
   def close(): Unit = {

@@ -8,7 +8,6 @@ import drift.runner.weights.WeightSource
 
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout.JAVA_BYTE
-import scala.collection.mutable
 
 /** A hybrid layer's feed-forward: routed experts or one dense SwiGLU. */
 sealed trait FeedForward
@@ -94,7 +93,7 @@ final class HybridWeights(
     val source: WeightSource,
     val gguf: Boolean
 ) {
-  private val made = mutable.ArrayBuffer.empty[Tensor]
+  private val made = new TensorScope(ops)
 
   def apply(ggufName: String, huggingFaceName: String): Tensor =
     source(if (gguf) ggufName else huggingFaceName)
@@ -124,10 +123,7 @@ final class HybridWeights(
   def upload(dtype: DType, shape: Shape, bytes: Array[Byte]): Tensor =
     keep(ops.fromBytes(dtype, shape, bytes))
 
-  def keep(tensor: Tensor): Tensor = {
-    made += tensor
-    tensor
-  }
+  def keep(tensor: Tensor): Tensor = made.keep(tensor)
 
   /** A tensor as F32 of `shape`, decoded at load when stored otherwise. */
   def floats(
@@ -200,7 +196,7 @@ final class HybridWeights(
     upload(first.dtype, shape, names.flatMap(hostBytes).toArray)
   }
 
-  def release(): Unit = made.foreach(ops.release)
+  def release(): Unit = made.close()
 }
 
 /** Tensors named `g…` in a GGUF, `h…` in transformers' checkpoints. */
@@ -322,13 +318,9 @@ final class ExpertWeights(
 
 /** The blocks' activations for up to `capacity` tokens, allocated once. */
 final class BlockBuffers(ops: Ops, shape: HybridShape, val capacity: Int) {
-  private val buffers = mutable.ArrayBuffer.empty[Tensor]
-  private def allocate(dtype: DType, dimensions: Long*): Tensor = {
-    val tensor =
-      ops.allocate(dtype, Shape(capacity.toLong +: dimensions.toVector))
-    buffers += tensor
-    tensor
-  }
+  private val buffers = new TensorScope(ops)
+  private def allocate(dtype: DType, dimensions: Long*): Tensor =
+    buffers.allocate(dtype, Shape(capacity.toLong +: dimensions.toVector))
   private def f32(dimensions: Long*) = allocate(DType.F32, dimensions*)
   // the widths the other feed-forward kind's buffers take are 0
   private val (experts, k, expertWidth, sharedWidth, denseWidth) =
@@ -384,7 +376,7 @@ final class BlockBuffers(ops: Ops, shape: HybridShape, val capacity: Int) {
       case axes => positionRows.view(3L * capacity).prefix(axes, t)
     }
 
-  def release(): Unit = buffers.foreach(ops.release)
+  def release(): Unit = buffers.close()
 }
 
 /** The blocks themselves, each from its normed input to its output. */

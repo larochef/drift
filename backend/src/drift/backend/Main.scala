@@ -208,7 +208,7 @@ import sttp.tapir.server.netty.sync.*
       loraEndpoints(storage, loraManager) ++
       upscalerEndpoints(upscalerManager) ++
       authEndpoints(storage, authTokens) ++
-      fileEndpoints ++
+      fileEndpoints(locations.shown()) ++
       huggingFaceEndpoints(HuggingFaceApi(() => authTokens.huggingFace)) ++
       modelScopeEndpoints(modelScopeApi) ++
       civitaiEndpoints(civitaiClient)

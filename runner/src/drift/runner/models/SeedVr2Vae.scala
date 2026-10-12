@@ -50,9 +50,9 @@ final class SeedVr2Vae private (ops: Ops, source: WeightSource)
       val all = weights.conv3x3x3Summed(prefix)
       keep.fold(all)(all.take)
     }
-    var history: List[Tensor] = Nil // newest first
+    val history = new FrameHistory(ops, 2)
     def outChannels: Long = slices.last.outChannels
-    def reset(): Unit = { history.foreach(ops.release); history = Nil }
+    def reset(): Unit = history.reset()
   }
 
   final private class Residual(prefix: String) {
@@ -91,8 +91,8 @@ final class SeedVr2Vae private (ops: Ops, source: WeightSource)
     def temporal: Boolean = slices.size == 3
     val still: Option[Convolution] =
       Option.when(temporal)(weights.conv3x3x3Summed(prefix))
-    var previous: Option[Tensor] = None
-    def reset(): Unit = { previous.foreach(ops.release); previous = None }
+    val previous = new FrameHistory(ops, 1)
+    def reset(): Unit = previous.reset()
   }
 
   /** An upsampler: its 1×1 as one linear per output frame (rows ordered as
@@ -213,33 +213,18 @@ final class SeedVr2Vae private (ops: Ops, source: WeightSource)
   // ---- frames ----------------------------------------------------------------------
 
   private val perFrame = new FrameLayers(ops)
-  import perFrame.{frame, linear, normSilu, pixels, sizes}
-
-  private def copy(x: Tensor): Tensor = {
-    val (h, w, c) = sizes(x)
-    val out = frame(h, w, c)
-    ops.copy(x, out)
-    out
-  }
+  import perFrame.{copy, frame, linear, normSilu, pixels, sizes}
 
   /** The 3×3 `slices` over `inputs`, summed. */
   private def summed(
       inputs: Seq[Tensor],
       slices: Seq[Convolution],
       stride: Int
-  ): Tensor = {
-    val (h, w, _) = sizes(inputs.head)
-    val out = frame(h / stride, w / stride, slices.last.outChannels)
-    ops.conv3x3(inputs.last, slices.last.weight, slices.last.bias, out, stride)
-    inputs.zip(slices).dropRight(1).foreach { (input, slice) =>
-      val part = frame(h / stride, w / stride, slices.last.outChannels)
-      try {
-        ops.conv3x3(input, slice.weight, slice.bias, part, stride)
-        ops.add(out, part, out)
-      } finally ops.release(part)
-    }
-    out
-  }
+  ): Tensor =
+    perFrame.summed(
+      (inputs.last, slices.last) +: inputs.zip(slices).dropRight(1),
+      stride
+    )
 
   /** Whether more frames follow the first: a lone frame keeps no history. */
   private var streaming = true
@@ -248,16 +233,15 @@ final class SeedVr2Vae private (ops: Ops, source: WeightSource)
     * released when no frame follows (the caller must not release it).
     */
   private def causal(x: Tensor, conv: Causal): Tensor =
-    if (conv.history.isEmpty) {
+    if (conv.history.frames.isEmpty) {
       val out = summed(Seq(x), Seq(conv.still), stride = 1)
-      if (streaming) conv.history = List(x) else ops.release(x)
+      if (streaming) conv.history.push(x) else ops.release(x)
       out
     } else {
-      val newer = conv.history.head
-      val oldest = conv.history.lift(1).getOrElse(newer)
+      val newer = conv.history.frames.head
+      val oldest = conv.history.frames.lift(1).getOrElse(newer)
       val out = summed(Seq(oldest, newer, x), conv.slices, stride = 1)
-      conv.history.drop(1).foreach(ops.release)
-      conv.history = x :: conv.history.take(1)
+      conv.history.push(x)
       out
     }
 
@@ -289,11 +273,11 @@ final class SeedVr2Vae private (ops: Ops, source: WeightSource)
         finally ops.release(x)
       }
     else
-      down.previous match {
+      down.previous.frames.headOption match {
         case None =>
           val Seq(first) = frames
           val out = summed(Seq(first), down.still.toSeq, stride = 2)
-          if (streaming) down.previous = Some(first) else ops.release(first)
+          if (streaming) down.previous.push(first) else ops.release(first)
           Seq(out)
         case Some(previous) =>
           require(frames.size % 2 == 0, s"downsampling ${frames.size} frames")
@@ -301,8 +285,8 @@ final class SeedVr2Vae private (ops: Ops, source: WeightSource)
           val out = (0 until frames.size / 2).map(j =>
             summed(stream.slice(2 * j, 2 * j + 3), down.slices, stride = 2)
           )
-          stream.dropRight(1).foreach(ops.release)
-          down.previous = Some(frames.last)
+          down.previous.push(frames.last)
+          frames.dropRight(1).foreach(ops.release)
           out
       }
 

@@ -1,17 +1,15 @@
 package drift.runner.diffusion
 
-import drift.runner.formats.Gguf
 import drift.runner.lora.{LoraFiles, LoraReport}
 import drift.runner.models.*
 import drift.runner.models.Flux2.Grid
-import drift.runner.ops.Ops
+import drift.runner.ops.{Ops, TensorScope}
 import drift.runner.tensor.*
 import drift.runner.text.{GgufTokenizer, Tokenizer}
 
 import java.awt.image.BufferedImage
 import java.nio.file.Path
 import java.util.SplittableRandom
-import scala.collection.mutable
 
 /** FLUX.2 end to end, [klein] (diffusers' `Flux2KleinPipeline`) or [dev]
   * (`Flux2Pipeline`), told apart by the transformer's guidance embedding
@@ -48,11 +46,7 @@ final class Flux2Pipeline(
   def takesGuidance: Boolean = transformer.config.guidance
 
   private val encoder = reading.open(ops, textEncoder)
-  private val tokenizer: Tokenizer = {
-    val (file, mapped) = Gguf.open(textEncoder)
-    try GgufTokenizer.read(file)
-    finally mapped.close()
-  }
+  private val tokenizer: Tokenizer = GgufTokenizer.of(textEncoder)
   private val autoencoder = FluxVae.open(ops, vae)
   private val loraFiles = new LoraFiles(ops)
   private val projection = LatentProjection.named(
@@ -140,15 +134,11 @@ final class Flux2Pipeline(
     val grid = Grid(request.height / 16, request.width / 16)
     val features = transformer.config.latentChannels
     val guided = request.cfgScale != 1f
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def hold(tensor: Tensor) = {
-      held += tensor
-      tensor
-    }
+    val held = new TensorScope(ops)
     try {
-      val conditional = hold(text(request.prompt))
+      val conditional = held.keep(text(request.prompt))
       val unconditional =
-        Option.when(guided)(hold(text(request.negativePrompt)))
+        Option.when(guided)(held.keep(text(request.negativePrompt)))
       val references = request.references.map { reference =>
         val (width, height) = Images.referenceSize(
           reference.getWidth,
@@ -158,7 +148,7 @@ final class Flux2Pipeline(
           16
         )
         val (tensor, g) = latents(Images.resized(reference, width, height))
-        (hold(tensor), g)
+        (held.keep(tensor), g)
       }
       // a request's own levels (a turbo LoRA's) in place of the schedule
       val sigmas = request.sigmas.getOrElse(
@@ -169,7 +159,7 @@ final class Flux2Pipeline(
       )
       val random = new SplittableRandom(request.seed)
       val noise = Array.fill(grid.tokens * features)(Noise.gaussian(random))
-      val x = hold(ops.fromFloats(Shape.of(grid.tokens, features), noise))
+      val x = held.fromFloats(Shape.of(grid.tokens, features), noise)
       val inpainting =
         request.mask.filter(_ => request.initImage.isDefined).map { mask =>
           new Inpainting(
@@ -243,7 +233,7 @@ final class Flux2Pipeline(
       val rgb = autoencoder.decode(x, grid.height)
       try Images.toImage(ops.toFloats(rgb), request.width, request.height)
       finally ops.release(rgb)
-    } finally held.foreach(ops.release)
+    } finally held.close()
   }
 
   def close(): Unit = {

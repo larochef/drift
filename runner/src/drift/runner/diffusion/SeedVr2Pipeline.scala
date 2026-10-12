@@ -1,13 +1,12 @@
 package drift.runner.diffusion
 
 import drift.runner.models.*
-import drift.runner.ops.Ops
+import drift.runner.ops.{Ops, TensorScope}
 import drift.runner.tensor.*
 import drift.runner.weights.WeightSource
 
 import java.awt.image.BufferedImage
 import java.nio.file.*
-import scala.collection.mutable
 
 /** How SeedVR2 cuts its work: `batch` frames at a time (`1 + 4n`), each batch
   * starting on the last `overlap` frames of the one before, where the two
@@ -50,7 +49,7 @@ object SeedVr2Options {
   * transformer over the whole frame, its attention being windowed.
   */
 final class SeedVr2Pipeline(ops: Ops, diffusionModel: Path, vae: Path)
-    extends AutoCloseable {
+    extends Pipeline {
 
   private val transformer = SeedVr2.open(ops, diffusionModel)
   private val autoencoder = SeedVr2Vae.open(ops, vae)
@@ -225,34 +224,25 @@ final class SeedVr2Pipeline(ops: Ops, diffusionModel: Path, vae: Path)
       s"restore: ${noise.length} noise values for $latentFrames latent frames of $latentHeight × $latentWidth"
     )
     stage("restore")
-    val held = mutable.ArrayBuffer.empty[Tensor]
-    def hold(tensor: Tensor) = { held += tensor; tensor }
+    val held = new TensorScope(ops)
     val restored =
       try {
         val inputs = channels * 2 + 1
-        val tokens = hold(
-          ops.allocate(
-            DType.F32,
-            Shape.of(latentFrames * perFrame, inputs.toLong * patch * patch)
-          )
+        val tokens = held.allocate(
+          DType.F32,
+          Shape.of(latentFrames * perFrame, inputs.toLong * patch * patch)
         )
-        val velocity = hold(
-          ops.allocate(
-            DType.F32,
-            Shape.of(latentFrames * perFrame, channels.toLong * patch * patch)
-          )
+        val velocity = held.allocate(
+          DType.F32,
+          Shape.of(latentFrames * perFrame, channels.toLong * patch * patch)
         )
-        val mask = hold(
-          ops.fromFloats(Shape.of(pixels, 1), Array.fill(pixels.toInt)(1f))
-        )
-        val joinedFrame = hold(
-          ops.allocate(DType.F32, Shape.of(latentHeight, latentWidth, inputs))
-        )
-        val latent = hold(
-          ops.allocate(
-            DType.F32,
-            Shape.of(latentHeight, latentWidth, channels.toLong)
-          )
+        val mask =
+          held.fromFloats(Shape.of(pixels, 1), Array.fill(pixels.toInt)(1f))
+        val joinedFrame =
+          held.allocate(DType.F32, Shape.of(latentHeight, latentWidth, inputs))
+        val latent = held.allocate(
+          DType.F32,
+          Shape.of(latentHeight, latentWidth, channels.toLong)
         )
         val flat = latent.view(pixels, channels.toLong)
         def frameOf(values: Array[Float], t: Int) =
@@ -300,7 +290,7 @@ final class SeedVr2Pipeline(ops: Ops, diffusionModel: Path, vae: Path)
             ops.toFloats(flat)
           } finally ops.release(noised)
         })
-      } finally held.foreach(ops.release)
+      } finally held.close()
     tick()
     stage("decode")
     decoded(restored, latentFrames, latentHeight, latentWidth, options, tick)
@@ -451,6 +441,10 @@ final class SeedVr2Pipeline(ops: Ops, diffusionModel: Path, vae: Path)
     ).toVector
   }
 
+  def mode: String = "upscale"
+
+  def defaultSteps: Int = 1
+
   /** The model, as messages name it. */
   def family: String =
     if (transformer.config.swiglu) "SeedVR2 3B" else "SeedVR2 7B"
@@ -464,14 +458,20 @@ final class SeedVr2Pipeline(ops: Ops, diffusionModel: Path, vae: Path)
 
 object SeedVr2Pipeline {
 
-  /** Whether `diffusionModel` is a SeedVR2 transformer. */
-  def holds(ops: Ops, diffusionModel: Path): Boolean = {
-    val source = WeightSource.open(ops, diffusionModel)
-    try
+  /** The upscaler's family: a SeedVR2 transformer, with its VAE. */
+  val Family: Pipeline.Family = Pipeline.Family(
+    "SeedVR2",
+    Seq("seedvr2"),
+    source =>
       source.has("vid_in.proj.weight") && source.has("emb_in.proj_in.weight") &&
-        source.has("txt_in.weight")
-    finally source.close()
-  }
+        source.has("txt_in.weight"),
+    (ops, files) =>
+      new SeedVr2Pipeline(
+        ops,
+        files.diffusionModel,
+        files.needed(files.vae, "--vae", "SeedVR2's VAE")
+      )
+  )
 
   /** The size asked when none is: four times the source's. */
   val DefaultScale = 4

@@ -8,7 +8,10 @@ import scala.jdk.CollectionConverters.*
 import sttp.shared.Identity
 import sttp.tapir.server.ServerEndpoint
 
-def fileEndpoints: List[ServerEndpoint[Any, Identity]] = List(
+def fileEndpoints(
+    locations: FileLocations
+): List[ServerEndpoint[Any, Identity]] = List(
+  getLocations.serverLogicSuccess[Identity](_ => locations),
   getHomeDirectory.serverLogicSuccess[Identity](_ =>
     System.getProperty("user.home")
   ),

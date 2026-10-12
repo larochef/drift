@@ -1,0 +1,30 @@
+/* The tags and list filters of the architectures and run configurations pages. */
+
+/* An architecture's tags, on its card and in its form. */
+.tags-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* A list's search and its kind chips on one row, the search taking the room
+   the chips do not need; they stack when there is not enough for both. */
+.list-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.list-filters > .field {
+  flex: 1 1 18rem;
+}
+
+.kind-filter {
+  margin-bottom: 0;
+  flex-wrap: nowrap;
+}
+
+.kind-filter .button {
+  margin-bottom: 0;
+}

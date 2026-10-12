@@ -33,10 +33,16 @@ final private[backend] class GenerationMonitor(
         entry.nativeJobId,
         label = s"Generation ${entry.generation.id}",
         stillWanted = () => entry.generation.status.isActive
-      )(mirror(entry, _)) match {
+      ) { job =>
+        mirror(entry, job)
+        // only a job that says its progress: sd-server's is its log's
+        if (job.progress.nonEmpty)
+          registry.report(entry.generation.sessionId, job.progress)
+      } match {
         case Left(reason) => fail(entry, reason)
         case Right(_)     => ()
       }
+      registry.report(entry.generation.sessionId, None)
       entry.preview = None
     }
 

@@ -452,14 +452,13 @@ final class DenseDecoder private[models] (
     )
 
   /** Norm weights stored otherwise (Gemma's BF16), converted to F32 once. */
-  private val converted = scala.collection.mutable.ArrayBuffer.empty[Tensor]
+  private val converted = new TensorScope(ops)
   private def floats(tensor: Tensor): Tensor =
     if (tensor.dtype == DType.F32) tensor
     else {
       val copy = ops.allocate(DType.F32, tensor.shape)
       ops.convert(tensor, copy)
-      converted += copy
-      copy
+      converted.keep(copy)
     }
 
   /** The norms' weights as stored, by name, and those a LoRA file's
@@ -936,7 +935,7 @@ final class DenseDecoder private[models] (
   def close(): Unit = {
     workspace.foreach(_.release())
     changedNorms.values.foreach(ops.release)
-    converted.foreach(ops.release)
+    converted.close()
     source.close()
   }
 }

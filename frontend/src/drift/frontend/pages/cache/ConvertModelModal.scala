@@ -1,7 +1,7 @@
 package drift.frontend.pages.cache
 
 import drift.frontend.components.{Component, ScrollLock}
-import drift.frontend.services.ConversionService
+import drift.frontend.services.{ConversionService, LocationsService}
 import drift.shared.*
 
 import scala.util.*
@@ -16,6 +16,7 @@ import com.raquo.laminar.api.L.*
   */
 class ConvertModelModal(
     conversionService: ConversionService,
+    locationsService: LocationsService,
     /** The families that already exist, for the family input's autocomplete
       * (the `known-families` datalist of the on-disk view).
       */
@@ -241,11 +242,13 @@ class ConvertModelModal(
     ),
     p(
       cls := "help",
-      child.text <-- family.signal.map(name =>
-        s"Written to ~/.cache/drift/models/${
-            if (name.trim.isEmpty) "<family>" else name.trim
-          }/converted/, then registered as a model of the family."
-      )
+      child.text <-- family.signal
+        .combineWith(locationsService.shown(_.models))
+        .map((name, folder) =>
+          s"Written to $folder/${
+              if (name.trim.isEmpty) "<family>" else name.trim
+            }/converted/, then registered as a model of the family."
+        )
     )
   )
 

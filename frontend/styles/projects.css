@@ -1,0 +1,83 @@
+/* The projects list and its tiles. */
+
+/* The projects list (specs/19-projects-and-prompt-versions.md): tiles led by
+   the newest image the project made. `auto-fill` at a 20rem minimum lands on
+   three across a normal window and folds to one on a narrow screen, rather
+   than pinning a column count that would squash somewhere. */
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.project-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Bulma's `.card:not(:last-child)` margin would leave only the last tile of a
+   row at full height in a stretched grid. */
+.projects-grid > .project-card {
+  margin-bottom: 0;
+}
+
+.project-cover {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background-color: hsl(25, 16%, 16%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Layered over the placeholder, so a 404 that hides the image or the video
+   reveals the "no image yet" text underneath instead of a broken glyph. */
+.project-cover img,
+.project-cover video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.project-cover-badge {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+}
+
+/* The kind, image or video, left of Open: the bare glyph, no box, drawn about
+   as tall as the small buttons beside it (2.5em of 0.75rem). */
+.project-card-kind {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  height: 1.875rem;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: default;
+}
+
+.project-card-body {
+  padding: 0.6rem 0.75rem 0.25rem;
+  flex: 1 1 auto;
+}
+
+/* Two lines of brief, so a long one cannot make one tile taller than its
+   neighbours. */
+.project-brief {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.project-card-actions {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem 0.75rem;
+}

@@ -1,7 +1,7 @@
 package drift.frontend.pages.cache
 
 import drift.frontend.components.*
-import drift.frontend.services.{BrowserServices, UpscalerService}
+import drift.frontend.services.*
 import drift.shared.*
 
 import com.raquo.laminar.api.L.*
@@ -14,7 +14,8 @@ import org.scalajs.dom.window
   */
 class UpscalerSection(
     browsers: BrowserServices,
-    service: UpscalerService
+    service: UpscalerService,
+    locationsService: LocationsService
 ) extends Component {
   private val browserOpen = Var(false)
   private val urlVar = Var("")
@@ -129,8 +130,12 @@ class UpscalerSection(
   lazy val element: HtmlElement = div(
     p(
       cls := "text-secondary is-size-7",
-      "Upscalers live in ~/.cache/drift/upscale. The gallery's Upscale " +
-        "task offers them on a picture; an installed one is there at once."
+      child.text <-- locationsService
+        .shown(_.upscalers)
+        .map(folder =>
+          s"Upscalers live in $folder. The gallery's Upscale " +
+            "task offers them on a picture; an installed one is there at once."
+        )
     ),
     div(
       cls := "box bg-table-header py-2 px-3 mb-3",

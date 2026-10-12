@@ -1,5 +1,7 @@
 package drift.backend.session
 
+import drift.protocol.{JobBar, JobProgress}
+import drift.shared.LogProgress
 import drift.shared.{
   BatchProgress,
   LogLine,
@@ -155,6 +157,28 @@ object SessionLogTests extends TestSuite {
       log.append("generating image 1/2 (seed 7)")
       log.close()
       assert(log.batch.isEmpty)
+    }
+    test("a job's own report reads as the bar its log would have drawn") {
+      val told = JobProgress(
+        bar = Some(JobBar(JobBar.Sampling, 2.5, 8, 1.25, "s/it")),
+        pass = Some("high noise")
+      )
+      val bar = SessionManager.barOf(told).get
+      assert(bar.kind == ProgressKind.Sampling)
+      assert(bar.done == 2, bar.total == 8, bar.within == 0.5)
+      assert(bar.note == Some("high noise"))
+      // the time left is worked out from the rate, as for a log's bar
+      assert(bar.remainingSeconds.exists(left => math.abs(left - 6.875) < 1e-6))
+      // the same bar, as the runner prints it for the log
+      val drawn = LogProgress.parse("  |===  | 2.50/8 - 1.25s/it").get
+      assert(drawn.done == bar.done, drawn.within == bar.within)
+      assert(drawn.detail == bar.detail)
+      assert(SessionManager.barOf(JobProgress()).isEmpty)
+      val decode =
+        JobProgress(bar = Some(JobBar(JobBar.Decoding, 40, 100, 2, "%/s")))
+      assert(
+        SessionManager.barOf(decode).map(_.kind) == Some(ProgressKind.Decoding)
+      )
     }
   }
 }

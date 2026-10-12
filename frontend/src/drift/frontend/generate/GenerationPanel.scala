@@ -2,7 +2,6 @@ package drift.frontend.generate
 
 import drift.frontend.components.*
 import drift.frontend.gallery.GalleryPicker
-import drift.frontend.models.architectures.LoraSamplingFields
 import drift.frontend.services.*
 import drift.frontend.services.GenerationService.Reuse
 import drift.shared.*
@@ -22,8 +21,10 @@ import com.raquo.laminar.api.L.*
   * The panel wires the pieces beside it to the session
   * (`specs/29-split-oversized-files.md`): the form's state
   * (`GenerationFormState`), what seeds it (`RecipeSeeding`), what submits it
-  * (`GenerationSubmission`), the form and its sections (`GenerationForm`), and
-  * the result, progress and log views.
+  * (`GenerationSubmission`), the form and its sections (`GenerationForm`), its
+  * LoRAs (`SessionLoras`), when it is seeded (`SessionFormSeeding`), what it
+  * exchanges with the assistant (`FormAssistantLink`), the session's buttons
+  * (`GenerationSessionControls`), and the result, progress and log views.
   */
 class GenerationPanel(
     sessionId: String,
@@ -106,14 +107,6 @@ class GenerationPanel(
   /** Where a Keep should put the result: "" is the gallery alone. */
   private val keepProjectVar = Var("")
 
-  private val showLog = Var(false)
-  private val followLog = Var(true)
-
-  /** The assistant proposal last applied to the prompt fields — a submission
-    * whose prompts still equal it is of assistant origin.
-    */
-  private val lastProposal = Var(Option.empty[PromptProposal])
-
   /** The form a restart handed over, when this panel is the relaunched
     * session's: kept as it was rather than seeded afresh.
     */
@@ -137,51 +130,19 @@ class GenerationPanel(
     () => submitContext
   )
 
-  /** The gallery entries picked into this form, by the URL their slot holds:
-    * what the assistant is told of one it is shown.
-    */
-  private var pickedOutputs = Map.empty[String, GalleryPicker.Picked]
-
-  private val inputTools = InputTools(
-    fromGallery = pickFromGallery.map(open =>
-      (accepted, multiple, onPicked) =>
-        open(
-          accepted,
-          multiple,
-          picked => {
-            pickedOutputs ++= picked.map(entry => entry.output.url -> entry)
-            onPicked(picked.map(_.output.url))
-          }
-        )
-    ),
-    askAssistant = Some(askAssistant)
+  private val assistantLink = FormAssistantLink(
+    state,
+    assistantService,
+    pickFromGallery,
+    targetArchitecture,
+    configurationAssistantTemplateId
   )
-
-  /** An input shown to the assistant: a gallery entry as the gallery stages it,
-    * with its parameters; anything else uploaded as the file it is.
-    */
-  private def askAssistant(source: String): Unit =
-    pickedOutputs.get(source) match {
-      case Some(picked) =>
-        assistantService.attach(
-          AssistantService.outputAttachment(
-            picked.generation,
-            picked.output,
-            picked.configurationLabel
-          )
-        )
-      case None => assistantService.uploadFrom(source, "input image")
-    }
 
   /** Puts a proposal into the two prompt fields, from the assistant column of a
     * workspace or the pending hand-off of the Assistant page.
     */
-  def applyProposal(proposal: PromptProposal): Unit = {
-    state.promptVar.set(proposal.prompt)
-    state.negativePromptVar.set(proposal.negativePrompt)
-    proposal.aspectRatio.foreach(applyAspectRatio)
-    lastProposal.set(Some(proposal))
-  }
+  def applyProposal(proposal: PromptProposal): Unit =
+    assistantLink.applyProposal(proposal)
 
   /** A proposal applied and run at once — the workspace chat's "Apply and run".
     */
@@ -189,29 +150,6 @@ class GenerationPanel(
     applyProposal(proposal)
     handleSubmit()
   }
-
-  /** `W:H` onto the form (`specs/32`): the longer side stays, the other follows
-    * the ratio, both on multiples of 16.
-    */
-  private def applyAspectRatio(ratio: String): Unit =
-    ratio.split(":").map(_.trim.toIntOption) match {
-      case Array(Some(rw), Some(rh)) if rw > 0 && rh > 0 =>
-        val current = math.max(
-          state.widthVar.now().trim.toIntOption.getOrElse(1024),
-          state.heightVar.now().trim.toIntOption.getOrElse(1024)
-        )
-        val long = math.max(16, current / 16 * 16)
-        val short = math.max(
-          16,
-          math
-            .round(long.toDouble * math.min(rw, rh) / math.max(rw, rh) / 16)
-            .toInt * 16
-        )
-        val (w, h) = if (rw >= rh) (long, short) else (short, long)
-        state.widthVar.set(w.toString)
-        state.heightVar.set(h.toString)
-      case _ => ()
-    }
 
   /** "Reuse these parameters" for a panel that is already on screen — the
     * workspace's detail view, where nothing remounts and so nothing would pick
@@ -235,12 +173,7 @@ class GenerationPanel(
   private def submitContext: SubmitContext = project match {
     case None          => SubmitContext()
     case Some(binding) =>
-      val assistant = lastProposal
-        .now()
-        .exists(p =>
-          p.prompt == state.promptVar.now() &&
-            p.negativePrompt == state.negativePromptVar.now()
-        )
+      val assistant = assistantLink.promptsAreProposal
       SubmitContext(
         projectId = Some(binding.projectId),
         versionId = binding.selectedVersionNow(),
@@ -251,211 +184,47 @@ class GenerationPanel(
   private val capabilitiesSignal: Signal[Option[SessionCapabilities]] =
     service.capabilities.map(_.get(sessionId)).distinct
 
-  /** What this panel shows as its result. The session outlives any one
-    * workspace — its last generation may well belong to the project the user
-    * was in before, which is what a brand new project showed as its own, and
-    * what came back when the image actually made in it was deleted. Inside a
-    * project, only that project's.
-    */
-  private val panelGenerations: Signal[List[Generation]] = project match {
-    case None          => service.generations
-    case Some(binding) =>
-      service.generations.map(
-        _.filter(_.projectId.contains(binding.projectId))
-      )
-  }
-
-  /** What the result shows: the job generating while there is one, else the
-    * next one waiting, else the newest. Showing the newest submission meant
-    * that cancelling a queued job replaced a running generation on screen with
-    * that cancellation — and showing the newest job still to do, waiting ones
-    * included, that queueing a job took the running one's step preview and Stop
-    * away for a job with nothing to show yet. A queued job is in the list above
-    * the result.
-    */
-  private val shownGeneration: Signal[Option[Generation]] =
-    panelGenerations
-      .map(all =>
-        all
-          .find(_.status == GenerationStatus.Generating)
-          .orElse(all.find(_.status.isActive))
-          .orElse(all.lastOption)
-      )
-      .distinct
-
-  private val seeded = Var(carried.isDefined)
-
-  /** Whether the project's selected version has seeded this form. Once per
-    * panel: a new panel is built when the model picker switches configuration,
-    * which is the only moment a recipe is laid over the form on its own.
-    */
-  private val versionSeeded = Var(carried.isDefined)
-
-  // Built once, so a mode switch keeps what is typed in its search field.
-  private lazy val loraPicker = LoraPicker(
-    collection = loraService.loadedLoras,
-    architectureId = architectureId,
-    selectedIds = state.selectedLoraIdsVar,
-    strengths = state.loraStrengthsVar,
-    includeNsfw = state.includeNsfwLorasVar,
-    serverPaths = capabilitiesSignal.map(_.map(_.loras.map(_.path).toSet)),
-    onTriggerWord = Some(insertTriggerWord),
-    // Installed for the architecture; the running server lists it after a
-    // Restart, which the picker's "needs restart" mark says.
-    headerAction = child <-- targetArchitecture.map(
-      _.map(architecture =>
-        LoraInstallButton(browsers, architecture, loraService).element
-      ).getOrElse(emptyNode)
-    ),
-    // A LoRA's own settings, typed where they are tried: saved on the LoRA,
-    // they reach the form as its layer of defaults does.
-    samplingEditor = Some(lora =>
-      div(
-        child <-- targetArchitecture
-          .map(_.exists(LoraSamplingFields.twoExperts))
-          .distinct
-          .map(twoExperts =>
-            LoraSamplingFields(lora, twoExperts, loraService).element
-          )
-      )
-    )
+  private val loras = SessionLoras(
+    state,
+    seeding,
+    sessionId,
+    service,
+    loraService,
+    architectureId,
+    capabilitiesSignal,
+    targetArchitecture,
+    browsers
   )
+
+  private val controls =
+    GenerationSessionControls(sessionId, logService, () => restart(), onStop)
 
   private def restart(): Unit = {
     GenerationPanel.carry(configurationId, state)
     onRestart()
   }
 
-  private def insertTriggerWord(word: String): Unit =
-    state.promptVar.update { prompt =>
-      if (prompt.toLowerCase.contains(word.toLowerCase)) prompt
-      else if (prompt.trim.isEmpty) word
-      else s"${prompt.trim}, $word"
-    }
-
-  private def carrying(ids: List[String], loras: List[Lora]): List[Lora] = {
-    val byId = loras.map(lora => lora.id -> lora).toMap
-    ids.flatMap(byId.get).filter(_.sampling.nonEmpty)
-  }
-
-  /** The selected LoRAs that carry sampling settings, in selection order
-    * (`specs/49-lora-sampling-settings.md`).
-    */
-  private val samplingLoras: Signal[List[Lora]] =
-    state.selectedLoraIdsVar.signal
-      .combineWith(loraService.loadedLoras)
-      .map((ids, loaded) => carrying(ids, loaded.getOrElse(Nil)))
-
-  /** The selected LoRAs' settings into the form: over the fields that still
-    * hold a default, or over all of them when the user asks (`force`).
-    */
-  private def applyLoraSampling(force: Boolean): Unit =
-    service.capabilitiesOf(sessionId).foreach { capabilities =>
-      seeding.applyLoraSampling(
-        capabilities,
-        state.mode.now(),
-        selectedSampling,
-        force
-      )
-    }
-
-  private def resetGenerationParameters(): Unit =
-    service.capabilitiesOf(sessionId).foreach { capabilities =>
-      seeding.resetGenerationParameters(
-        capabilities,
-        state.mode.now(),
-        selectedSampling
-      )
-    }
-
-  private def selectedSampling: LoraSampling =
-    LoraSampling.of(
-      carrying(
-        state.selectedLoraIdsVar.now(),
-        loraService.loadedLorasNow.getOrElse(Nil)
-      )
-    )
-
-  private def seedForm(capabilities: SessionCapabilities): Unit = {
-    val initialMode =
-      if (capabilities.supportedModes.contains(capabilities.currentMode))
-        capabilities.currentMode
-      else capabilities.supportedModes.headOption.getOrElse("img_gen")
-    state.mode.set(initialMode)
-    seeding.seedModeFields(capabilities, initialMode)
-    service.takePendingReuse() match {
-      case Some(reuse) => seeding.applyReuse(capabilities, reuse)
-      case None        => seeding.applyConfigurationLoras()
-    }
-    // A proposal from the assistant page overrides whatever the form holds.
-    service.takePendingPromptProposal().foreach(applyProposal)
-  }
-
-  private def switchMode(newMode: String): Unit =
-    service.capabilitiesOf(sessionId).foreach { capabilities =>
-      state.mode.set(newMode)
-      seeding.seedModeFields(capabilities, newMode)
-      // the selection is the same, so nothing else lays its settings again
-      seeding.applyLoraSampling(
-        capabilities,
-        newMode,
-        selectedSampling,
-        force = false
-      )
-    }
+  private val formSeeding = SessionFormSeeding(
+    state,
+    seeding,
+    sessionId,
+    service,
+    loraService,
+    loras,
+    project,
+    capabilitiesSignal,
+    carriedOver = carried.isDefined,
+    applyProposal
+  )
 
   /** The session's Log, Restart and Stop buttons, which the page places in its
     * model bar, beside the picker that names the model — a workspace and the
     * Sandbox alike.
     */
-  lazy val sessionControls: HtmlElement = div(
-    cls := "control is-flex",
-    button(
-      cls := "button mr-2 is-small",
-      child.text <-- showLog.signal.map(open => if (open) "▼ Log" else "▶ Log"),
-      onClick --> { _ =>
-        val opening = !showLog.now()
-        showLog.set(opening)
-        if (opening) logService.follow(sessionId) else logService.stop()
-      }
-    ),
-    button(
-      cls := "button mr-2 is-small",
-      "↻ Restart",
-      title := "Stop the model and start it again on the same runtime, " +
-        "keeping this form: it picks up LoRAs installed since it " +
-        "started, and starts afresh if it misbehaves",
-      onClick --> (_ => restart())
-    ),
-    button(
-      cls := "button is-warning is-small",
-      "⏹ Stop session",
-      onClick --> (_ => onStop())
-    )
-  )
+  lazy val sessionControls: HtmlElement = controls.element
 
   private def handleSubmit(): Unit =
     service.capabilitiesOf(sessionId).foreach(submission.submit)
-
-  /** What free play is, said once above the results, with the way to empty it.
-    */
-  private def freePlayNotice: Node =
-    if (!scratch) emptyNode
-    else
-      div(
-        cls := "notification is-warning is-light py-2 px-3 is-size-7 mb-3",
-        span(
-          "Sandbox — nothing here is saved. Save a result to put it in the " +
-            "gallery or a project; everything else goes when you leave."
-        ),
-        button(
-          cls := "button is-small ml-2",
-          "Clear results",
-          onClick --> (_ =>
-            service.push(GenerationService.Command.ClearScratch)
-          )
-        )
-      )
 
   // ---------------------------------------------------------------- layout
 
@@ -463,92 +232,8 @@ class GenerationPanel(
     cls := "content",
     configurationLabel --> labelNow,
     configurationLoras --> configurationLorasNow,
-    // What the assistant edits (`specs/20`): the prompt as it stands in the
-    // form right now, not a version's — a change made since the last run is
-    // exactly what the user wants help with.
-    state.promptVar.signal.combineWith(state.negativePromptVar.signal) -->
-      Observer[(String, String)] { case (prompt, negative) =>
-        assistantService.workingPrompt.set(
-          Some(PromptProposal(prompt, negative, aspectRatio = None))
-        )
-      },
-    // What the model is and how hard it follows the negative prompt, beside
-    // the prompt itself (`specs/20`).
-    targetArchitecture --> assistantService.targetArchitecture.writer,
-    configurationAssistantTemplateId -->
-      assistantService.configurationTemplateId.writer,
-    state.cfgVar.signal.map(
-      _.trim.toDoubleOption
-    ) --> assistantService.workingCfg.writer,
-    // The size, for a template that wants the aspect ratio (`specs/32`).
-    state.widthVar.signal
-      .combineWith(state.heightVar.signal)
-      .map((w, h) =>
-        for {
-          width <- w.trim.toIntOption
-          height <- h.trim.toIntOption
-        } yield (width, height)
-      ) --> assistantService.workingSize.writer,
-    onUnmountCallback { _ =>
-      assistantService.workingPrompt.set(None)
-      assistantService.targetArchitecture.set(None)
-      assistantService.configurationTemplateId.set(None)
-      assistantService.workingCfg.set(None)
-      assistantService.workingSize.set(None)
-    },
-    // The project's flag sets the LoRA picker's NSFW checkbox; the user can
-    // still tick it.
-    project
-      .map(binding =>
-        binding.nsfw.distinct --> state.includeNsfwLorasVar.writer
-      )
-      .getOrElse(emptyMod),
-    // The selected version seeds the form once, when this panel appears — on
-    // mount, and again when the model picker builds a new one, which is the
-    // only reset the user wants. After that the form is theirs: a generation
-    // appends a version without touching what they are holding, and only a
-    // click on a version card lays a recipe over it.
-    project
-      .map(_.selectedVersion)
-      .getOrElse(Val(Option.empty[PromptVersion]))
-      .combineWith(capabilitiesSignal)
-      .map((version, capabilities) => version.zip(capabilities))
-      --> Observer[Option[(PromptVersion, SessionCapabilities)]] {
-        case Some((version, capabilities)) if !versionSeeded.now() =>
-          versionSeeded.set(true)
-          seeded.set(true)
-          seeding.applyVersion(capabilities, version)
-          // As when the defaults seed the form, a proposal handed over from the
-          // Assistant page wins over what was recorded.
-          service.takePendingPromptProposal().foreach(applyProposal)
-        case _ => ()
-      },
-    // Seed the form exactly once, from the first capabilities available — a
-    // signal, not `.changes`, because they may already be loaded when this
-    // mounts (the user navigated away and back).
-    capabilitiesSignal --> Observer[Option[SessionCapabilities]] {
-      case Some(capabilities) if !seeded.now() =>
-        seeded.set(true)
-        seedForm(capabilities)
-      case _ => ()
-    },
-    // A LoRA is one more layer of defaults (`specs/49`): whenever the
-    // selection's settings, the mode or the session's defaults change, the
-    // fields the user has not changed follow.
-    samplingLoras
-      .map(LoraSampling.of)
-      .combineWith(state.mode.signal, capabilitiesSignal)
-      .distinct --> Observer[
-      (LoraSampling, String, Option[SessionCapabilities])
-    ] {
-      case (sampling, mode, Some(capabilities)) =>
-        seeding.applyLoraSampling(capabilities, mode, sampling, force = false)
-      case _ => ()
-    },
-    // A reuse may name LoRAs before the collection has been listed.
-    loraService.loadedLoras --> Observer[Option[List[Lora]]](
-      seeding.resolvePendingLoras
-    ),
+    assistantLink.bindings,
+    formSeeding.bindings,
     // Ask for capabilities until they arrive — the session may still be
     // loading its model when this mounts.
     EventStream
@@ -568,11 +253,7 @@ class GenerationPanel(
       loraService.push(LoraService.Command.Load)
     },
     onUnmountCallback(_ => logService.stop()),
-    child <-- showLog.signal.map {
-      case true =>
-        SessionLog(logService, followLog, () => showLog.set(false)).element
-      case false => emptyNode
-    },
+    controls.log,
     child <-- sessionSignal
       .map(_.map(_.status))
       .distinct
@@ -614,54 +295,29 @@ class GenerationPanel(
                   GenerationForm(
                     state,
                     c,
-                    loraPicker,
-                    samplingLoras,
-                    () => applyLoraSampling(force = true),
-                    () => resetGenerationParameters(),
-                    switchMode,
+                    loras.picker,
+                    loras.samplingLoras,
+                    () => loras.applyLoraSampling(force = true),
+                    () => loras.resetGenerationParameters(),
+                    formSeeding.switchMode,
                     () => handleSubmit(),
-                    inputTools
+                    assistantLink.inputTools
                   ).element
                 )
                 .getOrElse(emptyNode)
             ),
-            div(
-              cls := "column is-7",
-              freePlayNotice,
-              StepPreviewToggle(service).element,
-              // Everything the session still owes that the result does not
-              // already show — jobs queued behind this one, and jobs queued
-              // from another project, which hold this one up just the same.
-              GenerationQueue(
-                service.generations,
-                shownGeneration.map(_.map(_.id)),
-                capabilities,
-                service
-              ).element,
-              child <-- shownGeneration
-                .map {
-                  case None =>
-                    div(
-                      cls := "notification py-3 px-4",
-                      "Nothing generated yet — the result appears here."
-                    )
-                  case Some(generation) =>
-                    GenerationResult(
-                      generation,
-                      capabilities,
-                      sessionSignal,
-                      machine,
-                      service,
-                      assistantService,
-                      projectService,
-                      () => labelNow.now(),
-                      scratch,
-                      keepProjectVar,
-                      onOpenOutput
-                    ).element
-                },
-              project.map(_.history)
-            )
+            GenerationResultColumn(
+              capabilities,
+              sessionSignal,
+              machine,
+              service,
+              assistantService,
+              projectService,
+              () => labelNow.now(),
+              keepProjectVar,
+              project,
+              onOpenOutput
+            ).element
           )
         case _ => emptyNode
       }

@@ -1,0 +1,43 @@
+/* The gallery's bulk selection and project badge. */
+
+/* Selecting for a bulk delete: the tick sits where the batch badge would,
+   and a ticked card is outlined rather than tinted, so the image still reads
+   at a glance. */
+.gallery-selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.gallery-select-badge {
+  /* Bottom right: the other three corners are taken by the batch, kind and
+     project badges. */
+  position: absolute;
+  bottom: 0.4rem;
+  right: 0.4rem;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 3px;
+  padding: 0.1rem 0.25rem;
+  line-height: 1;
+}
+
+.gallery-select-badge input {
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.gallery-card.is-selected {
+  outline: 2px solid hsl(30, 95%, 52%);
+  outline-offset: -2px;
+}
+
+.gallery-project-badge {
+  position: absolute;
+  left: 0.4rem;
+  top: 0.4rem;
+  max-width: 80%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -8,7 +8,6 @@ import drift.runner.weights.WeightSource
 
 import java.lang.foreign.MemorySegment
 import java.nio.file.Path
-import scala.collection.mutable
 
 /** Krea 2's transformer, read off its weights: `hidden` wide, `blocks` deep,
   * heads of `headDimension` (queries over fewer key-value heads), and the text
@@ -114,11 +113,9 @@ final class Krea2 private (ops: Ops, source: WeightSource)
     copy
   }
 
-  /** A linear layer with a bias, by its original name. */
-  final private case class Affine(name: String, weight: Tensor, bias: Tensor)
-
+  /** A linear layer with a bias, by its original name (its LoRA site). */
   private def affineLayer(prefix: String, outputs: Long): Affine =
-    Affine(prefix, source(s"$prefix.weight"), floats(s"$prefix.bias", outputs))
+    Affine(source(s"$prefix.weight"), floats(s"$prefix.bias", outputs), prefix)
 
   /** A block's attention and MLP weights (a text-fusion block, or a main block
     * but for its modulation table), with heads of `head`.
@@ -179,6 +176,8 @@ final class Krea2 private (ops: Ops, source: WeightSource)
     RopeLayout.Interleaved,
     c.ropeAxes
   )
+  private val rotary =
+    new RotaryAttention(ops, c.heads, c.kvHeads, c.headDimension, rope)
   private val attention = Attention(
     (1 / math.sqrt(c.headDimension)).toFloat,
     causal = false,
@@ -190,13 +189,7 @@ final class Krea2 private (ops: Ops, source: WeightSource)
   /** Flat buffers for `tokens` rows of the widest operand, grown when too
     * small; each use takes the `prefix` it needs.
     */
-  final private class Buffers(val tokens: Int) {
-    private val held = mutable.ArrayBuffer.empty[Tensor]
-    private def flat(dtype: DType, elements: Long): Tensor = {
-      val tensor = ops.allocate(dtype, Shape.of(elements))
-      held += tensor
-      tensor
-    }
+  final private class Buffers(val tokens: Int) extends WorkBuffers(ops) {
     private val widest = tokens.toLong * math.max(c.hidden, c.textWidth)
     private val widestMlp =
       tokens.toLong * math.max(c.intermediate, c.textIntermediate)
@@ -214,35 +207,11 @@ final class Krea2 private (ops: Ops, source: WeightSource)
     val positions: Tensor = flat(DType.I32, 3L * tokens)
     // attention's keys and values, one page for the whole sequence (pages
     // hold a multiple of 16 tokens)
-    val cache: KvCache =
-      ops.allocateCache(1, (tokens + 15) / 16 * 16, c.kvHeads, c.headDimension)
-    val pageTable: Tensor = {
-      val tensor = ops.fromInts(Shape.of(1), Array(0))
-      held += tensor
-      tensor
-    }
-    def release(): Unit = {
-      held.foreach(ops.release)
-      ops.release(cache.keys)
-      ops.release(cache.values)
-    }
+    val cache: KvCache = page(tokens, c.kvHeads, c.headDimension)
+    val pageTable: Tensor = onePage()
   }
 
-  private var buffers = Option.empty[Buffers]
-  private def buffersFor(tokens: Int): Buffers =
-    buffers.filter(_.tokens >= tokens).getOrElse {
-      buffers.foreach(_.release())
-      val created = new Buffers(tokens)
-      buffers = Some(created)
-      created
-    }
-
-  /** `out = x · weight + bias`, and the active LoRAs' updates. */
-  private def affine(x: Tensor, layer: Affine, out: Tensor): Unit = {
-    ops.linear(x, layer.weight, out)
-    lora(x, layer.name, out)
-    ops.addRow(out, layer.bias, out)
-  }
+  private val buffers = new GrownBuffers(new Buffers(_))
 
   // ---- LoRAs ---------------------------------------------------------------------
 
@@ -259,7 +228,7 @@ final class Krea2 private (ops: Ops, source: WeightSource)
 
   private def linearNames: Set[String] =
     (Seq(textIn, textOut, imageIn, timeIn, timeOut, timeModulation, finalOut)
-      .map(_.name) ++
+      .map(_.site) ++
       (layerwise ++ refiner ++ blocks.map(_._1)).flatMap(b =>
         Seq(
           "attn.wq",
@@ -427,7 +396,7 @@ final class Krea2 private (ops: Ops, source: WeightSource)
         out.shape == Shape.of(tokens, c.hidden),
       s"encodeText: taps ${taps.shape}, out ${out.shape}"
     )
-    val w = buffersFor((layers * tokens).toInt)
+    val w = buffers((layers * tokens).toInt)
     val (heads, head) = (c.textHeads.toLong, textHead.toLong)
     // `sequences` short sequences, sequence-major rows
     def across(
@@ -470,9 +439,9 @@ final class Krea2 private (ops: Ops, source: WeightSource)
     val normed = w.projected.prefix(tokens, c.textWidth)
     ops.rmsNorm(text, textNorm, epsilon, 1f, normed)
     val inner = w.q.prefix(tokens, c.hidden)
-    affine(normed, textIn, inner)
+    textIn(ops, normed, inner, updates)
     ops.activation(Activation.GeluTanh, inner, inner)
-    affine(inner, textOut, out)
+    textOut(ops, inner, out, updates)
   }
 
   /** The velocity at `timestep` (σ in [0, 1]) of `latents` (`[gridHeight ×
@@ -495,32 +464,28 @@ final class Krea2 private (ops: Ops, source: WeightSource)
         out.shape == latents.shape,
       s"velocity: latents ${latents.shape}, out ${out.shape} for a $gridHeight × $gridWidth grid"
     )
-    val w = buffersFor(tokens)
+    val w = buffers(tokens)
     val f = c.hidden.toLong
     // the timestep: a sinusoid (cosines first) through the time MLP
     val half = timeIn.weight.shape.last.toInt / 2
     val sinusoid =
       TimestepSinusoid(timestep * 1000f, half, singleFrequencies = true)
-    val small = mutable.ArrayBuffer.empty[Tensor]
-    def vector(elements: Long) = {
-      val tensor = ops.allocate(DType.F32, Shape.of(1, elements))
-      small += tensor
-      tensor
-    }
+    val small = new TensorScope(ops)
+    def vector(elements: Long) =
+      small.allocate(DType.F32, Shape.of(1, elements))
     try {
-      val embedded = ops.fromFloats(Shape.of(1, 2L * half), sinusoid)
-      small += embedded
+      val embedded = small.fromFloats(Shape.of(1, 2L * half), sinusoid)
       val (inner, time) = (vector(f), vector(f))
       val (modulation, blockModulation) = (vector(6 * f), vector(6 * f))
-      affine(embedded, timeIn, inner)
+      timeIn(ops, embedded, inner, updates)
       ops.activation(Activation.GeluTanh, inner, inner)
-      affine(inner, timeOut, time)
+      timeOut(ops, inner, time, updates)
       ops.activation(Activation.GeluTanh, time, inner)
-      affine(inner, timeModulation, modulation)
+      timeModulation(ops, inner, modulation, updates)
       // [text ; image]; positions (frame, row, column), the text's all 0
       val stream = w.x.prefix(tokens, f)
       ops.copy(text, stream.rows(0, length))
-      affine(latents, imageIn, stream.rows(length, images))
+      imageIn(ops, latents, stream.rows(length, images), updates)
       val positions = w.positions.prefix(3, tokens)
       ops.writeInts(
         positions.view(3L * tokens),
@@ -528,31 +493,20 @@ final class Krea2 private (ops: Ops, source: WeightSource)
           (Array.fill(length)(0) ++ Array.tabulate(images)(_ / gridWidth)) ++
           (Array.fill(length)(0) ++ Array.tabulate(images)(_ % gridWidth))
       )
-      val (heads, kvHeads, d) =
-        (c.heads.toLong, c.kvHeads.toLong, c.headDimension.toLong)
-      def attend(q: Tensor, k: Tensor, v: Tensor, attended: Tensor): Unit = {
-        // the rotated queries in place of the normed input, which is spent
-        val rotatedQueries = w.normed.prefix(tokens, heads, d)
-        val rotatedKeys = w.rotatedKeys.prefix(tokens, kvHeads, d)
-        ops.rope(q.view(tokens, heads, d), positions, rope, rotatedQueries)
-        ops.rope(k.view(tokens, kvHeads, d), positions, rope, rotatedKeys)
-        ops.cacheWrite(
-          rotatedKeys,
-          v.view(tokens, kvHeads, d),
+      // the rotated queries in place of the normed input, which is spent
+      def attend(q: Tensor, k: Tensor, v: Tensor, attended: Tensor): Unit =
+        rotary.paged(
+          q,
+          k,
+          v,
+          positions,
+          w.normed,
+          w.rotatedKeys,
           w.cache,
           w.pageTable,
-          0
-        )
-        ops.attention(
-          rotatedQueries,
-          w.cache,
-          w.pageTable,
-          0,
-          tokens,
           attention,
-          attended.view(tokens, heads, d)
+          attended
         )
-      }
       blocks.foreach { (b, table) =>
         ops.add(modulation, table.view(1, 6 * f), blockModulation)
         block(
@@ -575,13 +529,13 @@ final class Krea2 private (ops: Ops, source: WeightSource)
       ops.add(table.rows(0, 1), time, scale)
       ops.add(table.rows(1, 1), time, shift)
       ops.modulate(normed, scale.view(f), shift.view(f), normed)
-      affine(normed, finalOut, out)
-    } finally small.foreach(ops.release)
+      finalOut(ops, normed, out, updates)
+    } finally small.close()
   }
 
   def close(): Unit = {
     updates.close()
-    buffers.foreach(_.release())
+    buffers.release()
     weights.release()
     source.close()
   }

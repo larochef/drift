@@ -1,0 +1,89 @@
+/* The gallery page: toolbar, grid, cards and badges. */
+
+/* The gallery (specs/12-gallery.md): one card per generation in a
+   responsive grid, thumbnails cropped square, the batch and video badges
+   pinned to the corners. */
+.gallery-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.gallery-toolbar .field {
+  margin-bottom: 0;
+}
+
+.gallery-day-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1.25rem 0 0.75rem;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.gallery-card {
+  overflow: hidden;
+}
+
+/* Bulma's `.card:not(:last-child)` bottom margin would leave only a row's
+   last card at full height in the stretched grid; the parent-qualified
+   selector is what out-specifies it. */
+.gallery-grid > .gallery-card {
+  margin-bottom: 0;
+}
+
+.gallery-card:hover {
+  border-color: hsl(30, 95%, 52%);
+}
+
+.gallery-thumb {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  background-color: hsl(25, 16%, 16%);
+}
+
+.gallery-thumb img,
+.gallery-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.gallery-thumb .tag {
+  position: absolute;
+}
+
+.gallery-batch-badge {
+  top: 0.4rem;
+  right: 0.4rem;
+}
+
+/* A batch's images are tiles of their own, side by side in the grid;
+   the accent along their top and the "2/4" badge say
+   they came from one run. */
+.gallery-card.is-batch {
+  border-top: 3px solid hsl(204, 71%, 53%);
+}
+
+.gallery-kind-badge {
+  bottom: 0.4rem;
+  left: 0.4rem;
+}
+
+.gallery-card-body {
+  padding: 0.5rem 0.6rem;
+}
+
+.gallery-prompt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 0.1rem;
+}

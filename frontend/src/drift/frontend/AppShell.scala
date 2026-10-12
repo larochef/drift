@@ -83,6 +83,7 @@ class AppShell(
     authTokenService: AuthTokenService,
     promptTemplateService: PromptTemplateService,
     sessionService: SessionService,
+    generationStore: GenerationStore,
     generationService: GenerationService,
     assistantService: AssistantService,
     projectService: ProjectService,
@@ -93,6 +94,7 @@ class AppShell(
     conversionService: ConversionService,
     globalDownloadsService: GlobalDownloadsService,
     machineService: MachineService,
+    locationsService: LocationsService,
     logService: LogService,
     statusSocketService: StatusSocketService,
     browsers: BrowserServices
@@ -188,6 +190,7 @@ class AppShell(
               architectureService,
               modelService,
               cacheService,
+              locationsService,
               downloadService,
               sessionService,
               runtimeService,
@@ -210,6 +213,7 @@ class AppShell(
               loraService,
               upscalerService,
               conversionService,
+              locationsService,
               browsers,
               section
             ).element
@@ -219,6 +223,7 @@ class AppShell(
           new SettingsPage(
             runtimeService,
             authTokenService,
+            locationsService,
             promptTemplateService
           ).element
         },
@@ -232,6 +237,7 @@ class AppShell(
       // pushes commands and reads state whatever it is, and nothing runs
       // twice or not at all for having been mounted by two pages or by none.
       statusSocketService.effects,
+      generationStore.effects,
       globalDownloadsService.effects,
       architectureService.effects,
       modelService.effects,
@@ -249,6 +255,7 @@ class AppShell(
       loraService.effects,
       upscalerService.effects,
       conversionService.effects,
+      locationsService.effects,
       // The prompt library is read by the assistant and the redraw panel on
       // every page, so it loads with the shell (`specs/32`).
       promptTemplateService.effects,

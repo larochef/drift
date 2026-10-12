@@ -1,5 +1,7 @@
 package drift.backend
 
+import drift.shared.FileLocations
+
 import java.nio.file.{Path, Paths}
 
 /** Where drift keeps its files. Every root is resolved once at startup, in this
@@ -33,6 +35,28 @@ final case class Locations(
   def lorasRoot: Path = cacheRoot.resolve("loras")
   def upscaleRoot: Path = cacheRoot.resolve("upscale")
   def uploadsRoot: Path = cacheRoot.resolve("assistant-uploads")
+
+  /** The folders as the page shows them (`FileLocations`): `home` written `~`.
+    */
+  def shown(home: Path = Paths.get(sys.props("user.home"))): FileLocations = {
+    def show(path: Path): String = {
+      val absolute = path.toAbsolutePath.normalize
+      if (absolute.startsWith(home))
+        Paths.get("~").resolve(home.relativize(absolute)).toString
+      else absolute.toString
+    }
+    FileLocations(
+      configuration = show(configDir),
+      authTokens = show(configDir.resolve("auth-tokens")),
+      models = show(cacheRoot.resolve("models")),
+      modelScope = show(cacheRoot.resolve("modelscope")),
+      loras = show(lorasRoot),
+      upscalers = show(upscaleRoot),
+      runtimes = show(runtimesRoot),
+      outputs = show(outputsRoot),
+      huggingFace = show(huggingFaceRoot)
+    )
+  }
 }
 
 object Locations {

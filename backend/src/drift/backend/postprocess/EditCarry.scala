@@ -65,13 +65,6 @@ final private[postprocess] class EditCarry(
   /** The part of the picture the model was shown, edited, at its own size. */
   private case class Carried(seen: ImageRegion, edited: BufferedImage)
 
-  /** A server to ask, and how to let go of it. */
-  private case class Server(
-      port: Int,
-      exitCode: () => Option[Int],
-      stop: () => Unit
-  )
-
   /** Runs the job to its end: the edited picture written as its result, or the
     * reason it could not be.
     */
@@ -93,34 +86,24 @@ final private[postprocess] class EditCarry(
         )
       }
     // The server of a ready session of the configuration, else one of the
-    // job's own: a model already loaded is not loaded a second time beside
-    // itself.
+    // job's own (`ChosenServer.of`).
     def serverOf(
         configurationId: String,
         runtime: LaunchRuntime
-    ): Either[String, Server] =
-      sessionManager.list
-        .find(session =>
-          session.runConfigurationId == configurationId &&
-            session.runtimeId.contains(runtime.runtime.id) &&
-            session.status == SessionStatus.Ready && session.port.isDefined
+    ): Either[String, ChosenServer] =
+      ChosenServer
+        .of(
+          jobs,
+          sessionManager,
+          job,
+          configurationId,
+          runtime,
+          ChosenServer.readySession(sessionManager, configurationId, runtime)
         )
-        .flatMap(_.port)
-        .map(port => Right(Server(port, () => None, () => ())))
-        .getOrElse(
-          sessionManager
-            .startJobServer(
-              configurationId,
-              Some(runtime.runtime.id),
-              jobs.files.logFileOf(job),
-              line => jobs.noteLine(job, line)
-            )
-            .map { server =>
-              stopServer = server.stop
-              jobs.runsOn(job, server.stop)
-              Server(server.port, () => server.exitCode, server.stop)
-            }
-        )
+        .map { server =>
+          stopServer = server.stop
+          server
+        }
     def decoded(bytes: Array[Byte], width: Int, height: Int) =
       Option(ImageIO.read(ByteArrayInputStream(bytes)))
         .toRight("the image returned cannot be decoded")
@@ -200,7 +183,8 @@ final private[postprocess] class EditCarry(
                 vaeTilingParams = defaults.vaeTilingParams
               ),
               server.exitCode,
-              nativeJob => jobs.waitingFor(job, server.port, nativeJob)
+              nativeJob => jobs.waitingFor(job, server.port, nativeJob),
+              jobs.report(job, _)
             )
           finally {
             jobs.doneWaiting(job)
@@ -429,7 +413,7 @@ final private[postprocess] class EditCarry(
       job: PostProcessJob,
       small: BufferedImage,
       scale: Int,
-      serverOf: (String, LaunchRuntime) => Either[String, Server],
+      serverOf: (String, LaunchRuntime) => Either[String, ChosenServer],
       work: Work
   ): Either[String, BufferedImage] = {
     val rows =
@@ -444,68 +428,36 @@ final private[postprocess] class EditCarry(
     )
     serverOf(work.upscaler.id, work.upscalerLaunch).flatMap { server =>
       try
-        tiles.zipWithIndex
-          .foldLeft[Either[String, Map[Tiling.Tile, BufferedImage]]](
-            Right(Map.empty)
-          ) { case (done, (tile, index)) =>
-            done.flatMap { images =>
-              val crop = copyOf(
-                small.getSubimage(
-                  tile.x / scale,
-                  tile.y / scale,
-                  tile.width / scale,
-                  tile.height / scale
-                )
+        TilePass.run(
+          rows,
+          small,
+          scale,
+          () => jobs.isCancelled(job),
+          crop =>
+            try
+              NativeJobs.upscale(
+                server.port,
+                UpscaleJobRequest
+                  .picture(dataUrl(crop), scale, work.request.seed),
+                server.exitCode,
+                nativeJob => jobs.waitingFor(job, server.port, nativeJob),
+                jobs.report(job, _)
               )
-              (if (jobs.isCancelled(job)) Left("cancelled")
-               else
-                 try
-                   NativeJobs
-                     .upscale(
-                       server.port,
-                       UpscaleJobRequest
-                         .picture(dataUrl(crop), scale, work.request.seed),
-                       server.exitCode,
-                       nativeJob => jobs.waitingFor(job, server.port, nativeJob)
-                     )
-                 finally jobs.doneWaiting(job))
-                .flatMap(bytes =>
-                  Option(ImageIO.read(ByteArrayInputStream(bytes)))
-                    .toRight("the tile returned cannot be decoded")
-                )
-                .flatMap(restored =>
-                  Either.cond(
-                    restored.getWidth == tile.width &&
-                      restored.getHeight == tile.height,
-                    restored,
-                    s"the tile came back ${restored.getWidth}×${restored.getHeight}, not ${tile.width}×${tile.height}"
-                  )
-                )
-                .left
-                .map(reason => s"tile ${index + 1} of ${tiles.size}: $reason")
-                .map { restored =>
-                  jobs.update(job.id)(
-                    _.copy(progress =
-                      Some(PostProcessProgress(index + 2, tiles.size + 1))
-                    )
-                  )
-                  // the tile's own crop, at the tile's size, carries the
-                  // colours to keep
-                  images + (tile -> colourMatched(
-                    restored,
-                    scaledCopy(crop, restored.getWidth, restored.getHeight)
-                  ))
-                }
-            }
-          }
-          .map(images =>
-            TileBlending.blend(
-              rows,
-              small.getWidth * scale,
-              small.getHeight * scale,
-              images
+            finally jobs.doneWaiting(job),
+          // the tile's own crop, at the tile's size, carries the colours to
+          // keep
+          (restored, crop) =>
+            colourMatched(
+              restored,
+              scaledCopy(crop, restored.getWidth, restored.getHeight)
+            ),
+          count =>
+            jobs.update(job.id)(
+              _.copy(progress =
+                Some(PostProcessProgress(count + 1, tiles.size + 1))
+              )
             )
-          )
+        )
       finally server.stop()
     }
   }

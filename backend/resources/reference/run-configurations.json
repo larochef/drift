@@ -401,5 +401,38 @@
     ],
     "assistantTemplateId": null,
     "runner": "DriftRunner"
+  },
+  {
+    "id": "starter-flux3-image-klein",
+    "label": "FLUX 3 Image Klein",
+    "architectureId": "flux.3-image-klein",
+    "assignments": {
+      "diffusion": "flux-3-image-klein-q8-0",
+      "vae": "flux2-vae",
+      "llm": "qwen3-vl-4b-instruct-ud-q4-k-xl"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "assistantTemplateId": null,
+    "runner": "SdCpp"
+  },
+  {
+    "id": "starter-flux3-prompt-upsampler",
+    "label": "FLUX 3 prompt upsampler (chat)",
+    "architectureId": "flux-3-prompt-upsampler",
+    "assignments": {
+      "model": "flux-3-image-klein-pup-q8-0",
+      "mmproj": "flux-3-image-klein-pup-mmproj"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "assistantTemplateId": null,
+    "runner": "LlamaCpp"
   }
 ]

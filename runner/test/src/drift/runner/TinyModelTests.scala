@@ -548,6 +548,32 @@ object TinyModelTests extends TestSuite {
         assert(taps < 2e-3 && normed < 2e-3)
       } finally ops.close()
     }
+    test("FLUX 3's transformer (the flow map): every mode, two references") {
+      val ops = new CpuOps
+      try {
+        val error = TinyFlux3Case.velocityError(ops, "flux3")
+        println(f"  worst velocity error: ${error * 100}%.4f%% of the largest")
+        assert(error < 2e-3)
+      } finally ops.close()
+    }
+    test("FLUX 3 with a LoRA (BFL's and kohya's names, the MLP input split)") {
+      val ops = new CpuOps
+      try {
+        val error = TinyFlux3Case.loraVelocityError(ops)
+        println(
+          f"  worst LoRA velocity error: ${error * 100}%.4f%% of the largest"
+        )
+        assert(error < 2e-3)
+      } finally ops.close()
+    }
+    test("FLUX 3's base transformer, with a reference image") {
+      val ops = new CpuOps
+      try {
+        val error = TinyFlux3Case.velocityError(ops, "flux3_base")
+        println(f"  worst velocity error: ${error * 100}%.4f%% of the largest")
+        assert(error < 2e-3)
+      } finally ops.close()
+    }
     test("FLUX.2's transformer, with a reference image") {
       val ops = new CpuOps
       try {

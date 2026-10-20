@@ -50,9 +50,32 @@ object AssistantPrompts {
       format: ProposalFormat
   ): Option[PromptProposal] =
     format match {
-      case ProposalFormat.Fenced => parseFenced(text)
-      case ProposalFormat.Json   => parseJson(text)
+      case ProposalFormat.Fenced     => parseFenced(text)
+      case ProposalFormat.Json       => parseJson(text)
+      case ProposalFormat.WholeReply => parseWholeReply(text)
     }
+
+  private val WholeFence =
+    """(?s)\A(?:`{3,}|~{3,})[^\n]*\n(.*?)\n?(?:`{3,}|~{3,})\z""".r
+
+  /** The reply itself, with a fence or a pair of quotes around all of it taken
+    * off: a caption writer's answer is the caption. An empty reply proposes
+    * nothing.
+    */
+  private def parseWholeReply(text: String): Option[PromptProposal] = {
+    val trimmed = text.trim match {
+      case WholeFence(inside) => inside.trim
+      case other              => other
+    }
+    val quoted = Seq("\"" -> "\"", "\u201c" -> "\u201d").exists((open, close) =>
+      trimmed.length >= 2 && trimmed.startsWith(open) && trimmed.endsWith(close)
+    )
+    val caption =
+      if (quoted) trimmed.substring(1, trimmed.length - 1).trim else trimmed
+    Option.when(caption.nonEmpty)(
+      PromptProposal(caption, "", aspectRatio = None)
+    )
+  }
 
   /** The last fenced `prompt` block, with the `negative` block beside it. */
   private def parseFenced(text: String): Option[PromptProposal] =

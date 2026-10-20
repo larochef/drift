@@ -128,6 +128,18 @@ object ImagePipeline {
         )
     ),
     Family(
+      "FLUX 3 Image Klein",
+      Seq("flux3-klein"),
+      Flux3Config.holds,
+      (ops, files) =>
+        new Flux3Pipeline(
+          ops,
+          files.diffusionModel,
+          files.neededVae,
+          files.neededTextEncoder
+        )
+    ),
+    Family(
       "FLUX.2",
       Seq("flux2-klein", "flux2-dev"),
       Flux2Config.holds,

@@ -2003,5 +2003,101 @@
       
     ],
     "builtIn": true
+  },
+  {
+    "id": "flux-3-image-klein-q8-0",
+    "familyId": "flux.3-image-klein-diffusion",
+    "label": "flux-3-image-klein-Q8_0",
+    "source": {
+      "type": "huggingface",
+      "repo": "unsloth/flux-3-image-klein-GGUF",
+      "filename": "flux-3-image-klein-Q8_0.gguf"
+    },
+    "format": "gguf",
+    "parameters": {
+      "--steps": "16",
+      "--cfg-scale": "1.0"
+    },
+    "removedParameters": [],
+    "builtIn": true
+  },
+  {
+    "id": "flux-3-image-klein-q4-k-m",
+    "familyId": "flux.3-image-klein-diffusion",
+    "label": "flux-3-image-klein-Q4_K_M",
+    "source": {
+      "type": "huggingface",
+      "repo": "unsloth/flux-3-image-klein-GGUF",
+      "filename": "flux-3-image-klein-Q4_K_M.gguf"
+    },
+    "format": "gguf",
+    "parameters": {
+      "--steps": "16",
+      "--cfg-scale": "1.0"
+    },
+    "removedParameters": [],
+    "builtIn": true
+  },
+  {
+    "id": "flux-3-image-klein-base-q8-0",
+    "familyId": "flux.3-image-klein-diffusion",
+    "label": "flux-3-image-klein-base-Q8_0",
+    "source": {
+      "type": "huggingface",
+      "repo": "unsloth/flux-3-image-klein-base-GGUF",
+      "filename": "flux-3-image-klein-base-Q8_0.gguf"
+    },
+    "format": "gguf",
+    "parameters": {
+      "--steps": "50",
+      "--cfg-scale": "4.0"
+    },
+    "removedParameters": [],
+    "builtIn": true
+  },
+  {
+    "id": "flux-3-image-klein-base-q4-k-m",
+    "familyId": "flux.3-image-klein-diffusion",
+    "label": "flux-3-image-klein-base-Q4_K_M",
+    "source": {
+      "type": "huggingface",
+      "repo": "unsloth/flux-3-image-klein-base-GGUF",
+      "filename": "flux-3-image-klein-base-Q4_K_M.gguf"
+    },
+    "format": "gguf",
+    "parameters": {
+      "--steps": "50",
+      "--cfg-scale": "4.0"
+    },
+    "removedParameters": [],
+    "builtIn": true
+  },
+  {
+    "id": "flux-3-image-klein-pup-q8-0",
+    "familyId": "flux-3-prompt-upsampler",
+    "label": "flux-3-image-klein-pup-Q8_0",
+    "source": {
+      "type": "huggingface",
+      "repo": "unsloth/flux-3-image-klein-pup-GGUF",
+      "filename": "flux-3-image-klein-pup-Q8_0.gguf"
+    },
+    "format": "gguf",
+    "parameters": {},
+    "removedParameters": [],
+    "builtIn": true
+  },
+  {
+    "id": "flux-3-image-klein-pup-mmproj",
+    "familyId": "flux-3-prompt-upsampler-mmproj",
+    "label": "flux-3-image-klein-pup mmproj-F16",
+    "source": {
+      "type": "huggingface",
+      "repo": "unsloth/flux-3-image-klein-pup-GGUF",
+      "filename": "mmproj-F16.gguf"
+    },
+    "format": "gguf",
+    "parameters": {},
+    "removedParameters": [],
+    "builtIn": true
   }
 ]

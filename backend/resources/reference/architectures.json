@@ -2446,5 +2446,110 @@
     "runners": [
       "DriftRunner"
     ]
+  },
+  {
+    "id": "flux.3-image-klein",
+    "label": "FLUX 3 Image Klein",
+    "tool": "SdCpp",
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "flux.3-image-klein-diffusion",
+        "flag": "--diffusion-model",
+        "required": true,
+        "runners": []
+      },
+      {
+        "name": "vae",
+        "familyId": "flux2-klein-9b-vae",
+        "flag": "--vae",
+        "required": true,
+        "runners": []
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen3-vl-4b-instruct",
+        "flag": "--llm",
+        "required": true,
+        "runners": []
+      }
+    ],
+    "defaultParameters": {
+      "-W": "1024",
+      "-H": "1024",
+      "--cfg-scale": "1.0",
+      "--steps": "16",
+      "--mmap": "",
+      "--diffusion-fa": ""
+    },
+    "civitaiBaseModels": [
+      "Flux.3 Klein",
+      "Flux.3 Klein-base"
+    ],
+    "tags": [
+      "image",
+      "edit"
+    ],
+    "builtIn": true,
+    "pixelDiffusionDecoder": false,
+    "initImage": true,
+    "referenceImages": "Context",
+    "promptingNotes": "Trained on the long captions of its own prompt upsampler, and noticeably weaker on a short prompt sent as typed: write one continuous prose description of 100 to 350 words, medium and style first (\"Full-color outdoor photograph, ...\"), then the scene, lighting and camera, then each subject with its colours, materials and place in the frame (frame-left, foreground, ...). Every person gets an observable profile; text to render goes in double quotes, verbatim. No quality tags, no mood words. Edits with up to 10 reference images, one at the output's size edited in place. The distilled checkpoint runs 16 steps without CFG, the base one 50 steps at CFG 4.",
+    "assistantTemplateId": "flux-3-caption-writer",
+    "huggingFaceBaseModels": [
+      "black-forest-labs/flux-3-image-klein",
+      "black-forest-labs/flux-3-image-klein-base"
+    ],
+    "modelScopeBaseModels": [],
+    "sizeMultiple": 16,
+    "modelKind": "flux3-klein",
+    "runners": [
+      "SdCpp",
+      "DriftRunner"
+    ]
+  },
+  {
+    "id": "flux-3-prompt-upsampler",
+    "label": "FLUX 3 prompt upsampler (chat)",
+    "tool": "LlamaCpp",
+    "checkpoints": [
+      {
+        "name": "model",
+        "familyId": "flux-3-prompt-upsampler",
+        "flag": "-m",
+        "required": true,
+        "runners": []
+      },
+      {
+        "name": "mmproj",
+        "familyId": "flux-3-prompt-upsampler-mmproj",
+        "flag": "--mmproj",
+        "required": false,
+        "runners": []
+      }
+    ],
+    "defaultParameters": {
+      "-c": "32768",
+      "-ngl": "99"
+    },
+    "civitaiBaseModels": [],
+    "tags": [
+      "llm"
+    ],
+    "builtIn": true,
+    "pixelDiffusionDecoder": false,
+    "initImage": true,
+    "referenceImages": "Unused",
+    "promptingNotes": null,
+    "assistantTemplateId": null,
+    "huggingFaceBaseModels": [
+      "black-forest-labs/flux-3-image-klein-pup"
+    ],
+    "modelScopeBaseModels": [],
+    "sizeMultiple": 16,
+    "modelKind": "qwen35",
+    "runners": [
+      "LlamaCpp"
+    ]
   }
 ]

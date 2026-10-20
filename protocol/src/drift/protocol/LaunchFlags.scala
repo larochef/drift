@@ -234,6 +234,7 @@ object RunnerModelKinds {
     */
   val Images: Seq[String] = Seq(
     "krea2",
+    "flux3-klein",
     "flux2-klein",
     "flux2-dev",
     "qwen-image-2.1",

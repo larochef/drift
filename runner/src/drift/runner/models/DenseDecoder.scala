@@ -633,7 +633,9 @@ final class DenseDecoder private[models] (
     *
     * `padding` rows of `padId` are appended (`[taps × (tokens + padding),
     * hidden]`), masked as keys the way a padded batch's attention mask masks
-    * them: the prompt never sees them, and each sees the prompt alone.
+    * them: the prompt never sees them, and each sees the prompt alone. They
+    * turn by their slots' positions, or all by `padPosition` (the position
+    * transformers gives masked tokens when the caller fills it so).
     */
   def encode(
       ids: Array[Int],
@@ -641,7 +643,8 @@ final class DenseDecoder private[models] (
       out: Tensor,
       padding: Int = 0,
       padId: Int = 0,
-      images: Option[SeenImages] = None
+      images: Option[SeenImages] = None,
+      padPosition: Option[Int] = None
   ): Unit = {
     val prompt = ids.length
     val tokens = prompt + padding
@@ -653,6 +656,9 @@ final class DenseDecoder private[models] (
     try {
       sequence.reserve(tokens)
       images.foreach(seen => sequence.place(0, seen.positions))
+      padPosition
+        .filter(_ => padding > 0)
+        .foreach(at => sequence.place(prompt, Array.fill(3 * padding)(at)))
       val w = workspaceFor(tokens, allLogits = false)
       def keep(done: Int, x: Tensor): Unit =
         taps.zipWithIndex

@@ -13,10 +13,12 @@ missing runtime or download is offered in place of the launch.
   `~/.config/drift/run-configurations/` **once**: unlike architectures and
   models, whose reference stays authoritative, a starter is an ordinary
   configuration from the moment it lands — edited, deleted, never rewritten
-  or brought back. An id a user configuration already holds is skipped. Six
+  or brought back. An id a user configuration already holds is skipped. Eight
   starters, seeded on the upstream engine (sd-cpp or llama.cpp, which run
   everywhere) and moved to the drift runner wherever it is available — the
   runner is the default wherever it is:
+  - `starter-flux3-image-klein` — FLUX 3 Image Klein, the distilled
+    checkpoint in Q8_0 (unsloth's GGUF) with Qwen3-VL-4B and the FLUX.2 VAE
   - `starter-flux2-klein-9b` — Flux.2 Klein 9B, Q4_K_M
   - `starter-krea2` — Krea 2 Turbo, Q4_K_M
   - `starter-qwen-image-2.1` — Qwen Image 2.1, Q4_K, with the vision projector
@@ -25,6 +27,9 @@ missing runtime or download is offered in place of the launch.
   - `starter-pid-flux2` — PiD 1.5, FLUX.2, 1024 → 4096 in 4 steps
   - `starter-qwen3.6-35b-a3b` — Qwen 3.6 35B-A3B, UD-Q4_K_XL MTP build with
     its vision projector (MTP and vision together need llama.cpp b9240+)
+  - `starter-flux3-prompt-upsampler` — FLUX 3's prompt upsampler (BFL's
+    Qwen 3.5 9B fine-tune, unsloth's Q8_0 with its vision projector), the
+    assistant the "FLUX 3 upsampler" template is for
   Eight more are seeded on the drift runner itself, the only engine drift
   runs them on (Nucleus-Image, LLaDA-Image, GRN) or the one worth using (Mage-Flow:
   an edit in 10 s against sd-cpp's 150):

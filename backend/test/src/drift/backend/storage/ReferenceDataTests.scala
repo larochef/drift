@@ -28,13 +28,32 @@ object ReferenceDataTests extends TestSuite {
           "nucleus-image",
           "llada-image",
           "llada-image-turbo",
-          "grn"
+          "grn",
+          "flux.3-image-klein",
+          "flux-3-prompt-upsampler"
         ).subsetOf(architectures)
       )
       assert(models.exists(_.id == "nucleus-image-bf16"))
       assert(starters.exists(_.id == "starter-llada-image-turbo"))
       assert(starters.exists(_.id == "starter-grn-2b"))
       assert(starters.exists(_.id == "starter-mage-flow"))
+      assert(starters.exists(_.id == "starter-flux3-image-klein"))
+      // the caption writers read the whole reply as the prompt
+      val templates = storage.list(Collections.promptTemplates).map(_.id).toSet
+      assert(
+        Set("flux-3-caption-writer", "flux-3-upsampler").subsetOf(templates)
+      )
+      // FLUX 3 Image Klein's base is a checkpoint of the same architecture,
+      // with its own steps and CFG
+      assert(
+        models
+          .find(_.id == "flux-3-image-klein-base-q8-0")
+          .exists(base =>
+            base.familyId == "flux.3-image-klein-diffusion" &&
+              base.parameters.get("--steps").contains("50") &&
+              base.parameters.get("--cfg-scale").contains("4.0")
+          )
+      )
       // Turbo is a checkpoint of Mage-Flow, with its own steps and CFG
       assert(
         models

@@ -15,10 +15,10 @@ which configurations a project offers. A slot can be optional: Qwen Image 2.1
 generates from three files and wants its fourth, the vision projector, only
 when you hand it a reference image to edit.
 
-drift ships built-in architectures for Flux.2 (dev, Klein 9B and 4B), Z-Image
+drift ships built-in architectures for FLUX 3 Image Klein (the distilled and base checkpoints, each with its own steps and CFG), Flux.2 (dev, Klein 9B and 4B), Z-Image
 Turbo, Krea 2, Qwen Image, Qwen Image 2.1, Ideogram 4, Mage-Flow and Mage-Flow Edit (Turbo is one of their checkpoints, with its own steps and CFG), Nucleus-Image, LLaDA-Image and LLaDA-Image Turbo, GRN, SenseNova U1.5, Boogu Image and Boogu Image Edit, ERNIE Image,
 HiDream O1 Image, Wan 2.2, LTX 2.3 and 2.5, MiniMax H3, HunyuanVideo 1.5, the
-PiD upscalers and two chat models. They are refreshed on every start and cannot be
+PiD upscalers and three chat models (one of them FLUX 3's prompt upsampler). They are refreshed on every start and cannot be
 edited or deleted; **New Architecture** creates your own — where, besides the
 slots and defaults, **Size multiple** says what the model rounds every side up
 to (16 for nearly everything, 32 for Qwen Image 2.1 and a few others), which is
@@ -31,7 +31,7 @@ An architecture also says which **runners** can run it. Its tool's own engine
 own engine. The form offers that only for a **model kind** the installed drift
 runner runs. The kind is what the model is: the GGUF's `general.architecture`
 for a chat model (`qwen35`, `qwen35moe`, `qwen4exp`), the family for an image
-model (`krea2`, `flux2-klein`, `flux2-dev`). The built-ins say theirs; on your own
+model (`krea2`, `flux3-klein`, `flux2-klein`, `flux2-dev`). The built-ins say theirs; on your own
 architectures, fill it in.
 
 ## Models
@@ -132,9 +132,10 @@ architectures page: **+ Add model** beside the slot opens the browser on that
 architecture, and the model you pick is registered and assigned to the slot.
 **+ Add LoRA** above the default LoRAs does the same for LoRAs.
 
-drift adds six starter configurations on first start: Flux.2 Klein 9B,
-Krea 2 Turbo and Qwen Image 2.1 for images, MiniMax H3 for video, PiD 1.5
-(FLUX.2) for diffusion upscaling and Qwen 3.6 35B-A3B for chat. After that
+drift adds eight starter configurations on first start: FLUX 3 Image Klein,
+Flux.2 Klein 9B, Krea 2 Turbo and Qwen Image 2.1 for images, MiniMax H3 for
+video, PiD 1.5 (FLUX.2) for diffusion upscaling, and Qwen 3.6 35B-A3B and
+FLUX 3's prompt upsampler for chat. After that
 they are yours like any other: edit them, delete them — a deleted one does not
 come back.
 

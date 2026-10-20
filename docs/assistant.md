@@ -82,14 +82,16 @@ that it did.
 Open **System prompt** in the panel header to pick the template the model is
 told, and read it. Templates live in Settings → Prompts: drift's own helper,
 an **Ideogram 4 caption writer** that turns a plain idea into the JSON
-caption Ideogram needs, and any copies you edited. drift adds after the
+caption Ideogram needs, a **FLUX 3 caption writer** and a **FLUX 3
+upsampler** that expand a plain idea into the long caption FLUX 3 Image Klein
+was trained on, and any copies you edited. drift adds after the
 template, when it allows: the project brief, how the target image model
 likes its prompts, your form's current prompt, a note when CFG is 1 (the
 negative prompt does nothing then), its rules for editing rather than
 describing, and the form's aspect ratio. A project starts with what its
 image model suggests: the run configuration's own choice, else the default
-its architecture names (the caption writer for Ideogram 4, drift's helper
-elsewhere), and keeps your own pick once you make one. When you start a
+its architecture names (the caption writers for Ideogram 4 and FLUX 3,
+drift's helper elsewhere), and keeps your own pick once you make one. When you start a
 model whose suggestion differs from the project's pick, the panel offers to
 **Switch** or **Keep**.
 
@@ -98,6 +100,17 @@ form** puts it in the prompt and, when the caption names an aspect ratio,
 sizes the form to it. Expect most of the help, not all: a local model may
 drop parts of the contract or misplace boxes, and the negative prompt stays
 empty since Ideogram ignores it.
+
+FLUX 3 Image Klein is noticeably weaker on a short prompt sent as typed: Black
+Forest Labs trained it on the captions of its own prompt upsampler. Its caption
+writers answer with the caption alone, and the whole reply is the proposal.
+The **FLUX 3 caption writer** carries the instructions BFL wrote for any
+vision-language model — long, for the assistant you already run. The **FLUX 3
+upsampler** carries the short ones of BFL's own upsampler model, a Qwen 3.5 9B
+fine-tune; drift seeds it as the **FLUX 3 prompt upsampler (chat)** starter.
+Run that one as the assistant and pick the upsampler template in **System
+prompt**. Both write text-to-image captions; for an edit, describe the change
+you want in the prompt yourself.
 
 ## Per-project conversations
 

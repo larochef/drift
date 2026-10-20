@@ -71,7 +71,7 @@ something (an image attached, hires on, a non-default sampler):
   0.25`), in place of the scheduler's. A turbo LoRA is trained on its own few
   levels and its page lists them; with a list, the steps are the list's,
   whatever **Steps** says. sd-cpp takes them for every model, the drift
-  runner for its image models — Qwen Image 2.1, Krea 2, FLUX.2 [klein],
+  runner for its image models — Qwen Image 2.1, Krea 2, FLUX 3 Image Klein, FLUX.2 [klein],
   HiDream O1, Mage-Flow, Nucleus-Image and LLaDA-Image — and not for video or
   PiD, where it refuses them.
   On Qwen Image 2.1 the drift runner reads the list as the model's own

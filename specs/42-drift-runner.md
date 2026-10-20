@@ -1,6 +1,6 @@
 # 42 — drift runner: an inference engine for Strix Halo
 
-**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1 (which also reads reference images), Mage-Flow (Turbo, Edit Turbo), Nucleus-Image, LLaDA-Image and GRN draw; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX with their soundtracks), with LoRAs and image inputs (H3 also guides and a ControlNet, its references built but broken live; LTX guides); groom each later step before building it
+**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1 (which also reads reference images), Mage-Flow (Turbo, Edit Turbo), Nucleus-Image, LLaDA-Image, GRN and FLUX 3 Image Klein draw; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX with their soundtracks), with LoRAs and image inputs (H3 also guides and a ControlNet, its references built but broken live; LTX guides); groom each later step before building it
 **Depends on:** 06 (runtimes, TheRock), 07 (launch and supervision), 16 (parameter resolution), 17 and 18 (the chat runtime and its sessions), 41 (text projects)
 
 drift's own runner replaces sd-cpp and llama.cpp for one machine: Strix Halo
@@ -1859,6 +1859,63 @@ on the old tool.
         loaded in 4 s; pictures in `~/dev/redraw-experiments/2026-10-07-grn/`.
       - **Left.** Other shapes than a square run live; the 8B and video
         models; a launch from drift.
+    - **Done 2026-10-20: FLUX 3 Image Klein** (distilled and base), txt2img,
+      img2img with a mask, up to 10 references, LoRAs (`models/Flux3`,
+      `diffusion/Flux3Pipeline`); the FLUX.2 VAE (`FluxVae`) and Qwen3-VL-4B
+      (`Qwen3`) as they are. sd-cpp runs it too, so the architecture lists
+      both engines.
+      - **Reference.** BFL's code (`black-forest-labs/flux-3-image-klein`,
+        `src/flux3/dit.py`, `pipeline.py`, `sampling.py`, `text_encoder.py`).
+      - **Model.** 5.6B, 3072 wide, 24 heads of 128, no biases. Tokens of
+        three modes — the target, the references (all together), the text —
+        each through 5 blocks of its own attending to its own tokens alone,
+        then all through 28 shared blocks, each mode with its own
+        modulation. One block kind: layer norm, shift and scale, q, k and v
+        with RMS-normed heads, attention beside a SwiGLU MLP (3 × wide),
+        their outputs summed into one gated residual. A time vector per
+        mode: the target's σ, 0 for the references and the text, through
+        `time_in` (σ and 1000 σ in BF16, as BFL's pack holds them). The
+        distilled checkpoint is a flow map: `ref_time_in` embeds the level
+        the step lands on and adds it to every mode's vector.
+      - **Positions.** Four RoPE axes of 16 pairs, theta 10000, pairs
+        adjacent: text `(0, 0, 0, l)`, target `(0, y/2, x/2, 0)`, reference
+        `k` `(0, y/2, x/2, −1 − k)`. The half positions do not fit the I32
+        rope kernel: the angles are built on the host once per layout and
+        turned through `ropeTable`.
+      - **Text.** Qwen3-VL-4B in its chat template (no system message, no
+        thinking block), the residual stream after layers 4, 8, …, 32 side by
+        side (20480 features), padded with `<|endoftext|>` to a multiple of
+        80 rows: the pads are text tokens the transformer reads, each seeing
+        the prompt alone at position 1 (`DenseDecoder.encode`'s
+        `padPosition`).
+      - **Sampling.** Euler on `linspace(1, 0, steps + 1)` shifted by 16 at
+        every size (μ = ln 16; `--flow-shift` replaces it); the flow map
+        unguided at 16 steps, the base at 50 steps and CFG 4 against the
+        empty prompt.
+      - **References.** One at the output's size is read as it is, its
+        tokens over the target's; another is fitted under 4 megapixels
+        (resized, where BFL pads and crops the output); several each fitted
+        under a megapixel and centre-cropped to the 16-pixel grid.
+      - **Weights.** unsloth's GGUFs (BFL's names, ungated), BFL's own
+        repositories being gated. Bounding boxes (the upsampler's layout
+        mode) are not read; the prompt upsampler is a chat model and two
+        assistant templates (`specs/32`).
+      - **Precision.** The products run in BF16 (`Ops.wideProducts`), as
+        BFL's do: Qwen3-VL's residual stream reaches 10⁴ on its first tokens
+        and the shared blocks' residual 10⁶–10⁷, and F16 products turned
+        `txt_in` and then a late shared block to infinities (a black
+        picture).
+      - **Checks.** A tiny flow map and base model from BFL's own modules
+        (`fixtures/tiny_flux3.py`): one velocity with two references, the
+        same with a LoRA in BFL's and kohya's names, and the base model with
+        one reference. The fixtures are not generated yet.
+      - **Live.** The distilled Q8_0 with Qwen3-VL-4B UD-Q4_K_XL: 1024² in 16
+        steps in 45 s (2.3 s a step), 1536 × 1024 in 74 s, an edit of its own
+        1024² picture (one reference at the output's size) in 106 s, faithful
+        to the pixel outside the change, img2img at 0.6 in 30 s; pictures in
+        `~/dev/redraw-experiments/2026-10-20-flux3/`.
+      - **Left.** The base checkpoint, several references, LoRAs and a
+        launch from drift run live; sd-cpp's run of the same configuration.
     - **Done 2026-10-07: LLaDA-Image** (base and Turbo), txt2img, editing
       with one reference, img2img with a mask (`models/LladaImage`,
       `models/Llada2`, `models/LladaConnectors`, `models/PlainAttention`,

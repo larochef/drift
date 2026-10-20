@@ -20,11 +20,12 @@ object PromptKind {
 }
 
 /** How a proposal is read out of an assistant reply: the fenced `prompt` and
-  * `negative` blocks, or the last JSON object in the reply, minified into the
-  * prompt (an Ideogram caption).
+  * `negative` blocks, the last JSON object in the reply, minified into the
+  * prompt (an Ideogram caption), or the whole reply as the prompt (a caption
+  * writer told to answer with the caption alone, as FLUX 3's upsampler is).
   */
 enum ProposalFormat derives CanEqual {
-  case Fenced, Json
+  case Fenced, Json, WholeReply
 }
 object ProposalFormat {
   given Schema[ProposalFormat] =

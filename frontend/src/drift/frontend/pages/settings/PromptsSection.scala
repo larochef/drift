@@ -246,7 +246,9 @@ class PromptsSection(service: PromptTemplateService) extends Component {
                 "```prompt block, with a ```negative block beside it — what " +
                 "drift's own helper asks for. JSON: the last {…} object in " +
                 "the reply, minified into the prompt with no negative; an " +
-                "aspect_ratio key is taken out and sizes the form instead.",
+                "aspect_ratio key is taken out and sizes the form instead. " +
+                "Whole reply: the answer itself is the prompt, for a caption " +
+                "writer told to answer with the caption alone.",
               select(
                 option(
                   value := "Fenced",
@@ -259,9 +261,16 @@ class PromptsSection(service: PromptTemplateService) extends Component {
                   selected <-- formatVar.signal.map(_ == ProposalFormat.Json),
                   "the last JSON object in the reply"
                 ),
+                option(
+                  value := "WholeReply",
+                  selected <-- formatVar.signal
+                    .map(_ == ProposalFormat.WholeReply),
+                  "the whole reply"
+                ),
                 onChange.mapToValue --> Observer[String] {
-                  case "Json" => formatVar.set(ProposalFormat.Json)
-                  case _      => formatVar.set(ProposalFormat.Fenced)
+                  case "Json"       => formatVar.set(ProposalFormat.Json)
+                  case "WholeReply" => formatVar.set(ProposalFormat.WholeReply)
+                  case _            => formatVar.set(ProposalFormat.Fenced)
                 }
               )
             )

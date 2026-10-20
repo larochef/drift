@@ -45,11 +45,20 @@ in drift.
   the reply, fenced or bare, minified into the prompt; no negative). With
   `json`, a top-level `aspect_ratio` key is removed from the prompt and, when
   it parses as `W:H`, sets the form's width and height to the largest
-  multiple-of-16 pair of that ratio within the current size.
-- Two built-in `assistant-system` templates ship: drift's own, and "Ideogram
+  multiple-of-16 pair of that ratio within the current size. Or
+  `whole-reply`: the reply itself is the prompt, a fence or a pair of quotes
+  around all of it taken off (a caption writer told to answer with the
+  caption alone); no negative.
+- Four built-in `assistant-system` templates ship: drift's own, "Ideogram
   4 caption writer" carrying Ideogram's `v1` magic prompt with a short
   preamble that supplies the aspect ratio from the form and asks for no
-  reasoning. Three built-in restoration templates — `redraw-restoration`
+  reasoning, and FLUX 3 Image Klein's two (`whole-reply`, the aspect ratio
+  appended, the prompting notes, rules and CFG note off): "FLUX 3 caption
+  writer", BFL's text-to-image instructions for an external vision-language
+  model, and "FLUX 3 upsampler", the short ones its own upsampler model was
+  trained with; each behind a preamble that reads the form's aspect ratio as
+  BFL's `TARGET CANVAS` and asks for the whole caption again on a change. The
+  `flux.3-image-klein` architecture names the caption writer. Three built-in restoration templates — `redraw-restoration`
   (the default), `redraw-skin-de-artifacting`, `redraw-women-portrait` (27
   says why), one edit template, `edit-seamless` (39), and one compaction
   template.

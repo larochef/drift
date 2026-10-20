@@ -79,9 +79,9 @@ answers follow the exact maths more closely than llama.cpp's: the model's
 inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
 8-bit inputs as in the fork that made the format.
 
-- **Images: Krea 2, FLUX.2 [klein] and [dev], Qwen Image 2.1, HiDream O1,
+- **Images: Krea 2, FLUX 3 Image Klein, FLUX.2 [klein] and [dev], Qwen Image 2.1, HiDream O1,
   Mage-Flow, Nucleus-Image, LLaDA-Image, GRN and PiD; video: MiniMax H3, Wan 2.2 A14B and LTX 2.5.** A second runtime, **drift runner, images (gfx1151)**, runs Krea 2,
-  FLUX.2 [klein] 9B, FLUX.2 [dev], Qwen Image 2.1, HiDream O1, Mage-Flow, Nucleus-Image, LLaDA-Image, GRN, PiD 1.5,
+  FLUX 3 Image Klein, FLUX.2 [klein] 9B, FLUX.2 [dev], Qwen Image 2.1, HiDream O1, Mage-Flow, Nucleus-Image, LLaDA-Image, GRN, PiD 1.5,
   MiniMax H3, Wan 2.2 14B and LTX 2.5 configurations in
   place of sd-cpp: pick
   it in the launch control. It tells them apart by the checkpoint, and reads
@@ -94,6 +94,14 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
   - **Krea 2** makes a 1024² image in about half sd-cpp's time, LoRAs
     included, and does img2img. It doesn't do reference images, so it is
     not offered for redraws, which need one.
+  - **FLUX 3 Image Klein** (the distilled checkpoint at 16 steps without
+    CFG, the base one at 50 steps and CFG 4) does text to image, img2img
+    with a mask, up to 10 reference images and LoRAs (BFL's or kohya's
+    names). A single reference at the output's size is edited in place;
+    another is fitted under 4 megapixels, and several each under one. The
+    shift is 16 at every size unless `--flow-shift` gives another (as μ).
+    Its text encoder is Qwen3-VL-4B and its VAE FLUX.2's. Bounding boxes are
+    not read.
   - **FLUX.2 [klein]** does text to image (about 40% faster than sd-cpp),
     img2img, reference images and LoRAs (ComfyUI's, BFL's or diffusers'
     names), all faster than sd-cpp: about half its time for text to image,

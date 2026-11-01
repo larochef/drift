@@ -56,6 +56,18 @@ loads but nothing updates by itself). The Scala.js output is resolved through th
 Runs the full Scala.js linker and produces a self-contained distribution under
 `out/backend/universalStage.dest/`.
 
+## Releases
+
+Every push to `main` that compiles and passes the tests is published as a
+[release](https://github.com/larochef/drift/releases), numbered
+`v<major.minor of backend.packageVersion in build.mill>.<number of commits>`
+(e.g. `v0.1.48`). Raise `packageVersion` to mark a bigger step.
+
+Each release has `drift-<version>-x86_64-linux.tar.gz`, that distribution with
+the runner's kernels built for gfx1151 on ROCm 10.1.0, and `SHA256SUMS`. To run
+it, unpack it and start `bin/backend`; it needs Java 25 or later on the `PATH`
+or in `JAVA_HOME`, and FFmpeg for videos.
+
 ## Project structure
 
 ```

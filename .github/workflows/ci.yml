@@ -1,0 +1,101 @@
+# Every push and pull request: compiles and tests. Every push to main that
+# passes them is also published as a release, numbered like llama.cpp's builds:
+# v<major.minor of backend.packageVersion>.<commits on main>.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # The ROCm the runner's kernels are compiled with, which drift then pairs
+  # against where it runs (`specs/43`). The folder's name says the version.
+  ROCM_VERSION: 10.1.0
+  DRIFT_ROCM_ROOT: ${{ github.workspace }}/../therock/gfx1151-10.1.0
+
+defaults:
+  run:
+    # Named, for pipefail: a failure inside a pipe stops the build.
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    # One build at a time per branch, in push order: the release of a later
+    # push never comes before an earlier one's.
+    concurrency: ci-${{ github.ref }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The commit count is the version.
+          fetch-depth: 0
+      # A full LFS download is about 500 MB, against a monthly bandwidth quota:
+      # only the objects missing from the cache are fetched.
+      - run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-ids
+      - uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-ids') }}
+          restore-keys: lfs-
+      - run: git lfs pull
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/coursier
+            ~/.cache/mill
+            ~/.cache/drift/runner-tests
+          key: build-${{ hashFiles('.mill-version', 'build.mill') }}
+          restore-keys: build-
+      - name: TheRock
+        # hipcc compiles with g++'s libstdc++ headers.
+        run: |
+          command -v g++ > /dev/null || sudo apt-get install -y -qq g++
+          mkdir -p "$DRIFT_ROCM_ROOT"
+          curl -fsSL "https://stable.repo.amd.com/rocm/core/tarball/therock-dist-linux-gfx1151-$ROCM_VERSION.tar.gz" \
+            | tar xz -C "$DRIFT_ROCM_ROOT"
+      - run: ./mill __.compile
+      - run: ./mill backend.test
+      - run: ./mill runner.test
+
+      - name: Version
+        if: github.event_name == 'push'
+        run: |
+          base=$(./mill show backend.packageVersion | jq -r . | cut -d. -f1,2)
+          echo "TAG=v$base.$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
+      - name: Package
+        if: github.event_name == 'push'
+        run: |
+          ./mill backend.universalStage
+          dir=drift-$TAG-x86_64-linux
+          mkdir $dir
+          cp -rL out/backend/universalStage.dest/. README.md LICENSE $dir/
+          chmod 755 $dir/bin/backend
+          # Built without its kernels the runner is silently not offered.
+          unzip -p $dir/lib/backend.jar runner/drift-runner.jar > runner.jar
+          test "$(unzip -l runner.jar | grep -c 'kernels/.*\.hsaco')" = "$(ls runner/kernels/*.hip | wc -l)"
+          test "$(unzip -p $dir/lib/backend.jar runner/rocm-version)" = "$ROCM_VERSION"
+          # The archive itself has to start and serve its page.
+          $dir/bin/backend > backend.log 2>&1 &
+          backend=$!
+          curl -fsS --retry 30 --retry-delay 2 --retry-connrefused -o /dev/null http://localhost:4321/ \
+            || { cat backend.log; exit 1; }
+          kill $backend
+          tar czf $dir.tar.gz $dir
+          sha256sum $dir.tar.gz > SHA256SUMS
+      - name: Publish
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$TAG" drift-*.tar.gz SHA256SUMS
+          --target "$GITHUB_SHA" --title "$TAG" --generate-notes

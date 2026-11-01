@@ -35,12 +35,19 @@ jobs:
       # A full LFS download is about 500 MB, against a monthly bandwidth quota:
       # only the objects missing from the cache are fetched.
       - run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-ids
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v6
+        id: lfs
         with:
           path: .git/lfs
           key: lfs-${{ hashFiles('.lfs-ids') }}
           restore-keys: lfs-
       - run: git lfs pull
+      # Saved here rather than at the end, which a failing test would skip.
+      - uses: actions/cache/save@v6
+        if: steps.lfs.outputs.cache-hit != 'true'
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-ids') }}
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -48,14 +55,19 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - uses: actions/cache@v4
+      # The latest saved downloads: coursier's, with the JVM mill runs on, mill's
+      # and the tests' tokenizers.
+      - uses: actions/cache/restore@v6
+        id: downloads
         with:
           path: |
             ~/.cache/coursier
             ~/.cache/mill
             ~/.cache/drift/runner-tests
-          key: build-${{ hashFiles('.mill-version', 'build.mill') }}
-          restore-keys: build-
+          key: downloads-
+          restore-keys: downloads-
+      # The runner's video tests encode with FFmpeg.
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: TheRock
         # hipcc compiles with g++'s libstdc++ headers.
         run: |
@@ -66,6 +78,23 @@ jobs:
       - run: ./mill __.compile
       - run: ./mill backend.test
       - run: ./mill runner.test
+
+      # Kept even when a step above failed, under a key naming the files: a new
+      # entry only when something new was downloaded.
+      - name: Name the downloads
+        id: listing
+        if: always()
+        run: |
+          listing=$(find ~/.cache/coursier ~/.cache/mill ~/.cache/drift/runner-tests -type f ! -name '*.lock' 2>/dev/null | sort | sha256sum | cut -d' ' -f1)
+          echo "key=downloads-$listing" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/save@v6
+        if: always() && steps.listing.outputs.key != steps.downloads.outputs.cache-matched-key
+        with:
+          path: |
+            ~/.cache/coursier
+            ~/.cache/mill
+            ~/.cache/drift/runner-tests
+          key: ${{ steps.listing.outputs.key }}
 
       - name: Version
         if: github.event_name == 'push'

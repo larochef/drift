@@ -266,6 +266,23 @@ final class Qwen35 private (
   ): Tensor =
     run(ids, start, sequence, allLogits, keepHistory = false, givenRows)
 
+  /** The final norm of the last layer's output for each of `ids` into `out`
+    * (`[tokens, hidden]`), run on a sequence of their own: a prompt's features
+    * as a diffusion model reads them (MOSS-Image's).
+    */
+  def lastHiddenState(ids: Array[Int], out: Tensor): Unit = {
+    require(
+      out.shape == Shape.of(ids.length, shape.hidden),
+      s"lastHiddenState: out ${out.shape} for ${ids.length} tokens"
+    )
+    val sequence = newSequence(ids.length, 64)
+    try {
+      sequence.reserve(ids.length)
+      forward(ids, 0, sequence, allLogits = false)
+      ops.copy(hidden, out)
+    } finally sequence.close()
+  }
+
   def verify(ids: Array[Int], start: Int, sequence: Sequence): Tensor =
     run(ids, start, sequence, allLogits = true, keepHistory = true, Nil)
 

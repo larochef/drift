@@ -1,6 +1,6 @@
 # 42 — drift runner: an inference engine for Strix Halo
 
-**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1 (which also reads reference images), Mage-Flow (Turbo, Edit Turbo), Nucleus-Image, LLaDA-Image, GRN and FLUX 3 Image Klein draw; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX with their soundtracks), with LoRAs and image inputs (H3 also guides and a ControlNet, its references built but broken live; LTX guides); groom each later step before building it
+**Status:** partial — steps 1 to 9 done: drift can launch the runner on Qwen 3 and Qwen 3.6 35B-A3B, with MTP drafting and a prefix cache; step 11's image vision done (Qwen 3.6, Qwen 3.8 Flash Next, Qwen Image 2.1 editing); Qwen 3.8 27B (dense) chats; HiDream O1 (which also reads reference images), Mage-Flow (Turbo, Edit Turbo), Nucleus-Image, LLaDA-Image, GRN, FLUX 3 Image Klein and MOSS-Image draw; step 14's MiniMax H3, Wan 2.2 A14B and LTX 2.5 make videos (H3 and LTX with their soundtracks), with LoRAs and image inputs (H3 also guides and a ControlNet, its references built but broken live; LTX guides); groom each later step before building it
 **Depends on:** 06 (runtimes, TheRock), 07 (launch and supervision), 16 (parameter resolution), 17 and 18 (the chat runtime and its sessions), 41 (text projects)
 
 drift's own runner replaces sd-cpp and llama.cpp for one machine: Strix Halo
@@ -1859,6 +1859,47 @@ on the old tool.
         loaded in 4 s; pictures in `~/dev/redraw-experiments/2026-10-07-grn/`.
       - **Left.** Other shapes than a square run live; the 8B and video
         models; a launch from drift.
+    - **Done 2026-10-22: MOSS-Image** (SFT and Base), txt2img, img2img with
+      a mask, LoRAs (`models/MossImage`, `diffusion/MossImagePipeline`); the
+      FLUX.2 VAE (`FluxVae`) and Qwen3.5-9B (`Qwen35.lastHiddenState`) as
+      they are. sd-cpp runs it too, so the architecture lists both engines.
+      - **Reference.** OpenMOSS's `pipeline_moss_image.py` (beside the
+        weights on Hugging Face: transformer, scheduler, pipeline).
+      - **Model.** 5B, 3072 wide, 24 heads of 128. The text: Qwen3.5's last
+        hidden state through a projection and two refiner blocks over the
+        text alone (with biases), once per prompt. Then 42 single-stream
+        blocks over [image ; text], no biases: a weighted RMS norm modulated,
+        q, k and v with RMS-normed heads, attention, a gated residual; the
+        same for the MLP, SiTU-GLU of its fused up and gate
+        (`4 tanh(g/4) σ(g) × 25 tanh(u/25)`, `Activation.Situ`). One time
+        vector (σ × 1000, cosines first, no activation after the MLP) gives
+        every block the same six modulations and the head its two.
+      - **Positions.** Four RoPE axes of 16 frequencies, theta 10000,
+        `rotate_half`'s halves: the image `(0, L, y − (H−1)/2, x − (W−1)/2)`
+        for `L` text tokens, the text `(0, l, 0, 0)`; the tables per layout
+        (a prompt's and its negative's lengths differ), built on the host.
+      - **Text.** Qwen3.5's chat template, the user's prompt trimmed, the
+        generation prompt with thinking on (`<think>\n`), at most 4096
+        tokens; the GGUF's vocabulary, or OpenMOSS's `tokenizer.json` for a
+        text encoder in another format (sd-cpp always takes the latter).
+      - **Sampling.** OpenMOSS's levels: `linspace(1, s/(1000+s−1), steps)`
+        shifted by `s` (5; `--flow-shift` replaces it), each snapped to the
+        nearest of the 1000 training levels, repeats dropped
+        (`FlowSchedule.snapped`). Euler; with CFG (3 by default) the
+        negative branch (the empty prompt unless one is given) runs without
+        block 22.
+      - **Weights.** leejet's GGUFs and ComfyUI's safetensors store q, k and
+        v as one `proj.qkv`, OpenMOSS's apart: both read. LoRAs in
+        OpenMOSS's names (q, k, v apart, or fused) and kohya's.
+      - **Precision.** The products run in BF16 (`Ops.wideProducts`), as the
+        reference does.
+      - **Checks.** A tiny transformer from OpenMOSS's own file
+        (`fixtures/tiny_moss_image.py`, diffusers and transformers stubbed):
+        the refiner's output, one velocity, the same without a block, from
+        split and fused weights, with a LoRA, and the scheduler's levels;
+        within 0.01 % on `Cpu`, and on `Hip` (the SiTU kernel).
+      - **Left.** Everything live: no picture made yet, on the runner or
+        from drift.
     - **Done 2026-10-20: FLUX 3 Image Klein** (distilled and base), txt2img,
       img2img with a mask, up to 10 references, LoRAs (`models/Flux3`,
       `diffusion/Flux3Pipeline`); the FLUX.2 VAE (`FluxVae`) and Qwen3-VL-4B

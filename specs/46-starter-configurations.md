@@ -13,7 +13,7 @@ missing runtime or download is offered in place of the launch.
   `~/.config/drift/run-configurations/` **once**: unlike architectures and
   models, whose reference stays authoritative, a starter is an ordinary
   configuration from the moment it lands — edited, deleted, never rewritten
-  or brought back. An id a user configuration already holds is skipped. Eight
+  or brought back. An id a user configuration already holds is skipped. Nine
   starters, seeded on the upstream engine (sd-cpp or llama.cpp, which run
   everywhere) and moved to the drift runner wherever it is available — the
   runner is the default wherever it is:
@@ -21,6 +21,9 @@ missing runtime or download is offered in place of the launch.
     checkpoint in Q8_0 (unsloth's GGUF) with Qwen3-VL-4B and the FLUX.2 VAE
   - `starter-flux2-klein-9b` — Flux.2 Klein 9B, Q4_K_M
   - `starter-krea2` — Krea 2 Turbo, Q4_K_M
+  - `starter-moss-image` — MOSS-Image SFT, Q8_0 (leejet's GGUF), with
+    Qwen3.5-9B Q8_0 (unsloth's), OpenMOSS's Qwen3.5 `tokenizer.json` and the
+    FLUX.2 VAE
   - `starter-qwen-image-2.1` — Qwen Image 2.1, Q4_K, with the vision projector
     so it edits too
   - `starter-minimax-h3` — MiniMax H3, with the audio VAE

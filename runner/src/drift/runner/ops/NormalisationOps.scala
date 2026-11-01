@@ -18,7 +18,9 @@ trait NormalisationOps { this: Ops =>
       out: Tensor
   ): Unit
 
-  /** `out = kind(gate) × up`: SwiGLU with `Silu`, GeGLU with a GELU. */
+  /** `out = kind(gate) × up`: SwiGLU with `Silu`, GeGLU with a GELU; with
+    * `Situ` the up is soft-capped (`Activation.Situ`).
+    */
   def gated(kind: Activation, gate: Tensor, up: Tensor, out: Tensor): Unit
 
   /** RMS norm over the last dimension:

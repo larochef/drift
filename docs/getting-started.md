@@ -34,7 +34,7 @@ runtime**; see [settings.md](settings.md).
 ## 2. Pick a model and download it
 
 drift adds ready-made run configurations on first start: **FLUX 3 Image Klein**, **Flux.2 Klein 9B**, **Krea 2
-Turbo** and **Qwen Image 2.1** for images, **MiniMax H3** for video, **PiD 1.5**
+Turbo**, **MOSS-Image** and **Qwen Image 2.1** for images, **MiniMax H3** for video, **PiD 1.5**
 to upscale, and **Qwen 3.6 35B-A3B** and **FLUX 3's prompt upsampler** as chat assistants. On Models → **Run
 configurations**, press **Download the weights** on the one you want; the
 button becomes **Launch** once the files are on disk. Progress shows in the

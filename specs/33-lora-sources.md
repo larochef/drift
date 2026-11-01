@@ -24,7 +24,10 @@ drift offers, one click to install.
   ticks may cross a Civitai model's versions and a directory's folders; and
   one bar over the list says how many are ticked, how much they weigh, and
   where they go: **one LoRA of N files** (the default, and what makes a wan
-  2.2 pair one LoRA), **N separate LoRAs**, or **files of 'X'** for each LoRA
+  2.2 pair one LoRA), **N separate LoRAs** (the default when the files come
+  from several Civitai versions and none of their names marks a high- or
+  low-noise half: versions are alternatives, and a LoRA applies every file it
+  holds), or **files of 'X'** for each LoRA
   this model or repository already made — which is how a pair fetched one half
   at a time ends up whole. A single ticked file defaults to a LoRA of its own.
   The browser stays open afterwards, the bar saying what was sent, since

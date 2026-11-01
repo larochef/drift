@@ -201,7 +201,13 @@ class FileBrowser(
         onSelect = () =>
           if (entry.isDirectory) navBus.writer.onNext(entry.path)
           else if (installMode)
-            selection.toggle(SelectedFile(entry.path, Some(entry.size)))
+            selection.toggle(
+              SelectedFile(
+                entry.path,
+                Some(entry.size),
+                stage = LoraFileStage.of(entry.path)
+              )
+            )
           else selectedPath.set(Some(entry.path)),
         icon =
           if (entry.isDirectory) FileRow.FolderIcon

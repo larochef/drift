@@ -2551,5 +2551,71 @@
     "runners": [
       "LlamaCpp"
     ]
+  },
+  {
+    "id": "moss-image",
+    "label": "MOSS-Image",
+    "tool": "SdCpp",
+    "checkpoints": [
+      {
+        "name": "diffusion",
+        "familyId": "moss-image-diffusion",
+        "flag": "--diffusion-model",
+        "required": true,
+        "runners": []
+      },
+      {
+        "name": "vae",
+        "familyId": "flux2-klein-9b-vae",
+        "flag": "--vae",
+        "required": true,
+        "runners": []
+      },
+      {
+        "name": "llm",
+        "familyId": "qwen3.5-9b",
+        "flag": "--llm",
+        "required": true,
+        "runners": []
+      },
+      {
+        "name": "tokenizer",
+        "familyId": "qwen3.5-tokenizer",
+        "flag": "--tokenizer",
+        "required": true,
+        "runners": []
+      }
+    ],
+    "defaultParameters": {
+      "-W": "1024",
+      "-H": "1024",
+      "--cfg-scale": "3.0",
+      "--steps": "50",
+      "--mmap": "",
+      "--diffusion-fa": ""
+    },
+    "civitaiBaseModels": [
+      "MOSS Image"
+    ],
+    "tags": [
+      "image"
+    ],
+    "builtIn": true,
+    "pixelDiffusionDecoder": false,
+    "initImage": true,
+    "referenceImages": "Unused",
+    "promptingNotes": "Trained on long English captions, and best with one: cohesive prose describing the subject and action, appearance, setting, framing, medium, lighting, materials and palette, spatial relations in words. Text to render goes in quotes, verbatim, in its own language (Chinese and English render well). No quality tags. A short prompt wants a higher CFG (3 for a long caption, up to 6). OpenMOSS suggests the negative \"nsfw, worst quality, bad anatomy, watermark, jpeg artifact\"; empty is their default. The SFT checkpoint is the one to generate with, Base is for LoRA training; both at 50 steps or more, CFG 3, shift 5. Sides are multiples of 16, 1 to 2 megapixels best.",
+    "assistantTemplateId": "moss-image-caption-writer",
+    "huggingFaceBaseModels": [
+      "OpenMOSS-Team/MOSS-Image-SFT",
+      "OpenMOSS-Team/MOSS-Image-Base"
+    ],
+    "modelScopeBaseModels": [],
+    "sizeMultiple": 16,
+    "modelKind": "moss-image",
+    "runners": [
+      "SdCpp",
+      "DriftRunner"
+    ]
   }
 ]

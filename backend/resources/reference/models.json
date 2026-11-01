@@ -2099,5 +2099,75 @@
     "parameters": {},
     "removedParameters": [],
     "builtIn": true
+  },
+  {
+    "id": "moss-image-sft-q8-0",
+    "familyId": "moss-image-diffusion",
+    "label": "MOSS-Image-SFT-Q8_0",
+    "source": {
+      "type": "huggingface",
+      "repo": "leejet/MOSS-Image-SFT-GGUF",
+      "filename": "MOSS-Image-SFT-Q8_0.gguf"
+    },
+    "format": "gguf",
+    "parameters": {},
+    "removedParameters": [],
+    "builtIn": true
+  },
+  {
+    "id": "moss-image-sft-q4-k",
+    "familyId": "moss-image-diffusion",
+    "label": "MOSS-Image-SFT-Q4_K",
+    "source": {
+      "type": "huggingface",
+      "repo": "leejet/MOSS-Image-SFT-GGUF",
+      "filename": "MOSS-Image-SFT-Q4_K.gguf"
+    },
+    "format": "gguf",
+    "parameters": {},
+    "removedParameters": [],
+    "builtIn": true
+  },
+  {
+    "id": "moss-image-base-q8-0",
+    "familyId": "moss-image-diffusion",
+    "label": "MOSS-Image-Base-Q8_0",
+    "source": {
+      "type": "huggingface",
+      "repo": "leejet/MOSS-Image-Base-GGUF",
+      "filename": "MOSS-Image-Base-Q8_0.gguf"
+    },
+    "format": "gguf",
+    "parameters": {},
+    "removedParameters": [],
+    "builtIn": true
+  },
+  {
+    "id": "qwen3.5-9b-q8-0",
+    "familyId": "qwen3.5-9b",
+    "label": "Qwen3.5-9B-Q8_0",
+    "source": {
+      "type": "huggingface",
+      "repo": "unsloth/Qwen3.5-9B-GGUF",
+      "filename": "Qwen3.5-9B-Q8_0.gguf"
+    },
+    "format": "gguf",
+    "parameters": {},
+    "removedParameters": [],
+    "builtIn": true
+  },
+  {
+    "id": "qwen3.5-tokenizer",
+    "familyId": "qwen3.5-tokenizer",
+    "label": "Qwen3.5 tokenizer.json (MOSS-Image)",
+    "source": {
+      "type": "huggingface",
+      "repo": "OpenMOSS-Team/MOSS-Image-Base",
+      "filename": "tokenizer/tokenizer.json"
+    },
+    "format": "json",
+    "parameters": {},
+    "removedParameters": [],
+    "builtIn": true
   }
 ]

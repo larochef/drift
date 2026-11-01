@@ -81,7 +81,13 @@ class RepositoryFiles(
       name = file.path,
       onSelect = () =>
         if (installMode)
-          selection.toggle(SelectedFile(file.path, file.sizeBytes))
+          selection.toggle(
+            SelectedFile(
+              file.path,
+              file.sizeBytes,
+              stage = LoraFileStage.of(file.path)
+            )
+          )
         else onSelect(file.path),
       icon =
         if (installMode) selection.box(file.path, ticked) else FileRow.FileIcon,

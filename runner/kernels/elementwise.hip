@@ -36,8 +36,15 @@ __device__ inline float activate(float v, int kind) {
       return 0.5f * v * (1.0f + tanhf(inner));
     }
     case 2: return 0.5f * v * (1.0f + erff(v * 0.7071067811865476f));  // GELU, erf
-    default: return 1.0f / (1.0f + expf(-v));                           // sigmoid
+    case 3: return 1.0f / (1.0f + expf(-v));                            // sigmoid
+    default: return 4.0f * tanhf(v * 0.25f) / (1.0f + expf(-v));        // SiTU
   }
+}
+
+// What gated_f32 multiplies by: the up as it is, soft-capped at 25 under SiTU
+// (MOSS-Image's SiTU-GLU).
+__device__ inline float gated_up(float v, int kind) {
+  return kind == 4 ? 25.0f * tanhf(v * 0.04f) : v;
 }
 
 // out = act(scale * x)
@@ -45,13 +52,13 @@ extern "C" __global__ void activation_f32(const float* x, float* out, long long 
   FOR_EACH(i, n) out[i] = activate(scale * x[i], kind);
 }
 
-// out = act(gate) * up: SwiGLU with SiLU, GeGLU with a GELU. With xq, out is
+// out = act(gate) * up: SwiGLU with SiLU, GeGLU with a GELU, SiTU-GLU with SiTU. With xq, out is
 // quantized too (quantize.h: whole waves of consecutive values, n a multiple
 // of 32), for the int8 product it feeds.
 extern "C" __global__ void gated_f32(const float* gate, const float* up, float* out, long long n, int kind,
                                      int8_t* xq, float* xd, float* xs) {
   FOR_EACH(i, n) {
-    const float value = activate(gate[i], kind) * up[i];
+    const float value = activate(gate[i], kind) * gated_up(up[i], kind);
     out[i] = value;
     if (xq) quantize_block(value, i / 32, xq, xd, xs);
   }

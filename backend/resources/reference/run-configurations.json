@@ -434,5 +434,23 @@
     "loras": [],
     "assistantTemplateId": null,
     "runner": "LlamaCpp"
+  },
+  {
+    "id": "starter-moss-image",
+    "label": "MOSS-Image",
+    "architectureId": "moss-image",
+    "assignments": {
+      "diffusion": "moss-image-sft-q8-0",
+      "vae": "flux2-vae",
+      "llm": "qwen3.5-9b-q8-0",
+      "tokenizer": "qwen3.5-tokenizer"
+    },
+    "overriddenParameters": {},
+    "removedParameters": [],
+    "createdAt": 0,
+    "lastUsedAt": 0,
+    "loras": [],
+    "assistantTemplateId": null,
+    "runner": "SdCpp"
   }
 ]

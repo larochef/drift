@@ -49,7 +49,7 @@ in drift.
   `whole-reply`: the reply itself is the prompt, a fence or a pair of quotes
   around all of it taken off (a caption writer told to answer with the
   caption alone); no negative.
-- Four built-in `assistant-system` templates ship: drift's own, "Ideogram
+- Five built-in `assistant-system` templates ship: drift's own, "Ideogram
   4 caption writer" carrying Ideogram's `v1` magic prompt with a short
   preamble that supplies the aspect ratio from the form and asks for no
   reasoning, and FLUX 3 Image Klein's two (`whole-reply`, the aspect ratio
@@ -58,7 +58,10 @@ in drift.
   model, and "FLUX 3 upsampler", the short ones its own upsampler model was
   trained with; each behind a preamble that reads the form's aspect ratio as
   BFL's `TARGET CANVAS` and asks for the whole caption again on a change. The
-  `flux.3-image-klein` architecture names the caption writer. Three built-in restoration templates — `redraw-restoration`
+  `flux.3-image-klein` architecture names the caption writer. "MOSS-Image
+  caption writer" (`whole-reply`, same appends) carries the caption part of
+  OpenMOSS's prompt enhancer behind the same preamble; its Layout part (JSON
+  with bounding boxes) is left out. The `moss-image` architecture names it. Three built-in restoration templates — `redraw-restoration`
   (the default), `redraw-skin-de-artifacting`, `redraw-women-portrait` (27
   says why), one edit template, `edit-seamless` (39), and one compaction
   template.

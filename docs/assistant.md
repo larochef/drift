@@ -84,13 +84,14 @@ told, and read it. Templates live in Settings → Prompts: drift's own helper,
 an **Ideogram 4 caption writer** that turns a plain idea into the JSON
 caption Ideogram needs, a **FLUX 3 caption writer** and a **FLUX 3
 upsampler** that expand a plain idea into the long caption FLUX 3 Image Klein
-was trained on, and any copies you edited. drift adds after the
+was trained on, a **MOSS-Image caption writer** that does the same for
+MOSS-Image, and any copies you edited. drift adds after the
 template, when it allows: the project brief, how the target image model
 likes its prompts, your form's current prompt, a note when CFG is 1 (the
 negative prompt does nothing then), its rules for editing rather than
 describing, and the form's aspect ratio. A project starts with what its
 image model suggests: the run configuration's own choice, else the default
-its architecture names (the caption writers for Ideogram 4 and FLUX 3,
+its architecture names (the caption writers for Ideogram 4, FLUX 3 and MOSS-Image,
 drift's helper elsewhere), and keeps your own pick once you make one. When you start a
 model whose suggestion differs from the project's pick, the panel offers to
 **Switch** or **Keep**.

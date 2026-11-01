@@ -1,18 +1,25 @@
 package drift.frontend.components
 
-import drift.shared.LoraGrouping
+import drift.shared.{LoraFileStage, LoraGrouping}
 
 import com.raquo.laminar.api.L.*
 
 /** One file a browser's list offers to install: what tells it from the others,
-  * and what it will cost.
+  * what it will cost, the release it belongs to where a site publishes several
+  * of one model (a Civitai version), and the diffusion stage its names say.
   */
-case class SelectedFile(key: String, sizeBytes: Option[Long] = None)
+case class SelectedFile(
+    key: String,
+    sizeBytes: Option[Long] = None,
+    release: Option[String] = None,
+    stage: LoraFileStage = LoraFileStage.General
+)
 
 /** What is ticked in a browser's file list (`specs/33-lora-sources.md`).
   * Nothing, to begin with: a LoRA is chosen file by file, and the ticks may
   * cross a Civitai model's versions — the whole selection installs at once,
-  * which is what makes a wan 2.2 pair one LoRA.
+  * which is what makes a wan 2.2 pair one LoRA, and what lets several versions
+  * install side by side.
   */
 class FileSelection {
 

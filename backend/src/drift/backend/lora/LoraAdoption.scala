@@ -109,7 +109,7 @@ final private[lora] class LoraAdoption(
       LoraFile(
         fileName = diskName,
         source = source,
-        stage = LoraManager.stageOf(diskName, versionName),
+        stage = LoraFileStage.of(diskName, versionName),
         sizeBytes =
           if (Files.isRegularFile(onDisk)) Some(Files.size(onDisk)) else None,
         sha256 = None

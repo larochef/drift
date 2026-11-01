@@ -9,9 +9,11 @@ import com.raquo.laminar.api.L.*
   * model or repository, whatever the site.
   *
   * Several files travel together by default, since that is what makes a wan 2.2
-  * pair one LoRA; one file makes a LoRA of its own; and either can join a LoRA
-  * already installed, which is how a pair fetched one half at a time ends up
-  * whole.
+  * pair one LoRA — but files of several releases (Civitai versions), none of
+  * them a high- or low-noise half, are alternatives, and install as separate
+  * LoRAs by default: applying a LoRA applies every file it holds. One file
+  * makes a LoRA of its own; and either can join a LoRA already installed, which
+  * is how a pair fetched one half at a time ends up whole.
   */
 class InstallBar(
     selection: FileSelection,
@@ -24,8 +26,8 @@ class InstallBar(
     what: String = "files"
 ) extends Component {
 
-  /** "together", "separate", or the id of the LoRA to join. */
-  private val target = Var("together")
+  /** "together", "separate", or the id of the LoRA to join, once picked. */
+  private val target = Var(Option.empty[String])
 
   lazy val element: HtmlElement = div(
     cls := "install-bar",
@@ -62,7 +64,7 @@ class InstallBar(
           options(files, choices),
           chosen(files, choices),
           "install as",
-          picked => target.set(picked)
+          picked => target.set(Some(picked))
         ),
         button(
           cls := "button is-primary is-small",
@@ -91,16 +93,26 @@ class InstallBar(
         .toList ++
       choices.map(item => item.id -> s"files of '${item.name}'")
 
-  /** The chosen target, or the default when what was chosen is gone — another
-    * repository was opened, or the selection came down to one file.
+  /** The chosen target, or the default when none was or what was chosen is gone
+    * — another repository was opened, or the selection came down to one file.
     */
   private def chosen(
       files: List[SelectedFile],
       choices: List[InstalledItem]
   ): String = {
     val offered = options(files, choices).map((key, _) => key).toSet
-    if (offered.contains(target.now())) target.now() else "together"
+    target.now().filter(offered.contains).getOrElse(byDefault(files))
   }
+
+  /** Separate for files of several releases none of which is a stage's half,
+    * together otherwise.
+    */
+  private def byDefault(files: List[SelectedFile]): String =
+    if (
+      files.flatMap(_.release).distinct.sizeIs > 1 &&
+      files.forall(_.stage == LoraFileStage.General)
+    ) "separate"
+    else "together"
 
   private def grouping(value: String): LoraGrouping = value match {
     case "together" => LoraGrouping.Together

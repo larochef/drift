@@ -105,6 +105,30 @@ object ComfyQuantTests extends TestSuite {
       ComfyQuant.unrotate(twice, 0, 512, 256)
       assert(Comparison.of(values, twice, Tolerance(1e-5, 1e-4)).passed)
     }
+    test("a bare marker goes with its weight under a loader's prefix") {
+      // the weight and its scale under ComfyUI's prefix, the marker bare
+      val marker = """{"format":"int8_tensorwise"}"""
+      val prefix = "model.diffusion_model."
+      val header =
+        s"""{"${prefix}m.weight":{"dtype":"I8","shape":[2,2],"data_offsets":[0,4]},""" +
+          s""""${prefix}m.weight_scale":{"dtype":"F32","shape":[2,1],"data_offsets":[4,12]},""" +
+          s""""m.comfy_quant":{"dtype":"U8","shape":[${marker.length}],"data_offsets":[12,${12 + marker.length}]}}"""
+      val json = header.getBytes("UTF-8")
+      val buffer = java.nio.ByteBuffer
+        .allocate(8 + json.length + 12 + marker.length)
+        .order(java.nio.ByteOrder.LITTLE_ENDIAN)
+      buffer.putLong(json.length.toLong).put(json)
+      buffer.put(Array[Byte](1, -2, 3, 4)).putFloat(0.5f).putFloat(2f)
+      buffer.put(marker.getBytes("UTF-8"))
+      val file = drift.runner.formats.Safetensors
+        .read(java.lang.foreign.MemorySegment.ofArray(buffer.array()), "test")
+      val weights = ComfyQuant.weights(file)
+      assert(weights.keySet == Set(s"${prefix}m.weight"))
+      assert(
+        weights(s"${prefix}m.weight").rows(0, 2).toSeq ==
+          Seq(0.5f, -1f, 6f, 8f)
+      )
+    }
     test("a ConvRot group the runner does not undo is refused") {
       val marker =
         """{"format":"int8_tensorwise","convrot":true,"convrot_groupsize":64}"""

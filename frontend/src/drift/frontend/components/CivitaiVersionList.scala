@@ -152,7 +152,15 @@ class CivitaiVersionList(
     FileRow(
       name = file.name,
       onSelect = () =>
-        if (installMode) selection.toggle(SelectedFile(key, sizeBytes))
+        if (installMode)
+          selection.toggle(
+            SelectedFile(
+              key,
+              sizeBytes,
+              release = Some(version.id.toString),
+              stage = LoraFileStage.of(file.name, version.name)
+            )
+          )
         else onSelectFile(version, file),
       // Installing, a row click ticks the file for the bar; registering a
       // model, it picks that one file.

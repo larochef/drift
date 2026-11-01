@@ -79,9 +79,9 @@ answers follow the exact maths more closely than llama.cpp's: the model's
 inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
 8-bit inputs as in the fork that made the format.
 
-- **Images: Krea 2, FLUX 3 Image Klein, FLUX.2 [klein] and [dev], Qwen Image 2.1, HiDream O1,
+- **Images: Krea 2, FLUX 3 Image Klein, MOSS-Image, FLUX.2 [klein] and [dev], Qwen Image 2.1, HiDream O1,
   Mage-Flow, Nucleus-Image, LLaDA-Image, GRN and PiD; video: MiniMax H3, Wan 2.2 A14B and LTX 2.5.** A second runtime, **drift runner, images (gfx1151)**, runs Krea 2,
-  FLUX 3 Image Klein, FLUX.2 [klein] 9B, FLUX.2 [dev], Qwen Image 2.1, HiDream O1, Mage-Flow, Nucleus-Image, LLaDA-Image, GRN, PiD 1.5,
+  FLUX 3 Image Klein, MOSS-Image, FLUX.2 [klein] 9B, FLUX.2 [dev], Qwen Image 2.1, HiDream O1, Mage-Flow, Nucleus-Image, LLaDA-Image, GRN, PiD 1.5,
   MiniMax H3, Wan 2.2 14B and LTX 2.5 configurations in
   place of sd-cpp: pick
   it in the launch control. It tells them apart by the checkpoint, and reads
@@ -102,6 +102,11 @@ inputs are never rounded to 8 bits, except for ROCmFP4 weights, which meet
     shift is 16 at every size unless `--flow-shift` gives another (as μ).
     Its text encoder is Qwen3-VL-4B and its VAE FLUX.2's. Bounding boxes are
     not read.
+  - **MOSS-Image** (SFT or Base, 50 steps at CFG 3) does text to image,
+    img2img with a mask and LoRAs (OpenMOSS's or kohya's names). The shift
+    is 5 unless `--flow-shift` gives another; with CFG the negative prompt
+    runs without block 22, as OpenMOSS's pipeline does. Its text encoder is
+    Qwen3.5-9B and its VAE FLUX.2's.
   - **FLUX.2 [klein]** does text to image (about 40% faster than sd-cpp),
     img2img, reference images and LoRAs (ComfyUI's, BFL's or diffusers'
     names), all faster than sd-cpp: about half its time for text to image,

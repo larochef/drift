@@ -58,8 +58,11 @@ Installing works the same way whichever source you are in:
   weigh, and **Install into** says where they go: **one LoRA** of all of them
   (the default when you ticked several — this is how a wan 2.2 high/low-noise
   pair becomes one LoRA, each file tagged with its stage), **N separate
-  LoRAs**, or **files of 'X'** for a LoRA this model or repository already
-  made. One ticked file makes a LoRA of its own by default.
+  LoRAs** (the default when the files come from different Civitai versions
+  and none is a high/low-noise half — a 4-step and an 8-step turbo, say:
+  applying a LoRA applies every file in it), or **files of 'X'** for a LoRA
+  this model or repository already made. One ticked file makes a LoRA of its
+  own by default.
 - Ticked one half of a pair yesterday and the other half today? Choose **files
   of 'X'** and the second joins the first.
 - Want to compare two versions of the same Civitai LoRA? Install them one

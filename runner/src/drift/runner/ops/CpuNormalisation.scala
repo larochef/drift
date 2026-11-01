@@ -16,7 +16,12 @@ private[ops] trait CpuNormalisation extends CpuBase {
       ))
     case Activation.GeluErf => 0.5 * v * (1 + CpuOps.erf(v / math.sqrt(2)))
     case Activation.Sigmoid => 1 / (1 + math.exp(-v))
+    case Activation.Situ    => 4 * math.tanh(v / 4) / (1 + math.exp(-v))
   }
+
+  /** What `gated` multiplies by: the up as it is, soft-capped under SiTU. */
+  private def gatedUp(kind: Activation, v: Double): Double =
+    if (kind == Activation.Situ) 25 * math.tanh(v / 25) else v
 
   def scaledActivation(
       kind: Activation,
@@ -32,7 +37,7 @@ private[ops] trait CpuNormalisation extends CpuBase {
   def gated(kind: Activation, gate: Tensor, up: Tensor, out: Tensor): Unit = {
     Ops.checkElementwise("gated", gate, up, out)
     val (g, u) = (reader(gate), reader(up))
-    fill(out)(i => activate(kind, g(i)) * u(i))
+    fill(out)(i => activate(kind, g(i)) * gatedUp(kind, u(i)))
   }
 
   /** Runs `body(start, columns)` for each row. */

@@ -257,7 +257,7 @@ than in the form: they change nothing about the job.
   multiple of 16, Qwen Image 2.1 wants 32 — so the tile count before the button
   may sit on a slightly larger tile than the one you typed.
 - **Which models redraw.** Only those that take a reference image as
-  context: Flux.2 [dev], Flux.2 Klein 4B and 9B, and Qwen Image 2.1. A tile that sees
+  context: FLUX 3 Image Klein, Flux.2 [dev], Flux.2 Klein 4B and 9B, and Qwen Image 2.1. A tile that sees
   nothing of its surroundings is repainted as something else — measured on a
   16k picture, sand came back as rock and an areola was erased — so the other
   models are not offered. Krea 2, Qwen Image, Z-Image, Boogu and Mage-Flow
@@ -348,7 +348,8 @@ than in the form: they change nothing about the job.
   necklace" — and the model makes that change while the rest stays what it
   was. It needs a configuration on an architecture tagged **edit**, a model
   that edits an image by instruction: Flux.2 Klein is the one to use — a pass
-  takes about a minute; Mage-Flow Edit Turbo edits too, in two and a half, and
+  takes about a minute; FLUX 3 Image Klein edits too, in about a minute and
+  three quarters at 1024²; Mage-Flow Edit Turbo in two and a half, and
   Flux.2 dev in nine. Models that redraw the picture instead — Krea 2, Qwen
   Image 2.1 — are not offered.
 

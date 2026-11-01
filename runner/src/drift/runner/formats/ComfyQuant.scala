@@ -1,6 +1,7 @@
 package drift.runner.formats
 
 import drift.runner.tensor.*
+import drift.runner.weights.WeightNames
 
 import java.lang.foreign.ValueLayout.JAVA_BYTE
 import java.nio.charset.StandardCharsets
@@ -60,12 +61,27 @@ object ComfyQuant {
 
   private val RotationGroup = ConvRot.Group
 
-  /** The weights of `file` to decode, by their stored names. */
-  def weights(file: TensorSource): Map[String, Weight] =
+  /** The weights of `file` to decode, by their stored names. A marker goes with
+    * the weight of the same name once the loaders' prefixes are dropped
+    * (`WeightNames`): some files keep the weights under
+    * `model.diffusion_model.` and the markers bare. The weight's companions
+    * (its scales, its codebook) sit beside it.
+    */
+  def weights(file: TensorSource): Map[String, Weight] = {
+    val storedWeights = file.tensors.keys
+      .filter(_.endsWith(".weight"))
+      .map(name => WeightNames.withoutPrefix(name) -> name)
+      .toMap
     file.tensors.keys
       .filter(_.endsWith(".comfy_quant"))
       .flatMap { markerName =>
-        val module = markerName.stripSuffix(".comfy_quant")
+        val bare =
+          WeightNames.withoutPrefix(markerName.stripSuffix(".comfy_quant"))
+        val module = storedWeights
+          .get(s"$bare.weight")
+          .fold(markerName.stripSuffix(".comfy_quant"))(
+            _.stripSuffix(".weight")
+          )
         val marker = ujson
           .read(
             new String(
@@ -97,6 +113,7 @@ object ComfyQuant {
         decoded.map(s"$module.weight" -> _)
       }
       .toMap
+  }
 
   private def fail(message: String) = throw new FormatException(message)
 

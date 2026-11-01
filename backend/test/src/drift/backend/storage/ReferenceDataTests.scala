@@ -30,7 +30,8 @@ object ReferenceDataTests extends TestSuite {
           "llada-image-turbo",
           "grn",
           "flux.3-image-klein",
-          "flux-3-prompt-upsampler"
+          "flux-3-prompt-upsampler",
+          "moss-image"
         ).subsetOf(architectures)
       )
       assert(models.exists(_.id == "nucleus-image-bf16"))
@@ -38,10 +39,15 @@ object ReferenceDataTests extends TestSuite {
       assert(starters.exists(_.id == "starter-grn-2b"))
       assert(starters.exists(_.id == "starter-mage-flow"))
       assert(starters.exists(_.id == "starter-flux3-image-klein"))
+      assert(starters.exists(_.id == "starter-moss-image"))
       // the caption writers read the whole reply as the prompt
       val templates = storage.list(Collections.promptTemplates).map(_.id).toSet
       assert(
-        Set("flux-3-caption-writer", "flux-3-upsampler").subsetOf(templates)
+        Set(
+          "flux-3-caption-writer",
+          "flux-3-upsampler",
+          "moss-image-caption-writer"
+        ).subsetOf(templates)
       )
       // FLUX 3 Image Klein's base is a checkpoint of the same architecture,
       // with its own steps and CFG

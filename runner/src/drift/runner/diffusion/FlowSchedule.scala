@@ -75,6 +75,47 @@ object FlowSchedule {
     )
   }
 
+  /** MOSS-Image's levels (its `MOSSImageScheduler`): `steps` points of
+    * `linspace(1, s / (total + s − 1), steps)` shifted by `sσ / (1 + (s −
+    * 1)σ)`, `s` the shift, each snapped to the nearest of the `total` training
+    * levels `linspace(1/total, 1, total)` (a tie to the lower), repeats
+    * dropped, then 0 — in F32, as it computes them.
+    */
+  def snapped(
+      steps: Int,
+      shift: Double,
+      total: Int = 1000
+  ): IndexedSeq[Float] = {
+    require(steps >= 1 && shift > 0, s"$steps steps, shift $shift")
+    def linspace(start: Double, end: Double, count: Int) =
+      (0 until count).map(i =>
+        if (count == 1) start.toFloat
+        else (start + (end - start) * i / (count - 1)).toFloat
+      )
+    val s = shift.toFloat
+    val levels = linspace(1, shift / (total + shift - 1), steps)
+      .map(v => s * v / (1 + (s - 1) * v))
+    val training = linspace(1, 1.0 / total, total).reverse
+    val nearest = levels.map { level =>
+      val upper = math.min(
+        training.indexWhere(_ >= level) match {
+          case -1    => total
+          case found => found
+        },
+        total - 1
+      )
+      val lower = math.max(upper - 1, 0)
+      if (
+        math.abs(level - training(lower)) <= math.abs(training(upper) - level)
+      )
+        training(lower)
+      else training(upper)
+    }
+    nearest.zip(nearest.drop(1) :+ Float.NaN).collect {
+      case (level, next) if level != next => level
+    } :+ 0f
+  }
+
   /** Qwen Image 2.1's μ for `imageTokens` (its scheduler's configuration): the
     * line through 256 tokens at 0.5 and 8192 at 0.9.
     */

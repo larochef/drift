@@ -22,6 +22,46 @@ object LoraFileStage {
   // tapir's derivation in agreement (see RuntimeBackend).
   given Schema[LoraFileStage] =
     Schema.derivedEnumeration[LoraFileStage].defaultStringBased
+
+  private val HighNoisePattern = "(?i)high[ ._-]?noise".r
+  private val LowNoisePattern = "(?i)low[ ._-]?noise".r
+
+  /** The same thing said in fewer letters, as the repository sites tend to:
+    * `..._HIGH.safetensors`, `wan22_hn_rank64.gguf`, a `high/` folder. A word
+    * on its own only — "shallow" is not a low-noise LoRA, "highres" is not a
+    * high-noise one. No look-behind: the browser's build has no ES2018
+    * regular expressions.
+    */
+  private val HighPattern = "(?i)(?:^|[^a-z0-9])(high|hn)(?![a-z0-9])".r
+  private val LowPattern = "(?i)(?:^|[^a-z0-9])(low|ln)(?![a-z0-9])".r
+
+  /** Which stage a file belongs to, guessed from the names it goes by — its own
+    * (with the folders above it, which are often where a repository says it),
+    * its Civitai version's, its repository's. wan 2.2 pairs are marked in one
+    * or another; correctable in the UI when the guess is wrong.
+    *
+    * "high noise" and "low noise" are looked for everywhere first: a file
+    * called `high_noise` in a repository whose name says `low` is a high-noise
+    * file. Only then does the short form count. Civitai guesses a file's stage
+    * well; this is what does it for the other sites.
+    */
+  def of(names: String*): LoraFileStage = {
+    def firstMatch(
+        high: scala.util.matching.Regex,
+        low: scala.util.matching.Regex
+    ): Option[LoraFileStage] =
+      names.iterator
+        .flatMap(name =>
+          if (high.findFirstIn(name).isDefined) Some(LoraFileStage.HighNoise)
+          else if (low.findFirstIn(name).isDefined) Some(LoraFileStage.LowNoise)
+          else None
+        )
+        .nextOption()
+
+    firstMatch(HighNoisePattern, LowNoisePattern)
+      .orElse(firstMatch(HighPattern, LowPattern))
+      .getOrElse(LoraFileStage.General)
+  }
 }
 
 /** One weight file of a LoRA (`specs/33-lora-sources.md`).

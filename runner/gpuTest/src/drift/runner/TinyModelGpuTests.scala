@@ -230,6 +230,30 @@ object TinyModelGpuTests extends TestSuite {
         assert(error < 1e-2)
       } finally ops.close()
     }
+    test(
+      "MOSS-Image's transformer: the text refiner, a velocity, block 1 skipped"
+    ) {
+      for (weights <- Seq("model.safetensors", "model_fused.safetensors")) {
+        val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+        try {
+          val (text, velocity, skipped) = TinyMossImageCase.errors(ops, weights)
+          println(
+            f"  $weights: worst text error ${text * 100}%.4f%%, velocity ${velocity * 100}%.4f%%, skipped ${skipped * 100}%.4f%% of the largest"
+          )
+          assert(text < 1e-2 && velocity < 1e-2 && skipped < 1e-2)
+        } finally ops.close()
+      }
+    }
+    test("MOSS-Image with a LoRA (OpenMOSS's names split and fused, kohya's)") {
+      val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
+      try {
+        val error = TinyMossImageCase.loraVelocityError(ops)
+        println(
+          f"  worst LoRA velocity error: ${error * 100}%.4f%% of the largest"
+        )
+        assert(error < 1e-2)
+      } finally ops.close()
+    }
     test("FLUX.2's transformer, with a reference image") {
       val ops = new HipOps(Gpu.hip, MatVecInputs.Float)
       try {

@@ -139,6 +139,20 @@ object ImagePipeline {
           files.neededTextEncoder
         )
     ),
+    // reads the GGUF's vocabulary, else OpenMOSS's tokenizer.json
+    Family(
+      "MOSS-Image",
+      Seq("moss-image"),
+      MossImageConfig.holds,
+      (ops, files) =>
+        new MossImagePipeline(
+          ops,
+          files.diffusionModel,
+          files.neededVae,
+          files.neededTextEncoder,
+          files.tokenizer
+        )
+    ),
     Family(
       "FLUX.2",
       Seq("flux2-klein", "flux2-dev"),

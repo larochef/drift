@@ -574,6 +574,35 @@ object TinyModelTests extends TestSuite {
         assert(error < 2e-3)
       } finally ops.close()
     }
+    test(
+      "MOSS-Image's transformer: the text refiner, a velocity, block 1 skipped"
+    ) {
+      for (weights <- Seq("model.safetensors", "model_fused.safetensors")) {
+        val ops = new CpuOps
+        try {
+          val (text, velocity, skipped) = TinyMossImageCase.errors(ops, weights)
+          println(
+            f"  $weights: worst text error ${text * 100}%.4f%%, velocity ${velocity * 100}%.4f%%, skipped ${skipped * 100}%.4f%% of the largest"
+          )
+          assert(text < 2e-3 && velocity < 2e-3 && skipped < 2e-3)
+        } finally ops.close()
+      }
+    }
+    test("MOSS-Image with a LoRA (OpenMOSS's names split and fused, kohya's)") {
+      val ops = new CpuOps
+      try {
+        val error = TinyMossImageCase.loraVelocityError(ops)
+        println(
+          f"  worst LoRA velocity error: ${error * 100}%.4f%% of the largest"
+        )
+        assert(error < 2e-3)
+      } finally ops.close()
+    }
+    test("MOSS-Image's levels: OpenMOSS's scheduler, snapped") {
+      val (error, counts) = TinyMossImageCase.scheduleError()
+      println(f"  worst level difference: $error%.2e")
+      assert(counts && error < 1e-6)
+    }
     test("FLUX.2's transformer, with a reference image") {
       val ops = new CpuOps
       try {

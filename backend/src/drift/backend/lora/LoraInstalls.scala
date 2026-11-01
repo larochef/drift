@@ -139,7 +139,7 @@ final private[lora] class LoraInstalls(
                   fileId = file.id.toString,
                   filename = file.name
                 ),
-                stage = LoraManager.stageOf(file.name, version.name),
+                stage = LoraFileStage.of(file.name, version.name),
                 sizeBytes = file.sizeKB.map(kb => (kb * 1024).toLong),
                 sha256 = file.sha256
               ),
@@ -227,7 +227,7 @@ final private[lora] class LoraInstalls(
           LoraFile(
             fileName = filename.split('/').last,
             source = HuggingFace(repo, filename),
-            stage = LoraManager.stageOf(filename, repo),
+            stage = LoraFileStage.of(filename, repo),
             sizeBytes = info.lfs.flatMap(_.size).orElse(info.size),
             sha256 = info.sha256
           )
@@ -254,7 +254,7 @@ final private[lora] class LoraInstalls(
           LoraFile(
             fileName = filename.split('/').last,
             source = ModelScope(repo, filename),
-            stage = LoraManager.stageOf(filename, repo),
+            stage = LoraFileStage.of(filename, repo),
             sizeBytes = info.size,
             sha256 = info.sha256
           )
@@ -334,7 +334,7 @@ final private[lora] class LoraInstalls(
                   source = Local(path.toString),
                   // The whole path: a file sorted into a `high_noise/` folder
                   // says so there and nowhere else.
-                  stage = LoraManager.stageOf(path.toString),
+                  stage = LoraFileStage.of(path.toString),
                   sizeBytes = Some(Files.size(path)),
                   sha256 = None
                 ),
